@@ -165,7 +165,7 @@ export const OnboardingScreen: React.FC = () => {
       case 5:
         return treatName.trim()
           ? `Love that goal! "${treatName.trim()}" is locked in. ✨`
-          : 'No problem! You can add up to 3 treats anytime. 👌';
+          : 'No problem! You can add up to 3 treats anytime.';
       default:
         return 'You’re all set! 🎉';
     }
@@ -497,7 +497,7 @@ export const OnboardingScreen: React.FC = () => {
                 <View
                   style={[
                     styles.amountBox,
-                    { backgroundColor: shade.bg, borderColor: shade.accent },
+                    { backgroundColor: shade.bg, borderColor: shade.border },
                   ]}
                 >
                   <Text style={[styles.pesoSign, { color: shade.dopamine }]}>
@@ -548,7 +548,7 @@ export const OnboardingScreen: React.FC = () => {
                 <View
                   style={[
                     styles.amountBox,
-                    { backgroundColor: shade.bg, borderColor: shade.accent },
+                    { backgroundColor: shade.bg, borderColor: shade.border },
                   ]}
                 >
                   <Text style={[styles.pesoSign, { color: shade.accent }]}>
@@ -738,10 +738,10 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
     paddingHorizontal: 18,
-    paddingTop: 12,
-    paddingBottom: 24,
+    paddingTop: 20,
+    paddingBottom: 28,
   },
   stepStack: {
     gap: 15,
@@ -811,6 +811,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   textInput: {
+    minWidth: 0,
     borderRadius: 12,
     borderWidth: 1,
     paddingHorizontal: 12,
@@ -832,6 +833,7 @@ const styles = StyleSheet.create({
   },
   amountInput: {
     flex: 1,
+    minWidth: 0,
     fontSize: 16,
     fontWeight: '800',
     paddingVertical: 2,

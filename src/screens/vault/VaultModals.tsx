@@ -505,6 +505,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   textInput: {
+    minWidth: 0,
     borderRadius: 12,
     borderWidth: 1,
     paddingHorizontal: 12,
@@ -530,6 +531,7 @@ const styles = StyleSheet.create({
   },
   amountInput: {
     flex: 1,
+    minWidth: 0,
     fontSize: 16,
     fontWeight: '800',
     paddingVertical: 1,

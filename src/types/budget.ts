@@ -1,4 +1,6 @@
 export type ThemeMode = 'system' | 'light' | 'dark';
+export type EnvelopeCadence = 'per_payday' | 'monthly';
+export type EnvelopeRolloverMode = 'rollover' | 'reset';
 
 export type TransactionType =
   | 'spend'
@@ -9,6 +11,8 @@ export type TransactionType =
   | 'sinking_fund'
   | 'installment_paid'
   | 'bill_paid'
+  | 'envelope_spend'
+  | 'envelope_refill'
   | 'wallet_deposit'
   | 'wallet_adjust';
 
@@ -47,6 +51,14 @@ export interface TransactionEntry {
   sinkingFundId?: string;
   billId?: string;
   previousBillPaidMonth?: string;
+  envelopeId?: string;
+  previousEnvelopeBalance?: number;
+  previousEnvelopeRefillKey?: string;
+  refilledEnvelopeSnapshots?: Array<{
+    id: string;
+    previousBalance: number;
+    previousRefillKey?: string;
+  }>;
   rolloverDelta?: number;
   savingsDelta?: number;
   /** True when created by automatic midnight rollover rather than manual same-day banking. */
@@ -115,6 +127,17 @@ export interface BillItem {
   amount: number;
   dueDay?: number; // 1-31
   lastPaidMonth?: string; // 'YYYY-MM'
+}
+
+export interface SpendingEnvelopeItem {
+  id: string;
+  name: string;
+  icon: string;
+  amountPerCycle: number;
+  cadence: EnvelopeCadence;
+  rolloverMode: EnvelopeRolloverMode;
+  balance: number;
+  lastRefillKey?: string;
 }
 
 export interface InstallmentItem {

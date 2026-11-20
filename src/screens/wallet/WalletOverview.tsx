@@ -342,7 +342,7 @@ export const WalletOverview: React.FC<WalletOverviewProps> = ({
 
 const styles = StyleSheet.create({
   scrollContent: {
-    paddingBottom: 28,
+    paddingBottom: 36,
     gap: 16,
   },
   inlineRow: {

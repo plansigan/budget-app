@@ -217,7 +217,7 @@ export function computeSpendingBreakdown(
       : `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
   const filtered = entries.filter((e) => {
-    if (e.type !== 'spend') return false;
+    if (e.type !== 'spend' && e.type !== 'envelope_spend') return false;
     const key = getEntryDateKey(e);
     if (range === 'week') {
       return key >= mondayKey && key <= sundayKey;
@@ -380,7 +380,10 @@ export function computeMonthlyWrapUp(params: {
   // Count most used wallet payment source
   const sourceCounts = new Map<string, number>();
   for (const e of monthEntries) {
-    if (e.type === 'spend' && e.paymentSourceLabel) {
+    if (
+      (e.type === 'spend' || e.type === 'envelope_spend') &&
+      e.paymentSourceLabel
+    ) {
       sourceCounts.set(
         e.paymentSourceLabel,
         (sourceCounts.get(e.paymentSourceLabel) || 0) + 1

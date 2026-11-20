@@ -22,16 +22,18 @@ export type ActionModalMode = 'spend' | 'save' | 'treat';
 interface ActionAmountModalProps {
   visible: boolean;
   mode: ActionModalMode;
+  initialEnvelopeId?: string | null;
   onClose: () => void;
 }
 
 /**
  * Exact-amount entry modal (zero preset amount chips) for Spend!, Fund Treat,
- * and Save to Jar, with Cash / Bank / Credit Card source selection on Spend!.
+ * and Save to Jar, with Daily Budget / Spending Envelope and Cash / Bank / Card selection.
  */
 export const ActionAmountModal: React.FC<ActionAmountModalProps> = ({
   visible,
   mode,
+  initialEnvelopeId = null,
   onClose,
 }) => {
   const {
@@ -40,9 +42,11 @@ export const ActionAmountModal: React.FC<ActionAmountModalProps> = ({
     cashOnHand,
     banks,
     creditCards,
+    envelopes,
     activeTreat,
     selectedDateKey,
     logSpend,
+    spendFromEnvelope,
     fundActiveTreat,
     saveToJar,
   } = useBudget();
@@ -54,6 +58,9 @@ export const ActionAmountModal: React.FC<ActionAmountModalProps> = ({
   const [selectedLabel, setSelectedLabel] = useState('Food');
   const [customNote, setCustomNote] = useState('');
   const [paymentSourceId, setPaymentSourceId] = useState('cash');
+  const [selectedEnvelopeId, setSelectedEnvelopeId] = useState<string | null>(
+    null
+  );
 
   useEffect(() => {
     if (visible) {
@@ -63,13 +70,18 @@ export const ActionAmountModal: React.FC<ActionAmountModalProps> = ({
       setSelectedIcon('shopping-bag');
       setSelectedLabel('Food');
       setPaymentSourceId('cash');
+      setSelectedEnvelopeId(initialEnvelopeId ?? null);
     }
-  }, [visible, mode]);
+  }, [visible, mode, initialEnvelopeId]);
 
   const numericAmount = parsePesoInput(amountText);
+  const activeEnvelope =
+    mode === 'spend' && selectedEnvelopeId
+      ? envelopes.find((e) => e.id === selectedEnvelopeId) || null
+      : null;
 
   const accentColor =
-    mode === 'treat'
+    mode === 'treat' || activeEnvelope
       ? shade.dopamine
       : mode === 'save'
       ? shade.positive
@@ -77,7 +89,9 @@ export const ActionAmountModal: React.FC<ActionAmountModalProps> = ({
 
   const modalTitle =
     mode === 'spend'
-      ? 'Spend!'
+      ? activeEnvelope
+        ? `Spend • ${activeEnvelope.name}`
+        : 'Spend!'
       : mode === 'treat'
       ? activeTreat
         ? `Fund ${activeTreat.name}`
@@ -86,16 +100,28 @@ export const ActionAmountModal: React.FC<ActionAmountModalProps> = ({
 
   const handleConfirm = () => {
     if (numericAmount <= 0) return;
-    const finalLabel = customNote.trim() || selectedLabel;
+    const finalLabel =
+      customNote.trim() || (activeEnvelope ? activeEnvelope.name : selectedLabel);
 
     if (mode === 'spend') {
-      logSpend(
-        numericAmount,
-        finalLabel,
-        selectedIcon,
-        paymentSourceId,
-        selectedCategory
-      );
+      if (activeEnvelope) {
+        spendFromEnvelope(
+          activeEnvelope.id,
+          numericAmount,
+          finalLabel,
+          selectedIcon,
+          paymentSourceId,
+          selectedCategory
+        );
+      } else {
+        logSpend(
+          numericAmount,
+          finalLabel,
+          selectedIcon,
+          paymentSourceId,
+          selectedCategory
+        );
+      }
     } else if (mode === 'treat') {
       fundActiveTreat(numericAmount);
     } else {
@@ -161,6 +187,7 @@ export const ActionAmountModal: React.FC<ActionAmountModalProps> = ({
           <ScrollView
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
+            style={styles.modalScroll}
             contentContainerStyle={styles.scrollBody}
           >
             {/* Exact Amount Input (Always Specify) */}
@@ -181,6 +208,130 @@ export const ActionAmountModal: React.FC<ActionAmountModalProps> = ({
                 style={[styles.amountInput, { color: shade.text }]}
               />
             </View>
+
+            {mode === 'spend' && envelopes.length > 0 && (
+              <View style={styles.sectionBlock}>
+                <Text style={[styles.sectionLabel, { color: shade.muted }]}>
+                  SPEND FROM
+                </Text>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  style={styles.horizontalScroll}
+                  contentContainerStyle={styles.sourceScroll}
+                >
+                  <ScalePressable
+                    onPress={() => {
+                      triggerLightHaptic();
+                      setSelectedEnvelopeId(null);
+                      if (paymentSourceId === 'none') {
+                        setPaymentSourceId('cash');
+                      }
+                    }}
+                    style={[
+                      styles.sourcePill,
+                      {
+                        backgroundColor:
+                          selectedEnvelopeId === null
+                            ? shade.accent
+                            : shade.surface,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.sourceTitle,
+                        {
+                          color:
+                            selectedEnvelopeId === null
+                              ? shade.accentText
+                              : shade.text,
+                        },
+                      ]}
+                    >
+                      Daily Budget
+                    </Text>
+                    <Text
+                      style={[
+                        styles.sourceSub,
+                        {
+                          color:
+                            selectedEnvelopeId === null
+                              ? shade.accentText
+                              : shade.muted,
+                        },
+                      ]}
+                    >
+                      Regular daily
+                    </Text>
+                  </ScalePressable>
+
+                  {envelopes.map((env) => {
+                    const active = selectedEnvelopeId === env.id;
+                    return (
+                      <ScalePressable
+                        key={env.id}
+                        onPress={() => {
+                          triggerLightHaptic();
+                          setSelectedEnvelopeId(env.id);
+                          setSelectedIcon(env.icon);
+                        }}
+                        style={[
+                          styles.sourcePill,
+                          {
+                            backgroundColor: active
+                              ? shade.dopamine
+                              : shade.surface,
+                          },
+                        ]}
+                      >
+                        <View style={styles.inlineIconTitle}>
+                          <AppIcon
+                            name={env.icon}
+                            size={12}
+                            color={active ? '#FFFFFF' : shade.dopamine}
+                          />
+                          <Text
+                            style={[
+                              styles.sourceTitle,
+                              { color: active ? '#FFFFFF' : shade.text },
+                            ]}
+                          >
+                            {env.name}
+                          </Text>
+                        </View>
+                        <Text
+                          style={[
+                            styles.sourceSub,
+                            { color: active ? '#FFFFFF' : shade.muted },
+                          ]}
+                        >
+                          {formatVisiblePeso(env.balance)} left
+                        </Text>
+                      </ScalePressable>
+                    );
+                  })}
+                </ScrollView>
+
+                {activeEnvelope && (
+                  <Text
+                    style={[
+                      styles.envelopeHint,
+                      {
+                        color:
+                          numericAmount > activeEnvelope.balance
+                            ? shade.warning
+                            : shade.dopamine,
+                      },
+                    ]}
+                  >
+                    {numericAmount > activeEnvelope.balance
+                      ? `Exceeds ${activeEnvelope.name} balance by ₱${(numericAmount - activeEnvelope.balance).toLocaleString()} (still won't touch daily Safe-to-Spend).`
+                      : `Guilt-free envelope • won't reduce today's Safe-to-Spend`}
+                  </Text>
+                )}
+              </View>
+            )}
 
             {mode === 'spend' && (
               <>
@@ -242,15 +393,71 @@ export const ActionAmountModal: React.FC<ActionAmountModalProps> = ({
             )}
 
             {mode === 'spend' && (
-              <View style={{ gap: 7 }}>
+              <View style={styles.sectionBlock}>
                 <Text style={[styles.sectionLabel, { color: shade.muted }]}>
                   HOW DID YOU PAY?
                 </Text>
                 <ScrollView
                   horizontal
                   showsHorizontalScrollIndicator={false}
+                  style={styles.horizontalScroll}
                   contentContainerStyle={styles.sourceScroll}
                 >
+                  {activeEnvelope && (
+                    <ScalePressable
+                      onPress={() => {
+                        triggerLightHaptic();
+                        setPaymentSourceId('none');
+                      }}
+                      style={[
+                        styles.sourcePill,
+                        {
+                          backgroundColor:
+                            paymentSourceId === 'none'
+                              ? shade.accent
+                              : shade.surface,
+                        },
+                      ]}
+                    >
+                      <View style={styles.inlineIconTitle}>
+                        <AppIcon
+                          name="check"
+                          size={12}
+                          color={
+                            paymentSourceId === 'none'
+                              ? shade.accentText
+                              : shade.text
+                          }
+                        />
+                        <Text
+                          style={[
+                            styles.sourceTitle,
+                            {
+                              color:
+                                paymentSourceId === 'none'
+                                  ? shade.accentText
+                                  : shade.text,
+                            },
+                          ]}
+                        >
+                          Track Only
+                        </Text>
+                      </View>
+                      <Text
+                        style={[
+                          styles.sourceSub,
+                          {
+                            color:
+                              paymentSourceId === 'none'
+                                ? shade.accentText
+                                : shade.muted,
+                          },
+                        ]}
+                      >
+                        Envelope only
+                      </Text>
+                    </ScalePressable>
+                  )}
                   <ScalePressable
                     onPress={() => {
                       triggerLightHaptic();
@@ -415,7 +622,7 @@ export const ActionAmountModal: React.FC<ActionAmountModalProps> = ({
                   {
                     color:
                       numericAmount > 0
-                        ? mode === 'spend'
+                        ? mode === 'spend' && !activeEnvelope
                           ? shade.accentText
                           : '#FFFFFF'
                         : shade.muted,
@@ -454,19 +661,40 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 390,
     maxHeight: '88%',
+    minWidth: 0,
+    alignSelf: 'center',
+    overflow: 'hidden',
     borderRadius: 24,
     borderWidth: 1.5,
     padding: 18,
     gap: 13,
   },
+  modalScroll: {
+    width: '100%',
+  },
   scrollBody: {
     gap: 13,
     paddingBottom: 2,
+    width: '100%',
+  },
+  sectionBlock: {
+    gap: 7,
+    width: '100%',
+    minWidth: 0,
+  },
+  horizontalScroll: {
+    width: '100%',
+  },
+  envelopeHint: {
+    fontSize: 11,
+    fontWeight: '700',
+    lineHeight: 15,
   },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: 8,
   },
   title: {
     fontSize: 18,
@@ -486,6 +714,8 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   amountBox: {
+    width: '100%',
+    minWidth: 0,
     flexDirection: 'row',
     alignItems: 'center',
     borderRadius: 16,
@@ -500,6 +730,7 @@ const styles = StyleSheet.create({
   },
   amountInput: {
     flex: 1,
+    minWidth: 0,
     fontSize: 24,
     fontWeight: '800',
     paddingVertical: 2,
@@ -532,6 +763,8 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   noteInput: {
+    width: '100%',
+    minWidth: 0,
     borderRadius: 12,
     borderWidth: 1,
     paddingHorizontal: 12,

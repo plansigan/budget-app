@@ -7,6 +7,7 @@ import {
   InstallmentItem,
   MonthlyArchiveSnapshot,
   SinkingFundItem,
+  SpendingEnvelopeItem,
   TransactionEntry,
   TreatVaultItem,
 } from '../types/budget';
@@ -201,6 +202,30 @@ export function normalizePersistedState(
       )
     : [];
 
+  const normalizedEnvelopes: SpendingEnvelopeItem[] = Array.isArray(raw.envelopes)
+    ? raw.envelopes
+        .filter((env): env is SpendingEnvelopeItem =>
+          Boolean(env && typeof env === 'object')
+        )
+        .map((env, idx) => ({
+          id: typeof env.id === 'string' && env.id ? env.id : `env-${idx}`,
+          name:
+            typeof env.name === 'string' && env.name.trim()
+              ? env.name.trim()
+              : 'Spending Envelope',
+          icon: typeof env.icon === 'string' && env.icon ? env.icon : 'heart',
+          amountPerCycle: roundCurrency(safeNum(env.amountPerCycle, 0, 0)),
+          cadence: env.cadence === 'monthly' ? 'monthly' : 'per_payday',
+          rolloverMode: env.rolloverMode === 'reset' ? 'reset' : 'rollover',
+          balance: roundCurrency(safeNum(env.balance, 0, 0)),
+          lastRefillKey:
+            typeof env.lastRefillKey === 'string' &&
+            /^\d{4}-\d{2}-\d{2}$/.test(env.lastRefillKey)
+              ? env.lastRefillKey
+              : undefined,
+        }))
+    : [];
+
   return {
     ...base,
     hasCompletedOnboarding: Boolean(raw.hasCompletedOnboarding),
@@ -219,6 +244,7 @@ export function normalizePersistedState(
         : '',
     settings: normalizedSettings,
     billItems: normalizedBills,
+    envelopes: normalizedEnvelopes,
     cashOnHand: roundCurrency(safeNum(raw.cashOnHand, base.cashOnHand, 0)),
     banks: normalizedBanks,
     creditCards: normalizedCards,

@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { SpendCategoryKey } from '../types/budget';
 
@@ -191,6 +191,17 @@ export const BUCKET_ICON_CHOICES: AppIconName[] = [
   'trending-up',
 ];
 
+export const ENVELOPE_ICON_CHOICES: AppIconName[] = [
+  'heart',
+  'coffee',
+  'shopping-bag',
+  'star',
+  'gift',
+  'compass',
+  'music',
+  'smile',
+];
+
 export const SPEND_CATEGORIES: {
   key: SpendCategoryKey;
   icon: AppIconName;
@@ -220,6 +231,22 @@ export const AppIcon: React.FC<AppIconProps> = ({
   size = 16,
   color = '#111318',
 }) => {
+  if (name === 'peso' || name === 'dollar-sign') {
+    return (
+      <Text
+        style={[
+          styles.pesoGlyph,
+          {
+            fontSize: size,
+            lineHeight: Math.round(size * 1.15),
+            color,
+          },
+        ]}
+      >
+        ₱
+      </Text>
+    );
+  }
   return <Feather name={resolveFeatherName(name)} size={size} color={color} />;
 };
 
@@ -262,5 +289,10 @@ const styles = StyleSheet.create({
   badge: {
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  pesoGlyph: {
+    fontWeight: '800',
+    textAlign: 'center',
+    includeFontPadding: false,
   },
 });

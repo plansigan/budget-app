@@ -116,6 +116,7 @@ const styles = StyleSheet.create({
   },
   inputField: {
     flex: 1,
+    minWidth: 0,
     fontSize: 19,
     fontWeight: '800',
     paddingVertical: 0,

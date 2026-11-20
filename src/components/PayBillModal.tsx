@@ -279,6 +279,7 @@ const styles = StyleSheet.create({
   },
   amountInput: {
     flex: 1,
+    minWidth: 0,
     fontSize: 24,
     fontWeight: '800',
     paddingVertical: 0,

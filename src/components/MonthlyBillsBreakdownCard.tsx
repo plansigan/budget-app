@@ -707,6 +707,7 @@ const styles = StyleSheet.create({
   },
   amountInput: {
     flex: 1,
+    minWidth: 0,
     fontSize: 13,
     fontWeight: '800',
     paddingVertical: 0,
@@ -773,6 +774,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   nameInput: {
+    minWidth: 0,
     borderRadius: 12,
     borderWidth: 1,
     paddingHorizontal: 12,
@@ -789,6 +791,7 @@ const styles = StyleSheet.create({
   },
   newAmountInput: {
     flex: 1,
+    minWidth: 0,
     fontSize: 16,
     fontWeight: '800',
     paddingVertical: 0,

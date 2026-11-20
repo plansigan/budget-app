@@ -3,6 +3,7 @@ import {
   BudgetSettings,
   DaySummary,
   InstallmentItem,
+  SpendingEnvelopeItem,
   TransactionEntry,
 } from '../types/budget';
 import { formatLocalDateKey } from '../utils/transactionDisplay';
@@ -50,6 +51,25 @@ export function getBudgetedInstallmentsTotal(
   return installments
     .filter((item) => item.includeInBudget && item.paidMonths < item.totalMonths)
     .reduce((sum, item) => sum + Math.max(0, item.monthlyAmount), 0);
+}
+
+export function getMonthlyEnvelopeAllocation(
+  envelope: SpendingEnvelopeItem,
+  salaryFrequency: 1 | 2
+): number {
+  const multiplier = envelope.cadence === 'per_payday' ? salaryFrequency : 1;
+  return roundCurrency(Math.max(0, envelope.amountPerCycle) * multiplier);
+}
+
+export function getTotalMonthlyEnvelopes(
+  envelopes: SpendingEnvelopeItem[],
+  salaryFrequency: 1 | 2
+): number {
+  return envelopes.reduce(
+    (sum, env) =>
+      roundCurrency(sum + getMonthlyEnvelopeAllocation(env, salaryFrequency)),
+    0
+  );
 }
 
 export function computeBaseDailyAllowance(
