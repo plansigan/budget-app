@@ -379,44 +379,46 @@ export const ActivityHistoryModal: React.FC<ActivityHistoryModalProps> = ({
                       },
                     ]}
                   >
-                    <View style={styles.rowLeft}>
-                      <IconBadge
-                        name={entry.icon}
-                        size={13}
-                        color={deltaColor}
-                        bg={shade.card}
-                        boxSize={30}
-                      />
-                      <View style={{ flex: 1 }}>
+                    <IconBadge
+                      name={entry.icon}
+                      size={13}
+                      color={deltaColor}
+                      bg={shade.card}
+                      boxSize={30}
+                    />
+                    <View style={styles.rowContent}>
+                      <View style={styles.rowTop}>
                         <Text
                           numberOfLines={1}
                           style={[styles.rowLabel, { color: shade.text }]}
                         >
                           {entry.label}
                         </Text>
-                        <Text style={[styles.rowSub, { color: shade.muted }]}>
+                        <ScalePressable
+                          onPress={() => undoEntry(entry.id)}
+                          accessibilityLabel={`Undo ${entry.label}`}
+                          hitSlop={6}
+                          style={[styles.undoBtn, { backgroundColor: shade.card }]}
+                        >
+                          <Text style={[styles.undoText, { color: shade.muted }]}>
+                            Undo
+                          </Text>
+                        </ScalePressable>
+                      </View>
+                      <View style={styles.rowBottom}>
+                        <Text
+                          numberOfLines={1}
+                          style={[styles.rowSub, { color: shade.muted }]}
+                        >
                           {dateStr}
                           {entry.paymentSourceLabel
                             ? ` • ${entry.paymentSourceLabel}`
                             : ''}
                         </Text>
-                      </View>
-                    </View>
-
-                    <View style={styles.rowRight}>
-                      <Text style={[styles.rowDelta, { color: deltaColor }]}>
-                        {deltaText}
-                      </Text>
-                      <ScalePressable
-                        onPress={() => undoEntry(entry.id)}
-                        accessibilityLabel={`Undo ${entry.label}`}
-                        hitSlop={6}
-                        style={[styles.undoBtn, { backgroundColor: shade.card }]}
-                      >
-                        <Text style={[styles.undoText, { color: shade.muted }]}>
-                          Undo
+                        <Text style={[styles.rowDelta, { color: deltaColor }]}>
+                          {deltaText}
                         </Text>
-                      </ScalePressable>
+                      </View>
                     </View>
                   </View>
                 );
@@ -514,10 +516,13 @@ const styles = StyleSheet.create({
   },
   chipsScroll: {
     flexGrow: 0,
+    flexShrink: 0,
+    minHeight: 34,
   },
   chipsRow: {
+    alignItems: 'center',
     gap: 6,
-    paddingVertical: 1,
+    paddingVertical: 2,
   },
   chipPill: {
     paddingHorizontal: 11,
@@ -565,34 +570,43 @@ const styles = StyleSheet.create({
     borderRadius: 13,
     borderWidth: 1,
     paddingHorizontal: 11,
-    paddingVertical: 9,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  rowContent: {
+    flex: 1,
+    minWidth: 0,
+    gap: 3,
+  },
+  rowTop: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 8,
   },
-  rowLeft: {
+  rowBottom: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 9,
-    flex: 1,
-    minWidth: 0,
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 6,
   },
   rowLabel: {
     fontSize: 12,
     fontWeight: '700',
+    flex: 1,
+    minWidth: 0,
   },
   rowSub: {
     fontSize: 10,
-  },
-  rowRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 7,
+    flexShrink: 1,
   },
   rowDelta: {
     fontSize: 12,
     fontWeight: '800',
+    flexShrink: 0,
   },
   undoBtn: {
     paddingHorizontal: 7,
