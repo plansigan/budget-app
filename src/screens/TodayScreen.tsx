@@ -48,6 +48,7 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
     formatVisiblePeso,
     settings,
     billItems,
+    envelopes,
     lastPaydayCheckInKey,
     monthlySaved,
     baseDailyAllowance,
@@ -69,11 +70,13 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
 
   const [modalVisible, setModalVisible] = useState(false);
   const [modalMode, setModalMode] = useState<ActionModalMode>('spend');
+  const [modalEnvelopeId, setModalEnvelopeId] = useState<string | null>(null);
   const [showPaydayModal, setShowPaydayModal] = useState(false);
   const [billToPay, setBillToPay] = useState<BillItem | null>(null);
 
-  const openModal = (mode: ActionModalMode) => {
+  const openModal = (mode: ActionModalMode, envelopeId: string | null = null) => {
     triggerLightHaptic();
+    setModalEnvelopeId(envelopeId);
     setModalMode(mode);
     setModalVisible(true);
   };
@@ -466,6 +469,95 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
           </View>
         </FadeSlideIn>
 
+        {/* Guilt-Free Spending Envelopes Card */}
+        {envelopes.length > 0 && (
+          <FadeSlideIn delay={90} distance={14}>
+            <View
+              style={[
+                styles.billsDueCard,
+                { backgroundColor: shade.card, borderColor: shade.border },
+              ]}
+            >
+              <View style={styles.rowBetween}>
+                <Text style={[styles.microHint, { color: shade.dopamine }]}>
+                  SPENDING ENVELOPES
+                </Text>
+                <Text style={[styles.envelopeBadgeText, { color: shade.muted }]}>
+                  Guilt-free • budget intact
+                </Text>
+              </View>
+
+              <View style={{ gap: 8 }}>
+                {envelopes.map((env) => {
+                  const pct =
+                    env.amountPerCycle > 0
+                      ? Math.min(
+                          100,
+                          Math.max(
+                            0,
+                            Math.round((env.balance / env.amountPerCycle) * 100)
+                          )
+                        )
+                      : 0;
+                  return (
+                    <View
+                      key={env.id}
+                      style={[
+                        styles.envelopeRowCard,
+                        { backgroundColor: shade.surface },
+                      ]}
+                    >
+                      <View style={styles.rowBetween}>
+                        <View style={styles.activityLeftRow}>
+                          <IconBadge
+                            name={env.icon}
+                            size={13}
+                            color={shade.dopamine}
+                            bg={shade.dopamineSoft}
+                            boxSize={30}
+                          />
+                          <View style={{ flex: 1 }}>
+                            <Text
+                              numberOfLines={1}
+                              style={[styles.activityLabel, { color: shade.text }]}
+                            >
+                              {env.name}
+                            </Text>
+                            <Text
+                              style={[styles.sourceSub, { color: shade.muted }]}
+                            >
+                              {formatVisiblePeso(env.balance)} /{' '}
+                              {formatVisiblePeso(env.amountPerCycle)} •{' '}
+                              {env.cadence === 'per_payday' ? 'cutoff' : 'mo'}
+                            </Text>
+                          </View>
+                        </View>
+
+                        <ScalePressable
+                          onPress={() => openModal('spend', env.id)}
+                          style={[
+                            styles.envSpendBtn,
+                            { backgroundColor: shade.dopamine },
+                          ]}
+                        >
+                          <Text style={styles.envSpendBtnText}>Spend</Text>
+                        </ScalePressable>
+                      </View>
+
+                      <AnimatedProgressBar
+                        percentage={pct}
+                        trackColor={shade.card}
+                        fillColor={shade.dopamine}
+                        height={5}
+                      />
+                    </View>
+                  );
+                })}
+              </View>
+            </View>
+          </FadeSlideIn>
+        )}
+
         {/* Upcoming Bills Due Soon Card */}
         {upcomingUnpaidBills.length > 0 && (
           <FadeSlideIn delay={95} distance={14}>
@@ -667,7 +759,11 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
       <ActionAmountModal
         visible={modalVisible}
         mode={modalMode}
-        onClose={() => setModalVisible(false)}
+        initialEnvelopeId={modalEnvelopeId}
+        onClose={() => {
+          setModalVisible(false);
+          setModalEnvelopeId(null);
+        }}
       />
 
       <PaydayCheckInModal
@@ -685,7 +781,7 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
 
 const styles = StyleSheet.create({
   scrollContent: {
-    paddingBottom: 24,
+    paddingBottom: 36,
   },
   stack: {
     gap: 12,
@@ -1009,5 +1105,25 @@ const styles = StyleSheet.create({
   payMiniText: {
     fontSize: 11,
     fontWeight: '800',
+  },
+  envelopeBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  envelopeRowCard: {
+    borderRadius: 12,
+    paddingHorizontal: 11,
+    paddingVertical: 9,
+    gap: 7,
+  },
+  envSpendBtn: {
+    paddingHorizontal: 11,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  envSpendBtnText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#FFFFFF',
   },
 });

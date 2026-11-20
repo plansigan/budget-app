@@ -33,10 +33,7 @@ jobs:
       - name: Export Expo Web bundle
         env:
           EXPO_BASE_URL: ${{ github.event.repository.name == format('{0}.github.io', github.repository_owner) && '' || format('/{0}', github.event.repository.name) }}
-        run: npx expo export --platform web
-
-      - name: Copy index.html to 404.html for SPA fallback
-        run: cp dist/index.html dist/404.html
+        run: npm run build:web
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5

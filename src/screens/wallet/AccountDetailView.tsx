@@ -87,7 +87,12 @@ export const AccountDetailView: React.FC<AccountDetailViewProps> = ({
   );
 
   const totalOut = accountEntries
-    .filter((e) => e.type === 'spend' || e.type === 'bill_paid')
+    .filter(
+      (e) =>
+        e.type === 'spend' ||
+        e.type === 'bill_paid' ||
+        e.type === 'envelope_spend'
+    )
     .reduce((acc, e) => acc + e.amount, 0);
   const totalIn = accountEntries
     .filter((e) => e.type === 'wallet_deposit')
@@ -386,6 +391,7 @@ export const AccountDetailView: React.FC<AccountDetailViewProps> = ({
                   const isDeposit = entry.type === 'wallet_deposit';
                   const isAdjust = entry.type === 'wallet_adjust';
                   const isBillPaid = entry.type === 'bill_paid';
+                  const isEnvelopeSpend = entry.type === 'envelope_spend';
                   const adjPositive = (entry.signedDelta || 0) >= 0;
 
                   const deltaColor = isDeposit
@@ -412,6 +418,8 @@ export const AccountDetailView: React.FC<AccountDetailViewProps> = ({
                     ? 'Updated Balance'
                     : isBillPaid
                     ? 'Bill Paid'
+                    : isEnvelopeSpend
+                    ? 'Envelope Spend'
                     : 'Spent';
 
                   return (
@@ -817,6 +825,7 @@ const styles = StyleSheet.create({
   },
   amountInput: {
     flex: 1,
+    minWidth: 0,
     fontSize: 15,
     fontWeight: '800',
     paddingVertical: 1,
@@ -844,6 +853,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   textInput: {
+    minWidth: 0,
     borderRadius: 12,
     borderWidth: 1,
     paddingHorizontal: 12,

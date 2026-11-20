@@ -4,6 +4,7 @@ import {
   computeBaseDailyAllowance,
   computeDayMetricsFromEntries,
   getBudgetedInstallmentsTotal,
+  getTotalMonthlyEnvelopes,
   parseDateKeyLocal,
   roundCurrency,
 } from './budgetMath';
@@ -21,7 +22,11 @@ export function applyMidnightRollover(
   const prevDateObj = parseDateKeyLocal(prevKey);
   const baseDaily = computeBaseDailyAllowance(
     prev.settings,
-    getBudgetedInstallmentsTotal(prev.installments || []),
+    getBudgetedInstallmentsTotal(prev.installments || []) +
+      getTotalMonthlyEnvelopes(
+        prev.envelopes || [],
+        prev.settings.salaryFrequency
+      ),
     prevDateObj
   );
   const prevSummary = computeDayMetricsFromEntries(

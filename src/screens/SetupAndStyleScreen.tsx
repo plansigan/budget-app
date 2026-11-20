@@ -12,6 +12,7 @@ import { FormModal } from '../components/FormModal';
 import { MonthlyBillsBreakdownCard } from '../components/MonthlyBillsBreakdownCard';
 import { PayBillModal } from '../components/PayBillModal';
 import { SalaryScheduleCard } from '../components/SalaryScheduleCard';
+import { SpendingEnvelopesCard } from '../components/SpendingEnvelopesCard';
 import { useBudget } from '../context/BudgetContext';
 import { BillItem, ThemeMode } from '../types/budget';
 import {
@@ -38,6 +39,7 @@ export const SetupAndStyleScreen: React.FC = () => {
     todayKey,
     settings,
     billItems,
+    envelopes,
     entries,
     baseDailyAllowance,
     updateBudgetConfig,
@@ -46,6 +48,10 @@ export const SetupAndStyleScreen: React.FC = () => {
     updateBillDueDay,
     addBillItem,
     removeBillItem,
+    addEnvelope,
+    updateEnvelope,
+    deleteEnvelope,
+    refillEnvelope,
     simulateMidnightSplit,
     reopenOnboarding,
     openTutorial,
@@ -175,6 +181,17 @@ export const SetupAndStyleScreen: React.FC = () => {
             onAddBill={addBillItem}
             onRemoveBill={removeBillItem}
             onRequestPayBill={(bill) => setBillToPay(bill)}
+          />
+
+          <SpendingEnvelopesCard
+            envelopes={envelopes}
+            salaryFrequency={settings.salaryFrequency}
+            shade={shade}
+            privacyMode={privacyMode}
+            onAddEnvelope={addEnvelope}
+            onUpdateEnvelope={updateEnvelope}
+            onDeleteEnvelope={deleteEnvelope}
+            onRefillEnvelope={refillEnvelope}
           />
 
           <BudgetStepperRow
@@ -333,13 +350,13 @@ export const SetupAndStyleScreen: React.FC = () => {
             }}
             style={[
               styles.demoBtnSecondary,
-              { backgroundColor: shade.card, borderColor: shade.border },
+              { backgroundColor: shade.surface, borderColor: shade.border },
             ]}
           >
             <View style={styles.btnIconRow}>
-              <AppIcon name="star" size={14} color={shade.muted} />
+              <AppIcon name="star" size={14} color={shade.text} />
               <Text
-                style={[styles.demoBtnSecondaryText, { color: shade.muted }]}
+                style={[styles.demoBtnSecondaryText, { color: shade.text }]}
               >
                 Load Demo
               </Text>
@@ -482,7 +499,7 @@ export const SetupAndStyleScreen: React.FC = () => {
 
 const styles = StyleSheet.create({
   scrollContent: {
-    paddingBottom: 28,
+    paddingBottom: 36,
     gap: 18,
   },
   section: {

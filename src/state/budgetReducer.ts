@@ -3,9 +3,12 @@ import {
   BillItem,
   BudgetSettings,
   CreditCardAccount,
+  EnvelopeCadence,
+  EnvelopeRolloverMode,
   InstallmentItem,
   SinkingFundItem,
   SpendCategoryKey,
+  SpendingEnvelopeItem,
   ThemeMode,
   TransactionEntry,
   TreatVaultItem,
@@ -15,6 +18,7 @@ import {
   computeDayMetricsFromEntries,
   getBudgetedInstallmentsTotal,
   getTodayKey,
+  getTotalMonthlyEnvelopes,
   roundCurrency,
   sumBills,
 } from './budgetMath';
@@ -137,8 +141,40 @@ export type BudgetAction =
       savingsAllocation: number;
       note?: string;
       todayKey?: string;
+      refillEnvelopeIds?: string[];
     }
   | { type: 'DISMISS_PAYDAY_PROMPT'; dateKey: string }
+  | {
+      type: 'ADD_ENVELOPE';
+      name: string;
+      icon: string;
+      amountPerCycle: number;
+      cadence: EnvelopeCadence;
+      rolloverMode: EnvelopeRolloverMode;
+    }
+  | {
+      type: 'UPDATE_ENVELOPE';
+      id: string;
+      name: string;
+      icon: string;
+      amountPerCycle: number;
+      cadence: EnvelopeCadence;
+      rolloverMode: EnvelopeRolloverMode;
+      balance?: number;
+    }
+  | { type: 'DELETE_ENVELOPE'; id: string }
+  | {
+      type: 'SPEND_FROM_ENVELOPE';
+      envelopeId: string;
+      amount: number;
+      label: string;
+      icon: string;
+      paymentSourceId?: string;
+      category?: SpendCategoryKey;
+      dateKey: string;
+      todayKey?: string;
+    }
+  | { type: 'REFILL_ENVELOPE'; envelopeId: string; todayKey?: string }
   | {
       type: 'ADD_INSTALLMENT';
       params: {
@@ -357,7 +393,11 @@ export function budgetReducer(
       const targetDateKey = action.dateKey;
       const baseDaily = computeBaseDailyAllowance(
         state.settings,
-        getBudgetedInstallmentsTotal(state.installments)
+        getBudgetedInstallmentsTotal(state.installments) +
+          getTotalMonthlyEnvelopes(
+            state.envelopes || [],
+            state.settings.salaryFrequency
+          )
       );
       const daySummary = computeDayMetricsFromEntries(
         state.entries,
@@ -399,7 +439,11 @@ export function budgetReducer(
       const targetDateKey = action.dateKey;
       const baseDaily = computeBaseDailyAllowance(
         state.settings,
-        getBudgetedInstallmentsTotal(state.installments)
+        getBudgetedInstallmentsTotal(state.installments) +
+          getTotalMonthlyEnvelopes(
+            state.envelopes || [],
+            state.settings.salaryFrequency
+          )
       );
       const daySummary = computeDayMetricsFromEntries(
         state.entries,
@@ -538,6 +582,7 @@ export function budgetReducer(
       let nextBanks = state.banks;
       let nextCards = state.creditCards;
       let nextBillItems = state.billItems;
+      let nextEnvelopes = state.envelopes || [];
       let nextLastPaydayCheckInKey = state.lastPaydayCheckInKey;
 
       if (freshTarget.type === 'spend') {
@@ -680,6 +725,24 @@ export function budgetReducer(
           }
           nextScore = Math.max(700, nextScore - 15);
           nextLastPaydayCheckInKey = freshTarget.previousPaydayCheckInKey || '';
+          if (
+            Array.isArray(freshTarget.refilledEnvelopeSnapshots) &&
+            freshTarget.refilledEnvelopeSnapshots.length > 0
+          ) {
+            const snapMap = new Map(
+              freshTarget.refilledEnvelopeSnapshots.map((s) => [s.id, s])
+            );
+            nextEnvelopes = nextEnvelopes.map((env) => {
+              const snap = snapMap.get(env.id);
+              return snap
+                ? {
+                    ...env,
+                    balance: snap.previousBalance,
+                    lastRefillKey: snap.previousRefillKey,
+                  }
+                : env;
+            });
+          }
         }
       } else if (freshTarget.type === 'wallet_adjust') {
         const src = freshTarget.paymentSourceId;
@@ -753,6 +816,52 @@ export function budgetReducer(
               : b
           );
         }
+      } else if (freshTarget.type === 'envelope_spend') {
+        const src = freshTarget.paymentSourceId;
+        const restoreAmt =
+          typeof freshTarget.appliedWalletDelta === 'number'
+            ? freshTarget.appliedWalletDelta
+            : freshTarget.amount;
+        if (src === 'cash') {
+          nextCash = roundCurrency(nextCash + restoreAmt);
+        } else if (src && nextBanks.some((b) => b.id === src)) {
+          nextBanks = nextBanks.map((b) =>
+            b.id === src
+              ? { ...b, balance: roundCurrency(b.balance + restoreAmt) }
+              : b
+          );
+        } else if (src && nextCards.some((c) => c.id === src)) {
+          nextCards = nextCards.map((c) =>
+            c.id === src
+              ? { ...c, used: Math.max(0, roundCurrency(c.used - restoreAmt)) }
+              : c
+          );
+        }
+        if (freshTarget.envelopeId) {
+          nextEnvelopes = nextEnvelopes.map((env) => {
+            if (env.id !== freshTarget.envelopeId) return env;
+            const restoredBal =
+              typeof freshTarget.previousEnvelopeBalance === 'number'
+                ? freshTarget.previousEnvelopeBalance
+                : roundCurrency(env.balance + freshTarget.amount);
+            return { ...env, balance: restoredBal };
+          });
+        }
+      } else if (freshTarget.type === 'envelope_refill') {
+        if (freshTarget.envelopeId) {
+          nextEnvelopes = nextEnvelopes.map((env) => {
+            if (env.id !== freshTarget.envelopeId) return env;
+            const restoredBal =
+              typeof freshTarget.previousEnvelopeBalance === 'number'
+                ? freshTarget.previousEnvelopeBalance
+                : Math.max(0, roundCurrency(env.balance - freshTarget.amount));
+            return {
+              ...env,
+              balance: restoredBal,
+              lastRefillKey: freshTarget.previousEnvelopeRefillKey,
+            };
+          });
+        }
       }
 
       return {
@@ -761,6 +870,7 @@ export function budgetReducer(
         banks: nextBanks,
         creditCards: nextCards,
         billItems: nextBillItems,
+        envelopes: nextEnvelopes,
         lastPaydayCheckInKey: nextLastPaydayCheckInKey,
         monthlySaved: nextSaved,
         rolloverBalance: nextRollover,
@@ -1154,6 +1264,7 @@ export function budgetReducer(
         activeTreatId: nextActiveTreatId,
         treats: nextTreats,
         installments: [],
+        envelopes: [],
         sinkingFunds: [],
         unlockedMilestones: [],
       };
@@ -1192,6 +1303,33 @@ export function budgetReducer(
       const effectiveSourceId = matchedBank ? matchedBank.id : 'cash';
       const sourceLabel = matchedBank ? matchedBank.name : 'Cash';
 
+      const refillSet = new Set(action.refillEnvelopeIds || []);
+      const refilledSnapshots: Array<{
+        id: string;
+        previousBalance: number;
+        previousRefillKey?: string;
+      }> = [];
+      const nextEnvelopes =
+        refillSet.size > 0
+          ? (state.envelopes || []).map((env) => {
+              if (!refillSet.has(env.id)) return env;
+              refilledSnapshots.push({
+                id: env.id,
+                previousBalance: env.balance,
+                previousRefillKey: env.lastRefillKey,
+              });
+              const nextBalance =
+                env.rolloverMode === 'rollover'
+                  ? roundCurrency(env.balance + env.amountPerCycle)
+                  : roundCurrency(env.amountPerCycle);
+              return {
+                ...env,
+                balance: nextBalance,
+                lastRefillKey: targetDateKey,
+              };
+            })
+          : state.envelopes || [];
+
       const entry: TransactionEntry = {
         id: makeUid('payday'),
         type: 'wallet_deposit',
@@ -1211,6 +1349,8 @@ export function budgetReducer(
         isPaydayCheckIn: true,
         savingsDelta: cleanSavings,
         previousPaydayCheckInKey: state.lastPaydayCheckInKey,
+        refilledEnvelopeSnapshots:
+          refilledSnapshots.length > 0 ? refilledSnapshots : undefined,
       };
 
       return {
@@ -1225,6 +1365,7 @@ export function budgetReducer(
                 : b
             )
           : state.banks,
+        envelopes: nextEnvelopes,
         monthlySaved: roundCurrency(state.monthlySaved + cleanSavings),
         disciplineScore: Math.min(999, state.disciplineScore + 15),
         lastPaydayCheckInKey: targetDateKey,
@@ -1234,6 +1375,169 @@ export function budgetReducer(
 
     case 'DISMISS_PAYDAY_PROMPT':
       return { ...state, lastPaydayCheckInKey: action.dateKey };
+
+    case 'ADD_ENVELOPE': {
+      const trimmed = action.name.trim();
+      const cleanAmt = roundCurrency(action.amountPerCycle);
+      if (!trimmed || cleanAmt <= 0) return state;
+      const newEnv: SpendingEnvelopeItem = {
+        id: makeUid('env'),
+        name: trimmed,
+        icon: action.icon || 'heart',
+        amountPerCycle: cleanAmt,
+        cadence: action.cadence === 'monthly' ? 'monthly' : 'per_payday',
+        rolloverMode: action.rolloverMode === 'reset' ? 'reset' : 'rollover',
+        balance: cleanAmt,
+      };
+      return { ...state, envelopes: [...(state.envelopes || []), newEnv] };
+    }
+
+    case 'UPDATE_ENVELOPE': {
+      const trimmed = action.name.trim();
+      const cleanAmt = roundCurrency(action.amountPerCycle);
+      if (!trimmed || cleanAmt <= 0) return state;
+      return {
+        ...state,
+        envelopes: (state.envelopes || []).map((env) =>
+          env.id === action.id
+            ? {
+                ...env,
+                name: trimmed,
+                icon: action.icon || env.icon,
+                amountPerCycle: cleanAmt,
+                cadence:
+                  action.cadence === 'monthly' ? 'monthly' : 'per_payday',
+                rolloverMode:
+                  action.rolloverMode === 'reset' ? 'reset' : 'rollover',
+                balance:
+                  typeof action.balance === 'number' &&
+                  Number.isFinite(action.balance)
+                    ? Math.max(0, roundCurrency(action.balance))
+                    : env.balance,
+              }
+            : env
+        ),
+      };
+    }
+
+    case 'DELETE_ENVELOPE':
+      return {
+        ...state,
+        envelopes: (state.envelopes || []).filter((e) => e.id !== action.id),
+      };
+
+    case 'SPEND_FROM_ENVELOPE': {
+      const env = (state.envelopes || []).find(
+        (e) => e.id === action.envelopeId
+      );
+      if (!env) return state;
+
+      const cleanAmount = roundCurrency(Math.max(1, action.amount));
+      const todayKey = action.todayKey || getTodayKey();
+      const targetDateKey = action.dateKey;
+      const isToday = targetDateKey === todayKey;
+      const bonusStreak = isToday && !state.checkedInToday ? 1 : 0;
+
+      const src = action.paymentSourceId;
+      let nextCash = state.cashOnHand;
+      let nextBanks = state.banks;
+      let nextCards = state.creditCards;
+      let effectiveSourceId: string | undefined;
+      let sourceLabel: string | undefined;
+      let appliedWalletDelta = 0;
+
+      if (src === 'cash') {
+        nextCash = Math.max(0, roundCurrency(state.cashOnHand - cleanAmount));
+        appliedWalletDelta = roundCurrency(state.cashOnHand - nextCash);
+        effectiveSourceId = 'cash';
+        sourceLabel = 'Cash';
+      } else if (src && state.banks.some((b) => b.id === src)) {
+        nextBanks = state.banks.map((b) => {
+          if (b.id !== src) return b;
+          const nextBal = Math.max(0, roundCurrency(b.balance - cleanAmount));
+          appliedWalletDelta = roundCurrency(b.balance - nextBal);
+          sourceLabel = b.name;
+          return { ...b, balance: nextBal };
+        });
+        effectiveSourceId = src;
+      } else if (src && state.creditCards.some((c) => c.id === src)) {
+        nextCards = state.creditCards.map((c) => {
+          if (c.id !== src) return c;
+          sourceLabel = c.name;
+          return { ...c, used: roundCurrency(c.used + cleanAmount) };
+        });
+        appliedWalletDelta = cleanAmount;
+        effectiveSourceId = src;
+      }
+
+      const previousEnvelopeBalance = env.balance;
+      const nextEnvBalance = Math.max(0, roundCurrency(env.balance - cleanAmount));
+
+      const entry: TransactionEntry = {
+        id: makeUid('env-sp'),
+        type: 'envelope_spend',
+        amount: cleanAmount,
+        label: action.label.trim() || env.name,
+        icon: action.icon || env.icon,
+        timestamp: new Date().toISOString(),
+        dateKey: targetDateKey,
+        category: action.category,
+        envelopeId: env.id,
+        previousEnvelopeBalance,
+        paymentSourceId: effectiveSourceId,
+        paymentSourceLabel: sourceLabel,
+        appliedWalletDelta,
+      };
+
+      return {
+        ...state,
+        cashOnHand: nextCash,
+        banks: nextBanks,
+        creditCards: nextCards,
+        envelopes: (state.envelopes || []).map((item) =>
+          item.id === env.id ? { ...item, balance: nextEnvBalance } : item
+        ),
+        checkedInToday: isToday ? true : state.checkedInToday,
+        streakDays: state.streakDays + bonusStreak,
+        entries: [entry, ...state.entries],
+      };
+    }
+
+    case 'REFILL_ENVELOPE': {
+      const env = (state.envelopes || []).find(
+        (e) => e.id === action.envelopeId
+      );
+      if (!env) return state;
+
+      const targetDateKey = action.todayKey || getTodayKey();
+      const nextBalance =
+        env.rolloverMode === 'rollover'
+          ? roundCurrency(env.balance + env.amountPerCycle)
+          : roundCurrency(env.amountPerCycle);
+
+      const entry: TransactionEntry = {
+        id: makeUid('env-ref'),
+        type: 'envelope_refill',
+        amount: env.amountPerCycle,
+        label: `Refilled ${env.name}`,
+        icon: env.icon,
+        timestamp: new Date().toISOString(),
+        dateKey: targetDateKey,
+        envelopeId: env.id,
+        previousEnvelopeBalance: env.balance,
+        previousEnvelopeRefillKey: env.lastRefillKey,
+      };
+
+      return {
+        ...state,
+        envelopes: (state.envelopes || []).map((item) =>
+          item.id === env.id
+            ? { ...item, balance: nextBalance, lastRefillKey: targetDateKey }
+            : item
+        ),
+        entries: [entry, ...state.entries],
+      };
+    }
 
     case 'ADD_INSTALLMENT': {
       const { params } = action;

@@ -24,14 +24,24 @@ export const PaydayCheckInModal: React.FC<PaydayCheckInModalProps> = ({
   visible,
   onClose,
 }) => {
-  const { shade, formatVisiblePeso, settings, cashOnHand, banks, logPaydayCheckIn } =
-    useBudget();
+  const {
+    shade,
+    formatVisiblePeso,
+    settings,
+    cashOnHand,
+    banks,
+    envelopes,
+    logPaydayCheckIn,
+  } = useBudget();
 
   const [payText, setPayText] = useState('');
   const [sourceId, setSourceId] = useState('cash');
   const [includeSavings, setIncludeSavings] = useState(true);
   const [savingsText, setSavingsText] = useState('');
+  const [selectedEnvelopeIds, setSelectedEnvelopeIds] = useState<string[]>([]);
   const [note, setNote] = useState('');
+
+  const cutoffEnvelopes = envelopes.filter((e) => e.cadence === 'per_payday');
 
   useEffect(() => {
     if (!visible) return;
@@ -41,12 +51,22 @@ export const PaydayCheckInModal: React.FC<PaydayCheckInModalProps> = ({
     setSavingsText(expectedSav > 0 ? formatPesoInput(String(expectedSav)) : '');
     setIncludeSavings(expectedSav > 0);
     setSourceId(banks.length > 0 ? banks[0].id : 'cash');
+    setSelectedEnvelopeIds(
+      envelopes.filter((e) => e.cadence === 'per_payday').map((e) => e.id)
+    );
     setNote('');
-  }, [visible, settings, banks]);
+  }, [visible, settings, banks, envelopes]);
 
   const numericPay = parsePesoInput(payText);
   const numericSavings = parsePesoInput(savingsText);
   const isValid = numericPay > 0;
+
+  const toggleEnvelopeId = (id: string) => {
+    triggerLightHaptic();
+    setSelectedEnvelopeIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    );
+  };
 
   const handleConfirm = () => {
     if (!isValid) return;
@@ -54,7 +74,8 @@ export const PaydayCheckInModal: React.FC<PaydayCheckInModalProps> = ({
       numericPay,
       sourceId,
       includeSavings ? numericSavings : 0,
-      note.trim() || undefined
+      note.trim() || undefined,
+      selectedEnvelopeIds
     );
     onClose();
   };
@@ -237,6 +258,61 @@ export const PaydayCheckInModal: React.FC<PaydayCheckInModalProps> = ({
         )}
       </View>
 
+      {cutoffEnvelopes.length > 0 && (
+        <View
+          style={[
+            styles.savingsCard,
+            { backgroundColor: shade.surface, borderColor: shade.border },
+          ]}
+        >
+          <View style={styles.envSectionHeader}>
+            <Text style={[styles.toggleTitle, { color: shade.text }]}>
+              Refill Cutoff Envelopes
+            </Text>
+            <Text style={[styles.toggleSub, { color: shade.muted }]}>
+              Reset or roll over unused balance
+            </Text>
+          </View>
+
+          {cutoffEnvelopes.map((env) => {
+            const checked = selectedEnvelopeIds.includes(env.id);
+            const actionCopy =
+              env.rolloverMode === 'rollover'
+                ? `+${formatVisiblePeso(env.amountPerCycle)} rollover`
+                : `Reset to ${formatVisiblePeso(env.amountPerCycle)}`;
+            return (
+              <ScalePressable
+                key={env.id}
+                onPress={() => toggleEnvelopeId(env.id)}
+                style={styles.toggleRow}
+              >
+                <View style={styles.toggleLeft}>
+                  <View
+                    style={[
+                      styles.checkCircle,
+                      {
+                        backgroundColor: checked ? shade.dopamine : shade.card,
+                        borderColor: checked ? shade.dopamine : shade.border,
+                      },
+                    ]}
+                  >
+                    {checked && <AppIcon name="check" size={12} color="#FFFFFF" />}
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.envToggleTitle, { color: shade.text }]}>
+                      {env.name}
+                    </Text>
+                    <Text style={[styles.toggleSub, { color: shade.muted }]}>
+                      {actionCopy} (now {formatVisiblePeso(env.balance)})
+                    </Text>
+                  </View>
+                </View>
+              </ScalePressable>
+            );
+          })}
+        </View>
+      )}
+
       <TextInput
         value={note}
         onChangeText={setNote}
@@ -297,6 +373,7 @@ const styles = StyleSheet.create({
   },
   amountInput: {
     flex: 1,
+    minWidth: 0,
     fontSize: 24,
     fontWeight: '800',
     paddingVertical: 0,
@@ -371,16 +448,25 @@ const styles = StyleSheet.create({
   },
   savingsInput: {
     flex: 1,
+    minWidth: 0,
     fontSize: 16,
     fontWeight: '800',
     paddingVertical: 0,
   },
   noteInput: {
+    minWidth: 0,
     borderRadius: 12,
     borderWidth: 1,
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 13,
+  },
+  envSectionHeader: {
+    gap: 2,
+  },
+  envToggleTitle: {
+    fontSize: 12,
+    fontWeight: '800',
   },
   confirmBtn: {
     borderRadius: 13,

@@ -68,6 +68,7 @@ function isValidOptionalFiniteNumber(val: unknown): boolean {
 
 const ARRAY_KEYS = [
   'billItems',
+  'envelopes',
   'banks',
   'creditCards',
   'installments',

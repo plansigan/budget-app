@@ -6,6 +6,7 @@ import {
   InstallmentItem,
   MonthlyArchiveSnapshot,
   SinkingFundItem,
+  SpendingEnvelopeItem,
   ThemeMode,
   TransactionEntry,
   TreatVaultItem,
@@ -56,6 +57,7 @@ export interface PersistedBudgetState {
   lastPaydayCheckInKey: string;
   settings: BudgetSettings;
   billItems: BillItem[];
+  envelopes: SpendingEnvelopeItem[];
   cashOnHand: number;
   banks: BankAccount[];
   creditCards: CreditCardAccount[];
@@ -147,6 +149,7 @@ export function createNewUserState(
     banks: DEFAULT_BANKS.map((b) => ({ ...b })),
     creditCards: DEFAULT_CARDS.map((c) => ({ ...c })),
     installments: [],
+    envelopes: [],
     sinkingFunds: [],
     monthlySaved: 0,
     rolloverBalance: 0,
@@ -196,6 +199,17 @@ export function createDemoState(
         totalMonths: 12,
         paidMonths: 4,
         includeInBudget: true,
+      },
+    ],
+    envelopes: [
+      {
+        id: 'env-date',
+        name: 'Date Fund',
+        icon: 'heart',
+        amountPerCycle: 2500,
+        cadence: 'per_payday',
+        rolloverMode: 'rollover',
+        balance: 2500,
       },
     ],
     sinkingFunds: [

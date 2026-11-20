@@ -75,6 +75,26 @@ export function getTransactionPresentation(
       };
     }
 
+    case 'envelope_spend': {
+      const amt = Math.abs(entry.amount);
+      return {
+        deltaText: maskIfNeeded(`-₱${amt.toLocaleString()}`),
+        deltaColor: shade.dopamine,
+        csvSignedAmount: -amt,
+        isTreatHighlight: true,
+      };
+    }
+
+    case 'envelope_refill': {
+      const amt = Math.abs(entry.amount);
+      return {
+        deltaText: maskIfNeeded(`+₱${amt.toLocaleString()} Env`),
+        deltaColor: shade.positive,
+        csvSignedAmount: 0,
+        isTreatHighlight: false,
+      };
+    }
+
     case 'save_direct': {
       const amt = Math.abs(entry.amount);
       return {

@@ -14,6 +14,7 @@ import {
   computeDayMetricsFromEntries,
   getBudgetedInstallmentsTotal,
   getTodayKey,
+  getTotalMonthlyEnvelopes,
   roundCurrency,
   sumBills,
 } from '../state/budgetMath';
@@ -36,10 +37,13 @@ import {
   CardTier,
   CreditCardAccount,
   DaySummary,
+  EnvelopeCadence,
+  EnvelopeRolloverMode,
   InstallmentItem,
   MonthlyArchiveSnapshot,
   SinkingFundItem,
   SpendCategoryKey,
+  SpendingEnvelopeItem,
   ThemeMode,
   TransactionEntry,
   TreatVaultItem,
@@ -78,6 +82,7 @@ interface BudgetContextValue {
   banks: BankAccount[];
   creditCards: CreditCardAccount[];
   installments: InstallmentItem[];
+  envelopes: SpendingEnvelopeItem[];
   sinkingFunds: SinkingFundItem[];
   monthlySaved: number;
   baseDailyAllowance: number;
@@ -136,9 +141,36 @@ interface BudgetContextValue {
     amount: number,
     sourceId: string,
     savingsAllocation: number,
-    note?: string
+    note?: string,
+    refillEnvelopeIds?: string[]
   ) => void;
   dismissPaydayPrompt: (dateKey?: string) => void;
+  addEnvelope: (
+    name: string,
+    icon: string,
+    amountPerCycle: number,
+    cadence: EnvelopeCadence,
+    rolloverMode: EnvelopeRolloverMode
+  ) => void;
+  updateEnvelope: (
+    id: string,
+    name: string,
+    icon: string,
+    amountPerCycle: number,
+    cadence: EnvelopeCadence,
+    rolloverMode: EnvelopeRolloverMode,
+    balance?: number
+  ) => void;
+  deleteEnvelope: (id: string) => void;
+  spendFromEnvelope: (
+    envelopeId: string,
+    amount: number,
+    label: string,
+    icon: string,
+    paymentSourceId?: string,
+    category?: SpendCategoryKey
+  ) => void;
+  refillEnvelope: (envelopeId: string) => void;
   depositToWalletAccount: (
     sourceId: string,
     amount: number,
@@ -343,9 +375,22 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
     [state.installments]
   );
 
+  const monthlyEnvelopesTotal = useMemo(
+    () =>
+      getTotalMonthlyEnvelopes(
+        state.envelopes || [],
+        state.settings.salaryFrequency
+      ),
+    [state.envelopes, state.settings.salaryFrequency]
+  );
+
   const baseDailyAllowance = useMemo(
-    () => computeBaseDailyAllowance(state.settings, budgetedInstallmentsTotal),
-    [state.settings, budgetedInstallmentsTotal]
+    () =>
+      computeBaseDailyAllowance(
+        state.settings,
+        budgetedInstallmentsTotal + monthlyEnvelopesTotal
+      ),
+    [state.settings, budgetedInstallmentsTotal, monthlyEnvelopesTotal]
   );
 
   const getDaySummary = useCallback(
@@ -518,7 +563,11 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
       const today = getTodayKey();
       const baseDaily = computeBaseDailyAllowance(
         current.settings,
-        getBudgetedInstallmentsTotal(current.installments)
+        getBudgetedInstallmentsTotal(current.installments) +
+          getTotalMonthlyEnvelopes(
+            current.envelopes || [],
+            current.settings.salaryFrequency
+          )
       );
       const daySummary = computeDayMetricsFromEntries(
         current.entries,
@@ -567,7 +616,11 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
       const today = getTodayKey();
       const baseDaily = computeBaseDailyAllowance(
         current.settings,
-        getBudgetedInstallmentsTotal(current.installments)
+        getBudgetedInstallmentsTotal(current.installments) +
+          getTotalMonthlyEnvelopes(
+            current.envelopes || [],
+            current.settings.salaryFrequency
+          )
       );
       const daySummary = computeDayMetricsFromEntries(
         current.entries,
@@ -611,7 +664,11 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
     const today = getTodayKey();
     const baseDaily = computeBaseDailyAllowance(
       current.settings,
-      getBudgetedInstallmentsTotal(current.installments)
+      getBudgetedInstallmentsTotal(current.installments) +
+        getTotalMonthlyEnvelopes(
+          current.envelopes || [],
+          current.settings.salaryFrequency
+        )
     );
     const daySummary = computeDayMetricsFromEntries(
       current.entries,
@@ -679,7 +736,11 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
 
     const baseDaily = computeBaseDailyAllowance(
       current.settings,
-      getBudgetedInstallmentsTotal(current.installments)
+      getBudgetedInstallmentsTotal(current.installments) +
+        getTotalMonthlyEnvelopes(
+          current.envelopes || [],
+          current.settings.salaryFrequency
+        )
     );
     const todaySummary = computeDayMetricsFromEntries(
       current.entries,
@@ -1051,7 +1112,8 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
       amount: number,
       sourceId: string,
       savingsAllocation: number,
-      note?: string
+      note?: string,
+      refillEnvelopeIds?: string[]
     ) => {
       const cleanAmount = roundCurrency(Math.max(1, amount));
       const cleanSavings = roundCurrency(Math.max(0, savingsAllocation));
@@ -1068,14 +1130,23 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
         savingsAllocation: cleanSavings,
         note,
         todayKey: today,
+        refillEnvelopeIds,
       });
 
-      showToast(
-        cleanSavings > 0
-          ? `Payday logged to ${sourceLabel} & +₱${cleanSavings.toLocaleString()} saved!`
-          : `Logged ₱${cleanAmount.toLocaleString()} paycheck to ${sourceLabel}!`,
-        true
-      );
+      const refilledCount = (refillEnvelopeIds || []).length;
+      if (refilledCount > 0) {
+        showToast(
+          `Payday logged to ${sourceLabel} & refilled ${refilledCount} envelope${refilledCount > 1 ? 's' : ''}!`,
+          true
+        );
+      } else {
+        showToast(
+          cleanSavings > 0
+            ? `Payday logged to ${sourceLabel} & +₱${cleanSavings.toLocaleString()} saved!`
+            : `Logged ₱${cleanAmount.toLocaleString()} paycheck to ${sourceLabel}!`,
+          true
+        );
+      }
     },
     [showToast]
   );
@@ -1087,6 +1158,147 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
       dateKey: dateKey || getTodayKey(),
     });
   }, []);
+
+  const addEnvelope = useCallback(
+    (
+      name: string,
+      icon: string,
+      amountPerCycle: number,
+      cadence: EnvelopeCadence,
+      rolloverMode: EnvelopeRolloverMode
+    ) => {
+      const trimmed = name.trim();
+      const cleanAmt = roundCurrency(amountPerCycle);
+      if (!trimmed || cleanAmt <= 0) return;
+      triggerSuccessHaptic();
+      dispatch({
+        type: 'ADD_ENVELOPE',
+        name: trimmed,
+        icon,
+        amountPerCycle: cleanAmt,
+        cadence,
+        rolloverMode,
+      });
+      showToast(
+        `Added ${trimmed} envelope (₱${cleanAmt.toLocaleString()})`,
+        true
+      );
+    },
+    [showToast]
+  );
+
+  const updateEnvelope = useCallback(
+    (
+      id: string,
+      name: string,
+      icon: string,
+      amountPerCycle: number,
+      cadence: EnvelopeCadence,
+      rolloverMode: EnvelopeRolloverMode,
+      balance?: number
+    ) => {
+      const trimmed = name.trim();
+      const cleanAmt = roundCurrency(amountPerCycle);
+      if (!trimmed || cleanAmt <= 0) return;
+      triggerLightHaptic();
+      dispatch({
+        type: 'UPDATE_ENVELOPE',
+        id,
+        name: trimmed,
+        icon,
+        amountPerCycle: cleanAmt,
+        cadence,
+        rolloverMode,
+        balance,
+      });
+      showToast(`Updated ${trimmed}`, false);
+    },
+    [showToast]
+  );
+
+  const deleteEnvelope = useCallback(
+    (id: string) => {
+      const target = (stateRef.current.envelopes || []).find(
+        (e) => e.id === id
+      );
+      triggerLightHaptic();
+      dispatch({ type: 'DELETE_ENVELOPE', id });
+      if (target) {
+        showToast(`Removed ${target.name}`, false);
+      }
+    },
+    [showToast]
+  );
+
+  const spendFromEnvelope = useCallback(
+    (
+      envelopeId: string,
+      amount: number,
+      label: string,
+      icon: string,
+      paymentSourceId?: string,
+      category?: SpendCategoryKey
+    ) => {
+      const current = stateRef.current;
+      const env = (current.envelopes || []).find((e) => e.id === envelopeId);
+      if (!env) return;
+
+      const cleanAmount = roundCurrency(Math.max(1, amount));
+      const targetDateKey = selectedDateKeyRef.current;
+
+      let sourceLabel = '';
+      if (paymentSourceId === 'cash') {
+        sourceLabel = ' • Cash';
+      } else if (paymentSourceId && paymentSourceId !== 'none') {
+        const matchedBank = current.banks.find((b) => b.id === paymentSourceId);
+        const matchedCard = current.creditCards.find(
+          (c) => c.id === paymentSourceId
+        );
+        if (matchedBank) sourceLabel = ` • ${matchedBank.name}`;
+        else if (matchedCard) sourceLabel = ` • ${matchedCard.name}`;
+      }
+
+      triggerSuccessHaptic();
+      dispatch({
+        type: 'SPEND_FROM_ENVELOPE',
+        envelopeId,
+        amount: cleanAmount,
+        label,
+        icon,
+        paymentSourceId,
+        category,
+        dateKey: targetDateKey,
+        todayKey: getTodayKey(),
+      });
+      showToast(
+        `${env.name}: -₱${cleanAmount.toLocaleString()}${sourceLabel}`,
+        false
+      );
+    },
+    [showToast]
+  );
+
+  const refillEnvelope = useCallback(
+    (envelopeId: string) => {
+      const env = (stateRef.current.envelopes || []).find(
+        (e) => e.id === envelopeId
+      );
+      if (!env) return;
+      triggerSuccessHaptic();
+      dispatch({
+        type: 'REFILL_ENVELOPE',
+        envelopeId,
+        todayKey: getTodayKey(),
+      });
+      showToast(
+        env.rolloverMode === 'rollover'
+          ? `Added +₱${env.amountPerCycle.toLocaleString()} to ${env.name}`
+          : `Reset ${env.name} to ₱${env.amountPerCycle.toLocaleString()}`,
+        true
+      );
+    },
+    [showToast]
+  );
 
   const formatVisiblePeso = useCallback(
     (amount: number, decimals: number = 0): string => {
@@ -1283,6 +1495,7 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
       banks: state.banks,
       creditCards: state.creditCards,
       installments: state.installments,
+      envelopes: state.envelopes || [],
       sinkingFunds: state.sinkingFunds,
       monthlySaved: state.monthlySaved,
       baseDailyAllowance,
@@ -1320,6 +1533,11 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
       removeBillItem,
       logPaydayCheckIn,
       dismissPaydayPrompt,
+      addEnvelope,
+      updateEnvelope,
+      deleteEnvelope,
+      spendFromEnvelope,
+      refillEnvelope,
       depositToWalletAccount,
       setAccountBalanceWithLog,
       addBank,
@@ -1383,6 +1601,11 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
       removeBillItem,
       logPaydayCheckIn,
       dismissPaydayPrompt,
+      addEnvelope,
+      updateEnvelope,
+      deleteEnvelope,
+      spendFromEnvelope,
+      refillEnvelope,
       depositToWalletAccount,
       setAccountBalanceWithLog,
       addBank,

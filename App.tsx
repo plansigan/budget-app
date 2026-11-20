@@ -37,7 +37,7 @@ const ToastOverlay: React.FC = () => {
 
   return (
     <View pointerEvents="box-none" style={styles.toastFloatWrap}>
-      <FadeSlideIn triggerKey={toast.id} direction="up" distance={-14}>
+      <FadeSlideIn triggerKey={toast.id} direction="up" distance={14}>
         <ScalePressable
           onPress={dismissToast}
           scaleTo={0.97}
@@ -88,6 +88,21 @@ const AppShell: React.FC = () => {
       setActiveTab('today');
     }
   }, [hasCompletedOnboarding]);
+
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+    if (!document.getElementById('velvet-web-polish')) {
+      const style = document.createElement('style');
+      style.id = 'velvet-web-polish';
+      style.textContent = [
+        'input:focus, textarea:focus { outline: none !important; box-shadow: none !important; }',
+        'html, body { height: 100%; margin: 0; padding: 0; }',
+        'body { padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); box-sizing: border-box; }',
+      ].join('\n');
+      document.head.appendChild(style);
+    }
+    document.body.style.backgroundColor = shade.dark ? '#06070A' : shade.bg;
+  }, [shade.bg, shade.dark]);
 
   const isDesktopWeb = Platform.OS === 'web' && width > 500;
   const headerTopPad = isDesktopWeb ? 12 : Math.max(insets.top, 12);
@@ -429,7 +444,7 @@ const styles = StyleSheet.create({
   },
   toastFloatWrap: {
     position: 'absolute',
-    top: 8,
+    bottom: 12,
     left: 16,
     right: 16,
     zIndex: 40,

@@ -148,7 +148,7 @@ export const TreatVaultScreen: React.FC = () => {
 
 const styles = StyleSheet.create({
   scrollContent: {
-    paddingBottom: 28,
+    paddingBottom: 36,
     gap: 10,
   },
   inlineRow: {
