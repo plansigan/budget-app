@@ -1,17 +1,22 @@
-import React, { useMemo } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { StyleSheet, Text, TextInput, View } from 'react-native';
 import {
   AnimatedProgressBar,
   ScalePressable,
 } from '../../components/AnimatedPrimitives';
 import { AppIcon, IconBadge } from '../../components/AppIcon';
+import { FormModal } from '../../components/FormModal';
 import { useBudget } from '../../context/BudgetContext';
+import { InstallmentItem } from '../../types/budget';
 import { triggerLightHaptic } from '../../utils/haptics';
 import {
   computeInstallmentSummary,
   getInstallmentPayoffLabel,
 } from '../../utils/insightsEngine';
+import { formatPesoInput, parsePesoInput } from '../../utils/numberFormat';
 import { WalletConfirmRequest } from './AccountDetailView';
+
+const PROVIDER_CHIPS = ['BDO 0%', 'BPI', 'SPayLater', 'Atome', 'Other'];
 
 interface InstallmentsSectionProps {
   onOpenAddModal: () => void;
@@ -28,8 +33,59 @@ export const InstallmentsSection: React.FC<InstallmentsSectionProps> = ({
     installments,
     markInstallmentMonthPaid,
     toggleInstallmentInBudget,
+    updateInstallment,
     removeInstallment,
   } = useBudget();
+
+  const [editingInst, setEditingInst] = useState<InstallmentItem | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editProvider, setEditProvider] = useState('BDO 0%');
+  const [editMonthlyText, setEditMonthlyText] = useState('');
+  const [editTotalText, setEditTotalText] = useState('');
+  const [editPaidText, setEditPaidText] = useState('');
+  const [editInBudget, setEditInBudget] = useState(true);
+  const [editError, setEditError] = useState<string | null>(null);
+
+  const openEditModal = (item: InstallmentItem) => {
+    triggerLightHaptic();
+    setEditingInst(item);
+    setEditName(item.name);
+    setEditProvider(item.provider);
+    setEditMonthlyText(formatPesoInput(String(Math.round(item.monthlyAmount))));
+    setEditTotalText(String(item.totalMonths));
+    setEditPaidText(String(item.paidMonths));
+    setEditInBudget(item.includeInBudget);
+    setEditError(null);
+  };
+
+  const handleSaveEdit = () => {
+    if (!editingInst) return;
+    const monthly = parsePesoInput(editMonthlyText);
+    const totalM = parseInt(editTotalText.replace(/[^0-9]/g, ''), 10) || 0;
+    const paidM = parseInt(editPaidText.replace(/[^0-9]/g, ''), 10) || 0;
+    if (!editName.trim()) {
+      setEditError('Please enter an item or loan name.');
+      return;
+    }
+    if (monthly <= 0) {
+      setEditError('Please enter a monthly payment greater than ₱0.');
+      return;
+    }
+    if (totalM <= 0) {
+      setEditError('Total months must be at least 1.');
+      return;
+    }
+    updateInstallment(editingInst.id, {
+      name: editName,
+      provider: editProvider,
+      monthlyAmount: monthly,
+      totalMonths: totalM,
+      paidMonths: paidM,
+      includeInBudget: editInBudget,
+    });
+    setEditingInst(null);
+    setEditError(null);
+  };
 
   const installmentSummary = useMemo(
     () => computeInstallmentSummary(installments),
@@ -205,6 +261,22 @@ export const InstallmentsSection: React.FC<InstallmentsSectionProps> = ({
                   )}
 
                   <ScalePressable
+                    onPress={() => openEditModal(item)}
+                    accessibilityLabel={`Edit ${item.name}`}
+                    style={[
+                      styles.instDeleteBtn,
+                      { backgroundColor: shade.surface },
+                    ]}
+                  >
+                    <AppIcon name="edit-2" size={12} color={shade.text} />
+                    <Text
+                      style={[styles.instActionText, { color: shade.text }]}
+                    >
+                      Edit
+                    </Text>
+                  </ScalePressable>
+
+                  <ScalePressable
                     onPress={() => {
                       triggerLightHaptic();
                       onRequestConfirm({
@@ -232,6 +304,187 @@ export const InstallmentsSection: React.FC<InstallmentsSectionProps> = ({
           })}
         </View>
       )}
+
+      <FormModal
+        visible={editingInst !== null}
+        title="Edit Installment Plan"
+        subtitle="Update monthly amount, term, or paid months"
+        icon="edit-2"
+        onClose={() => {
+          setEditingInst(null);
+          setEditError(null);
+        }}
+      >
+        <TextInput
+          value={editName}
+          onChangeText={(t) => {
+            setEditName(t);
+            if (editError) setEditError(null);
+          }}
+          placeholder="Item name (e.g., iPhone 16, Laptop)"
+          placeholderTextColor={shade.muted}
+          style={[
+            styles.modalTextInput,
+            {
+              backgroundColor: shade.surface,
+              color: shade.text,
+              borderColor: shade.border,
+            },
+          ]}
+        />
+
+        <View style={styles.providerRow}>
+          {PROVIDER_CHIPS.map((prov) => (
+            <ScalePressable
+              key={prov}
+              onPress={() => {
+                triggerLightHaptic();
+                setEditProvider(prov);
+              }}
+              style={[
+                styles.providerChip,
+                {
+                  backgroundColor:
+                    editProvider === prov ? shade.accent : shade.surface,
+                },
+              ]}
+            >
+              <Text
+                style={{
+                  fontSize: 11,
+                  fontWeight: '700',
+                  color: editProvider === prov ? shade.accentText : shade.text,
+                }}
+              >
+                {prov}
+              </Text>
+            </ScalePressable>
+          ))}
+        </View>
+
+        <TextInput
+          value={editProvider}
+          onChangeText={setEditProvider}
+          placeholder="Provider (e.g., BDO 0%)"
+          placeholderTextColor={shade.muted}
+          style={[
+            styles.modalTextInput,
+            {
+              backgroundColor: shade.surface,
+              color: shade.text,
+              borderColor: shade.border,
+            },
+          ]}
+        />
+
+        <View
+          style={[
+            styles.fullAmountBox,
+            { backgroundColor: shade.surface, borderColor: shade.border },
+          ]}
+        >
+          <Text style={[styles.pesoPrefix, { color: shade.accent }]}>₱</Text>
+          <TextInput
+            value={editMonthlyText}
+            onChangeText={(t) => {
+              setEditMonthlyText(formatPesoInput(t));
+              if (editError) setEditError(null);
+            }}
+            keyboardType="numeric"
+            placeholder="Monthly payment"
+            placeholderTextColor={shade.muted}
+            style={[styles.modalAmountInput, { color: shade.text }]}
+          />
+        </View>
+
+        <View style={styles.twoCols}>
+          <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
+            <Text style={[styles.accountSub, { color: shade.muted }]}>
+              Total Months
+            </Text>
+            <TextInput
+              value={editTotalText}
+              onChangeText={(t) => {
+                setEditTotalText(t.replace(/[^0-9]/g, ''));
+                if (editError) setEditError(null);
+              }}
+              keyboardType="numeric"
+              maxLength={3}
+              placeholder="12"
+              placeholderTextColor={shade.muted}
+              style={[
+                styles.modalTextInput,
+                {
+                  backgroundColor: shade.surface,
+                  color: shade.text,
+                  borderColor: shade.border,
+                },
+              ]}
+            />
+          </View>
+          <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
+            <Text style={[styles.accountSub, { color: shade.muted }]}>
+              Paid So Far
+            </Text>
+            <TextInput
+              value={editPaidText}
+              onChangeText={(t) => setEditPaidText(t.replace(/[^0-9]/g, ''))}
+              keyboardType="numeric"
+              maxLength={3}
+              placeholder="0"
+              placeholderTextColor={shade.muted}
+              style={[
+                styles.modalTextInput,
+                {
+                  backgroundColor: shade.surface,
+                  color: shade.text,
+                  borderColor: shade.border,
+                },
+              ]}
+            />
+          </View>
+        </View>
+
+        <ScalePressable
+          onPress={() => {
+            triggerLightHaptic();
+            setEditInBudget((v) => !v);
+          }}
+          style={[
+            styles.budgetToggleRow,
+            {
+              backgroundColor: shade.surface,
+              borderColor: shade.border,
+            },
+          ]}
+        >
+          <AppIcon
+            name={editInBudget ? 'check' : 'circle'}
+            size={14}
+            color={editInBudget ? shade.positive : shade.muted}
+          />
+          <Text style={[styles.budgetToggleText, { color: shade.text }]}>
+            {editInBudget
+              ? 'Included in Daily Budget math'
+              : 'Track only (does not lower daily allowance)'}
+          </Text>
+        </ScalePressable>
+
+        {editError && (
+          <Text style={[styles.formErrorText, { color: shade.warning }]}>
+            {editError}
+          </Text>
+        )}
+
+        <ScalePressable
+          onPress={handleSaveEdit}
+          style={[styles.saveModalBtn, { backgroundColor: shade.accent }]}
+        >
+          <Text style={[styles.saveModalText, { color: shade.accentText }]}>
+            Save Changes
+          </Text>
+        </ScalePressable>
+      </FormModal>
     </View>
   );
 };
@@ -306,17 +559,20 @@ const styles = StyleSheet.create({
   },
   instActionRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 6,
     paddingTop: 2,
   },
   instActionBtn: {
     flex: 1,
+    minWidth: 96,
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
     gap: 4,
     borderRadius: 10,
     paddingVertical: 8,
+    paddingHorizontal: 8,
   },
   instDeleteBtn: {
     flexDirection: 'row',
@@ -328,6 +584,75 @@ const styles = StyleSheet.create({
   },
   instActionText: {
     fontSize: 11,
+    fontWeight: '800',
+  },
+  modalTextInput: {
+    minWidth: 0,
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+  },
+  providerRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  providerChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 9,
+  },
+  fullAmountBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+  },
+  pesoPrefix: {
+    fontSize: 14,
+    fontWeight: '800',
+    marginRight: 5,
+  },
+  modalAmountInput: {
+    flex: 1,
+    minWidth: 0,
+    fontSize: 15,
+    fontWeight: '800',
+    paddingVertical: 1,
+  },
+  twoCols: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  budgetToggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  budgetToggleText: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  formErrorText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  saveModalBtn: {
+    paddingVertical: 13,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  saveModalText: {
+    fontSize: 13,
     fontWeight: '800',
   },
 });

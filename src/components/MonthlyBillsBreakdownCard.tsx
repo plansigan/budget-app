@@ -18,6 +18,13 @@ interface MonthlyBillsBreakdownCardProps {
   bills: BillItem[];
   shade: ThemeShade;
   onUpdateAmount: (id: string, amount: number) => void;
+  onUpdateBillItem?: (
+    billId: string,
+    name: string,
+    icon: string,
+    amount: number,
+    dueDay?: number
+  ) => void;
   onAddBill: (
     name: string,
     icon: string,
@@ -49,6 +56,7 @@ export const MonthlyBillsBreakdownCard: React.FC<
   bills,
   shade,
   onUpdateAmount,
+  onUpdateBillItem,
   onAddBill,
   onRemoveBill,
   enableTracking = false,
@@ -58,6 +66,7 @@ export const MonthlyBillsBreakdownCard: React.FC<
   onRequestPayBill,
 }) => {
   const [showAddForm, setShowAddForm] = useState(false);
+  const [editingBillId, setEditingBillId] = useState<string | null>(null);
   const [newIcon, setNewIcon] = useState('droplet');
   const [newName, setNewName] = useState('');
   const [newAmountText, setNewAmountText] = useState('');
@@ -96,7 +105,29 @@ export const MonthlyBillsBreakdownCard: React.FC<
     onUpdateAmount(id, parsed);
   };
 
-  const handleCreateCustom = () => {
+  const openAddBillModal = () => {
+    triggerLightHaptic();
+    setEditingBillId(null);
+    setNewIcon('droplet');
+    setNewName('');
+    setNewAmountText('');
+    setNewDueDayText('');
+    setBillFormError(null);
+    setShowAddForm(true);
+  };
+
+  const openEditBillModal = (bill: BillItem) => {
+    triggerLightHaptic();
+    setEditingBillId(bill.id);
+    setNewIcon(bill.icon || 'tag');
+    setNewName(bill.name);
+    setNewAmountText(bill.amount > 0 ? formatPesoNumber(bill.amount) : '');
+    setNewDueDayText(typeof bill.dueDay === 'number' ? String(bill.dueDay) : '');
+    setBillFormError(null);
+    setShowAddForm(true);
+  };
+
+  const handleSaveBillForm = () => {
     if (!newName.trim()) {
       setBillFormError('Please enter a bill name.');
       return;
@@ -106,12 +137,13 @@ export const MonthlyBillsBreakdownCard: React.FC<
       return;
     }
     setBillFormError(null);
-    onAddBill(
-      newName,
-      newIcon,
-      parsedCustomAmt,
-      parseDueDayDraft(newDueDayText)
-    );
+    const parsedDue = parseDueDayDraft(newDueDayText);
+    if (editingBillId && onUpdateBillItem) {
+      onUpdateBillItem(editingBillId, newName, newIcon, parsedCustomAmt, parsedDue);
+    } else {
+      onAddBill(newName, newIcon, parsedCustomAmt, parsedDue);
+    }
+    setEditingBillId(null);
     setNewName('');
     setNewAmountText('');
     setNewDueDayText('');
@@ -186,21 +218,29 @@ export const MonthlyBillsBreakdownCard: React.FC<
                 style={[styles.billRowCard, { backgroundColor: shade.surface }]}
               >
                 <View style={styles.billMainRow}>
-                  <View style={styles.billLeft}>
-                    <IconBadge
-                      name={bill.icon}
-                      size={14}
-                      color={shade.text}
-                      bg={shade.card}
-                      boxSize={28}
-                    />
-                    <Text
-                      numberOfLines={1}
-                      style={[styles.billName, { color: shade.text }]}
+                    <ScalePressable
+                      onPress={() => {
+                        if (onUpdateBillItem) {
+                          openEditBillModal(bill);
+                        }
+                      }}
+                      disabled={!onUpdateBillItem}
+                      style={[styles.billLeft, { minWidth: 0 }]}
                     >
-                      {bill.name}
-                    </Text>
-                  </View>
+                      <IconBadge
+                        name={bill.icon}
+                        size={14}
+                        color={shade.text}
+                        bg={shade.card}
+                        boxSize={28}
+                      />
+                      <Text
+                        numberOfLines={1}
+                        style={[styles.billName, { color: shade.text }]}
+                      >
+                        {bill.name}
+                      </Text>
+                    </ScalePressable>
 
                   <View style={styles.billRight}>
                     <View
@@ -239,32 +279,53 @@ export const MonthlyBillsBreakdownCard: React.FC<
 
                 {enableTracking && (
                   <View style={styles.billTrackRow}>
-                    <ScalePressable
-                      onPress={() => {
-                        if (!onUpdateDueDay) return;
-                        triggerLightHaptic();
-                        setDueDayDraft(
-                          typeof bill.dueDay === 'number'
-                            ? String(bill.dueDay)
-                            : ''
-                        );
-                        setDueEditBill(bill);
-                      }}
-                      style={[
-                        styles.dueChip,
-                        {
-                          backgroundColor: shade.card,
-                          borderColor: shade.border,
-                        },
-                      ]}
-                    >
-                      <AppIcon name="calendar" size={11} color={shade.muted} />
-                      <Text style={[styles.dueChipText, { color: shade.muted }]}>
-                        {typeof bill.dueDay === 'number'
-                          ? `Due ${formatOrdinal(bill.dueDay)}`
-                          : '+ Due day'}
-                      </Text>
-                    </ScalePressable>
+                    <View style={styles.billTrackLeft}>
+                      <ScalePressable
+                        onPress={() => {
+                          if (!onUpdateDueDay) return;
+                          triggerLightHaptic();
+                          setDueDayDraft(
+                            typeof bill.dueDay === 'number'
+                              ? String(bill.dueDay)
+                              : ''
+                          );
+                          setDueEditBill(bill);
+                        }}
+                        style={[
+                          styles.dueChip,
+                          {
+                            backgroundColor: shade.card,
+                            borderColor: shade.border,
+                          },
+                        ]}
+                      >
+                        <AppIcon name="calendar" size={11} color={shade.muted} />
+                        <Text style={[styles.dueChipText, { color: shade.muted }]}>
+                          {typeof bill.dueDay === 'number'
+                            ? `Due ${formatOrdinal(bill.dueDay)}`
+                            : '+ Due day'}
+                        </Text>
+                      </ScalePressable>
+
+                      {onUpdateBillItem && (
+                        <ScalePressable
+                          onPress={() => openEditBillModal(bill)}
+                          accessibilityLabel={`Edit ${bill.name}`}
+                          style={[
+                            styles.dueChip,
+                            {
+                              backgroundColor: shade.card,
+                              borderColor: shade.border,
+                            },
+                          ]}
+                        >
+                          <AppIcon name="edit-2" size={10} color={shade.muted} />
+                          <Text style={[styles.dueChipText, { color: shade.muted }]}>
+                            Edit
+                          </Text>
+                        </ScalePressable>
+                      )}
+                    </View>
 
                     {isPaid ? (
                       <View
@@ -328,11 +389,7 @@ export const MonthlyBillsBreakdownCard: React.FC<
             QUICK ADD BILLS
           </Text>
           <ScalePressable
-            onPress={() => {
-              triggerLightHaptic();
-              setBillFormError(null);
-              setShowAddForm(true);
-            }}
+            onPress={openAddBillModal}
             style={[styles.customToggle, { backgroundColor: shade.surface }]}
           >
             <AppIcon name="plus" size={12} color={shade.dopamine} />
@@ -360,14 +417,19 @@ export const MonthlyBillsBreakdownCard: React.FC<
         </View>
       </View>
 
-      {/* Clean Modal for Custom Bill */}
+      {/* Clean Modal for Adding or Editing a Bill */}
       <FormModal
         visible={showAddForm}
-        title="Add Monthly Bill"
-        subtitle="Set aside monthly fixed costs first"
+        title={editingBillId ? 'Edit Monthly Bill' : 'Add Monthly Bill'}
+        subtitle={
+          editingBillId
+            ? 'Update bill name, icon, amount, or due day'
+            : 'Set aside monthly fixed costs first'
+        }
         icon={newIcon}
         onClose={() => {
           setBillFormError(null);
+          setEditingBillId(null);
           setShowAddForm(false);
         }}
       >
@@ -470,7 +532,7 @@ export const MonthlyBillsBreakdownCard: React.FC<
         )}
 
         <ScalePressable
-          onPress={handleCreateCustom}
+          onPress={handleSaveBillForm}
           style={[
             styles.addBtn,
             {
@@ -489,7 +551,7 @@ export const MonthlyBillsBreakdownCard: React.FC<
               },
             ]}
           >
-            Add to Monthly Bills
+            {editingBillId ? 'Save Bill Changes' : 'Add to Monthly Bills'}
           </Text>
         </ScalePressable>
       </FormModal>
@@ -640,6 +702,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 8,
   },
+  billTrackLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
   dueChip: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -685,6 +752,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     flex: 1,
+    minWidth: 0,
   },
   billRight: {
     flexDirection: 'row',
@@ -698,7 +766,7 @@ const styles = StyleSheet.create({
     borderRadius: 9,
     paddingHorizontal: 8,
     paddingVertical: 4,
-    width: 106,
+    width: 114,
   },
   pesoSign: {
     fontSize: 12,

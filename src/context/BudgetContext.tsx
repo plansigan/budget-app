@@ -25,7 +25,7 @@ import {
   createNewUserState,
 } from '../state/defaults';
 import {
-  loadPersistedState,
+  loadPersistedStateWithStatus,
   savePersistedState,
 } from '../state/persistence';
 import { applyMidnightRollover } from '../state/rollover';
@@ -75,6 +75,8 @@ interface BudgetContextValue {
   themeMode: ThemeMode;
   setThemeMode: (mode: ThemeMode) => void;
   lastPaydayCheckInKey: string;
+  lastBackupAt?: string;
+  markBackupExported: () => void;
   shade: ThemeShade;
   settings: BudgetSettings;
   billItems: BillItem[];
@@ -124,6 +126,13 @@ interface BudgetContextValue {
     payday2: number
   ) => void;
   updateBillAmount: (billId: string, amount: number) => void;
+  updateBillItem: (
+    billId: string,
+    name: string,
+    icon: string,
+    amount: number,
+    dueDay?: number
+  ) => void;
   updateBillDueDay: (billId: string, dueDay?: number) => void;
   addBillItem: (
     name: string,
@@ -182,11 +191,18 @@ interface BudgetContextValue {
     note?: string
   ) => void;
   addBank: (name: string, balance: number) => void;
+  updateBank: (bankId: string, name: string) => void;
   removeBank: (bankId: string) => void;
   addCreditCard: (
     name: string,
     limit: number,
     used: number,
+    cutoffDay: number
+  ) => void;
+  updateCreditCard: (
+    cardId: string,
+    name: string,
+    limit: number,
     cutoffDay: number
   ) => void;
   removeCreditCard: (cardId: string) => void;
@@ -209,6 +225,17 @@ interface BudgetContextValue {
     paidMonths: number;
     includeInBudget: boolean;
   }) => void;
+  updateInstallment: (
+    id: string,
+    params: {
+      name: string;
+      provider: string;
+      monthlyAmount: number;
+      totalMonths: number;
+      paidMonths: number;
+      includeInBudget: boolean;
+    }
+  ) => void;
   markInstallmentMonthPaid: (id: string) => void;
   toggleInstallmentInBudget: (id: string) => void;
   removeInstallment: (id: string) => void;
@@ -255,6 +282,22 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingSaveRef = useRef(false);
+  const lastSaveWarnRef = useRef(0);
+
+  const persistWithWarning = useCallback(
+    (snapshot: PersistedBudgetState) => {
+      void savePersistedState(snapshot).then((ok) => {
+        if (!ok && Date.now() - lastSaveWarnRef.current > 15_000) {
+          lastSaveWarnRef.current = Date.now();
+          showToast(
+            'Could not save locally. Check device storage or exit Private Browsing.',
+            false
+          );
+        }
+      });
+    },
+    [showToast]
+  );
 
   const flushPendingSave = useCallback(() => {
     if (saveTimerRef.current) {
@@ -263,9 +306,9 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
     }
     if (pendingSaveRef.current) {
       pendingSaveRef.current = false;
-      void savePersistedState(stateRef.current);
+      persistWithWarning(stateRef.current);
     }
-  }, []);
+  }, [persistWithWarning]);
 
   const setSelectedDateKey = useCallback((dateKey: string) => {
     triggerLightHaptic();
@@ -274,13 +317,20 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
 
   useEffect(() => {
     let mounted = true;
-    loadPersistedState()
-      .then((loaded) => {
+    loadPersistedStateWithStatus()
+      .then((res) => {
         if (!mounted) return;
         const today = getTodayKey();
         setTodayKey(today);
+        if (res.corrupted) {
+          showToast(
+            'Saved data looked corrupted. Restore a JSON backup in Budget → Backup.',
+            false
+          );
+        }
+        const loaded = res.state;
         if (loaded) {
-          if (loaded.lastActiveDate && loaded.lastActiveDate !== today) {
+          if (loaded.lastActiveDate && loaded.lastActiveDate < today) {
             const { nextState } = applyMidnightRollover(loaded, today, 0);
             dispatch({ type: 'HYDRATE', state: nextState });
           } else {
@@ -295,7 +345,7 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [showToast]);
 
   // Debounced persistence (350ms) with flush on background/unmount
   useEffect(() => {
@@ -305,9 +355,9 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
     saveTimerRef.current = setTimeout(() => {
       saveTimerRef.current = null;
       pendingSaveRef.current = false;
-      void savePersistedState(stateRef.current);
+      persistWithWarning(stateRef.current);
     }, 350);
-  }, [state, isHydrated]);
+  }, [state, isHydrated, persistWithWarning]);
 
   useEffect(() => {
     return () => {
@@ -322,7 +372,7 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
       setTodayKey(freshToday);
     }
     const curr = stateRef.current;
-    if (curr.lastActiveDate && curr.lastActiveDate !== freshToday) {
+    if (curr.lastActiveDate && curr.lastActiveDate < freshToday) {
       const prevActive = curr.lastActiveDate;
       dispatch({ type: 'APPLY_ROLLOVER', newDateKey: freshToday });
       if (selectedDateKeyRef.current === prevActive) {
@@ -349,12 +399,28 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
     const handleWebPageHide = () => {
       flushPendingSave();
     };
+    const handleWebVisibilityChange = () => {
+      if (typeof document === 'undefined') return;
+      if (document.visibilityState === 'hidden') {
+        flushPendingSave();
+      } else if (document.visibilityState === 'visible') {
+        checkRolloverIfDayChanged();
+      }
+    };
+
     if (
       Platform.OS === 'web' &&
       typeof window !== 'undefined' &&
       typeof window.addEventListener === 'function'
     ) {
       window.addEventListener('pagehide', handleWebPageHide);
+    }
+    if (
+      Platform.OS === 'web' &&
+      typeof document !== 'undefined' &&
+      typeof document.addEventListener === 'function'
+    ) {
+      document.addEventListener('visibilitychange', handleWebVisibilityChange);
     }
 
     return () => {
@@ -366,6 +432,16 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
         typeof window.removeEventListener === 'function'
       ) {
         window.removeEventListener('pagehide', handleWebPageHide);
+      }
+      if (
+        Platform.OS === 'web' &&
+        typeof document !== 'undefined' &&
+        typeof document.removeEventListener === 'function'
+      ) {
+        document.removeEventListener(
+          'visibilitychange',
+          handleWebVisibilityChange
+        );
       }
     };
   }, [isHydrated, checkRolloverIfDayChanged, flushPendingSave]);
@@ -863,6 +939,32 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
     dispatch({ type: 'UPDATE_BILL_AMOUNT', billId, amount });
   }, []);
 
+  const updateBillItem = useCallback(
+    (
+      billId: string,
+      name: string,
+      icon: string,
+      amount: number,
+      dueDay?: number
+    ) => {
+      const trimmed = name.trim();
+      const cleanAmount = Math.max(0, Math.round(amount));
+      if (!trimmed || cleanAmount <= 0) return;
+
+      triggerSuccessHaptic();
+      dispatch({
+        type: 'UPDATE_BILL_ITEM',
+        billId,
+        name: trimmed,
+        icon,
+        amount: cleanAmount,
+        dueDay,
+      });
+      showToast(`Updated bill: ${trimmed}`, false);
+    },
+    [showToast]
+  );
+
   const addBillItem = useCallback(
     (name: string, icon: string, amount: number, dueDay?: number) => {
       const trimmed = name.trim();
@@ -1007,6 +1109,17 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
     [showToast]
   );
 
+  const updateBank = useCallback(
+    (bankId: string, name: string) => {
+      const trimmed = name.trim();
+      if (!trimmed) return;
+      triggerSuccessHaptic();
+      dispatch({ type: 'UPDATE_BANK', bankId, name: trimmed });
+      showToast(`Updated bank: ${trimmed}`, false);
+    },
+    [showToast]
+  );
+
   const removeBank = useCallback((bankId: string) => {
     triggerLightHaptic();
     dispatch({ type: 'REMOVE_BANK', bankId });
@@ -1025,6 +1138,23 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
         cutoffDay,
       });
       showToast(`💳 Added ${trimmed}`, false);
+    },
+    [showToast]
+  );
+
+  const updateCreditCard = useCallback(
+    (cardId: string, name: string, limit: number, cutoffDay: number) => {
+      const trimmed = name.trim();
+      if (!trimmed || limit <= 0) return;
+      triggerSuccessHaptic();
+      dispatch({
+        type: 'UPDATE_CREDIT_CARD',
+        cardId,
+        name: trimmed,
+        limit,
+        cutoffDay,
+      });
+      showToast(`Updated card: ${trimmed}`, false);
     },
     [showToast]
   );
@@ -1334,6 +1464,29 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
     [showToast]
   );
 
+  const updateInstallment = useCallback(
+    (
+      id: string,
+      params: {
+        name: string;
+        provider: string;
+        monthlyAmount: number;
+        totalMonths: number;
+        paidMonths: number;
+        includeInBudget: boolean;
+      }
+    ) => {
+      const trimmed = params.name.trim();
+      if (!trimmed || params.monthlyAmount <= 0 || params.totalMonths <= 0) {
+        return;
+      }
+      triggerSuccessHaptic();
+      dispatch({ type: 'UPDATE_INSTALLMENT', id, params });
+      showToast(`Updated installment: ${trimmed}`, false);
+    },
+    [showToast]
+  );
+
   const markInstallmentMonthPaid = useCallback(
     (id: string) => {
       const target = stateRef.current.installments.find((i) => i.id === id);
@@ -1442,6 +1595,13 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
     return serializeBackupJson(stateRef.current);
   }, []);
 
+  const markBackupExported = useCallback(() => {
+    dispatch({
+      type: 'MARK_BACKUP_EXPORTED',
+      exportedAt: new Date().toISOString(),
+    });
+  }, []);
+
   const importBackupJsonString = useCallback(
     (raw: string): { ok: boolean; message: string } => {
       const parsedRes = parseBackupJson(raw);
@@ -1488,6 +1648,8 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
       themeMode: state.themeMode,
       setThemeMode,
       lastPaydayCheckInKey: state.lastPaydayCheckInKey,
+      lastBackupAt: state.lastBackupAt,
+      markBackupExported,
       shade,
       settings: state.settings,
       billItems: state.billItems,
@@ -1527,6 +1689,7 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
       updateBudgetConfig,
       updateSalarySchedule,
       updateBillAmount,
+      updateBillItem,
       updateBillDueDay,
       addBillItem,
       markBillPaid,
@@ -1541,8 +1704,10 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
       depositToWalletAccount,
       setAccountBalanceWithLog,
       addBank,
+      updateBank,
       removeBank,
       addCreditCard,
+      updateCreditCard,
       removeCreditCard,
       completeOnboarding,
       reopenOnboarding,
@@ -1556,6 +1721,7 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
       dismissMilestone,
       boostSavingsGoal,
       addInstallment,
+      updateInstallment,
       markInstallmentMonthPaid,
       toggleInstallmentInBudget,
       removeInstallment,
@@ -1572,6 +1738,7 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
       togglePrivacyMode,
       formatVisiblePeso,
       setThemeMode,
+      markBackupExported,
       shade,
       baseDailyAllowance,
       todayKey,
@@ -1595,6 +1762,7 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
       updateBudgetConfig,
       updateSalarySchedule,
       updateBillAmount,
+      updateBillItem,
       updateBillDueDay,
       addBillItem,
       markBillPaid,
@@ -1609,8 +1777,10 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
       depositToWalletAccount,
       setAccountBalanceWithLog,
       addBank,
+      updateBank,
       removeBank,
       addCreditCard,
+      updateCreditCard,
       removeCreditCard,
       completeOnboarding,
       reopenOnboarding,
@@ -1623,6 +1793,7 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
       dismissMilestone,
       boostSavingsGoal,
       addInstallment,
+      updateInstallment,
       markInstallmentMonthPaid,
       toggleInstallmentInBudget,
       removeInstallment,

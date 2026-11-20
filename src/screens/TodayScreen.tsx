@@ -4,6 +4,7 @@ import {
   ActionAmountModal,
   ActionModalMode,
 } from '../components/ActionAmountModal';
+import { ActivityHistoryModal } from '../components/ActivityHistoryModal';
 import {
   AnimatedCounter,
   AnimatedProgressBar,
@@ -73,6 +74,7 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
   const [modalEnvelopeId, setModalEnvelopeId] = useState<string | null>(null);
   const [showPaydayModal, setShowPaydayModal] = useState(false);
   const [billToPay, setBillToPay] = useState<BillItem | null>(null);
+  const [showAllActivity, setShowAllActivity] = useState(false);
 
   const openModal = (mode: ActionModalMode, envelopeId: string | null = null) => {
     triggerLightHaptic();
@@ -668,9 +670,31 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
                   ? "TODAY'S ACTIVITY"
                   : `ACTIVITY (${selectedDateKey})`}
               </Text>
-              <Text style={[styles.microHint, { color: shade.accent }]}>
-                {selectedDayEntries.length} logged
-              </Text>
+              <View style={styles.activityHeaderRight}>
+                <Text style={[styles.microHint, { color: shade.accent }]}>
+                  {selectedDayEntries.length} logged
+                </Text>
+                {entries.length > 0 && (
+                  <ScalePressable
+                    onPress={() => {
+                      triggerLightHaptic();
+                      setShowAllActivity(true);
+                    }}
+                    hitSlop={6}
+                    style={[
+                      styles.viewAllChip,
+                      {
+                        backgroundColor: shade.surface,
+                        borderColor: shade.border,
+                      },
+                    ]}
+                  >
+                    <Text style={[styles.viewAllText, { color: shade.text }]}>
+                      View All ({entries.length})
+                    </Text>
+                  </ScalePressable>
+                )}
+              </View>
             </View>
 
             {selectedDayEntries.length === 0 ? (
@@ -774,6 +798,11 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
       <PayBillModal
         bill={billToPay}
         onClose={() => setBillToPay(null)}
+      />
+
+      <ActivityHistoryModal
+        visible={showAllActivity}
+        onClose={() => setShowAllActivity(false)}
       />
     </ScrollView>
   );
@@ -1125,5 +1154,20 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '800',
     color: '#FFFFFF',
+  },
+  activityHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  viewAllChip: {
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  viewAllText: {
+    fontSize: 10,
+    fontWeight: '800',
   },
 });

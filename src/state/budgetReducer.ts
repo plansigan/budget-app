@@ -86,6 +86,14 @@ export type BudgetAction =
     }
   | { type: 'UPDATE_BILL_AMOUNT'; billId: string; amount: number }
   | {
+      type: 'UPDATE_BILL_ITEM';
+      billId: string;
+      name: string;
+      icon: string;
+      amount: number;
+      dueDay?: number;
+    }
+  | {
       type: 'ADD_BILL_ITEM';
       name: string;
       icon: string;
@@ -116,12 +124,20 @@ export type BudgetAction =
       todayKey?: string;
     }
   | { type: 'ADD_BANK'; name: string; balance: number }
+  | { type: 'UPDATE_BANK'; bankId: string; name: string }
   | { type: 'REMOVE_BANK'; bankId: string }
   | {
       type: 'ADD_CREDIT_CARD';
       name: string;
       limit: number;
       used: number;
+      cutoffDay: number;
+    }
+  | {
+      type: 'UPDATE_CREDIT_CARD';
+      cardId: string;
+      name: string;
+      limit: number;
       cutoffDay: number;
     }
   | { type: 'REMOVE_CREDIT_CARD'; cardId: string }
@@ -186,6 +202,18 @@ export type BudgetAction =
         includeInBudget: boolean;
       };
     }
+  | {
+      type: 'UPDATE_INSTALLMENT';
+      id: string;
+      params: {
+        name: string;
+        provider: string;
+        monthlyAmount: number;
+        totalMonths: number;
+        paidMonths: number;
+        includeInBudget: boolean;
+      };
+    }
   | { type: 'MARK_INSTALLMENT_PAID'; id: string; todayKey?: string }
   | { type: 'TOGGLE_INSTALLMENT_IN_BUDGET'; id: string }
   | { type: 'REMOVE_INSTALLMENT'; id: string }
@@ -203,6 +231,7 @@ export type BudgetAction =
       todayKey?: string;
     }
   | { type: 'DELETE_SINKING_FUND'; id: string }
+  | { type: 'MARK_BACKUP_EXPORTED'; exportedAt: string }
   | { type: 'RESTORE_BACKUP'; data: Partial<PersistedBudgetState> };
 
 export function canUndoEntry(
@@ -916,6 +945,32 @@ export function budgetReducer(
       };
     }
 
+    case 'UPDATE_BILL_ITEM': {
+      const trimmed = action.name.trim();
+      const cleanAmount = Math.max(0, Math.round(action.amount));
+      if (!trimmed) return state;
+      const cleanDue =
+        typeof action.dueDay === 'number' && Number.isFinite(action.dueDay)
+          ? Math.max(1, Math.min(31, Math.round(action.dueDay)))
+          : undefined;
+      const nextBills = state.billItems.map((b) =>
+        b.id === action.billId
+          ? {
+              ...b,
+              name: trimmed,
+              icon: action.icon || b.icon,
+              amount: cleanAmount,
+              dueDay: cleanDue,
+            }
+          : b
+      );
+      return {
+        ...state,
+        billItems: nextBills,
+        settings: { ...state.settings, fixedBills: sumBills(nextBills) },
+      };
+    }
+
     case 'ADD_BILL_ITEM': {
       const trimmed = action.name.trim();
       const cleanAmount = Math.max(0, Math.round(action.amount));
@@ -1156,6 +1211,17 @@ export function budgetReducer(
       return { ...state, banks: [...state.banks, newBank] };
     }
 
+    case 'UPDATE_BANK': {
+      const trimmed = action.name.trim();
+      if (!trimmed) return state;
+      return {
+        ...state,
+        banks: state.banks.map((b) =>
+          b.id === action.bankId ? { ...b, name: trimmed } : b
+        ),
+      };
+    }
+
     case 'REMOVE_BANK':
       return {
         ...state,
@@ -1173,6 +1239,27 @@ export function budgetReducer(
         cutoffDay: Math.max(1, Math.min(31, Math.round(action.cutoffDay))),
       };
       return { ...state, creditCards: [...state.creditCards, newCard] };
+    }
+
+    case 'UPDATE_CREDIT_CARD': {
+      const trimmed = action.name.trim();
+      if (!trimmed || action.limit <= 0) return state;
+      return {
+        ...state,
+        creditCards: state.creditCards.map((c) =>
+          c.id === action.cardId
+            ? {
+                ...c,
+                name: trimmed,
+                limit: Math.max(1, roundCurrency(action.limit)),
+                cutoffDay: Math.max(
+                  1,
+                  Math.min(31, Math.round(action.cutoffDay))
+                ),
+              }
+            : c
+        ),
+      };
     }
 
     case 'REMOVE_CREDIT_CARD':
@@ -1559,6 +1646,32 @@ export function budgetReducer(
       return { ...state, installments: [...state.installments, newItem] };
     }
 
+    case 'UPDATE_INSTALLMENT': {
+      const { params } = action;
+      const trimmed = params.name.trim();
+      if (!trimmed || params.monthlyAmount <= 0 || params.totalMonths <= 0) {
+        return state;
+      }
+      const totalM = Math.max(1, Math.round(params.totalMonths));
+      const paidM = Math.max(0, Math.min(totalM, Math.round(params.paidMonths)));
+      return {
+        ...state,
+        installments: state.installments.map((item) =>
+          item.id === action.id
+            ? {
+                ...item,
+                name: trimmed,
+                provider: params.provider.trim() || 'Installment',
+                monthlyAmount: roundCurrency(params.monthlyAmount),
+                totalMonths: totalM,
+                paidMonths: paidM,
+                includeInBudget: params.includeInBudget,
+              }
+            : item
+        ),
+      };
+    }
+
     case 'MARK_INSTALLMENT_PAID': {
       const target = state.installments.find((i) => i.id === action.id);
       if (!target || target.paidMonths >= target.totalMonths) return state;
@@ -1656,6 +1769,12 @@ export function budgetReducer(
         sinkingFunds: state.sinkingFunds.filter((f) => f.id !== action.id),
       };
     }
+
+    case 'MARK_BACKUP_EXPORTED':
+      return {
+        ...state,
+        lastBackupAt: action.exportedAt,
+      };
 
     case 'RESTORE_BACKUP':
       return normalizePersistedState(action.data);
