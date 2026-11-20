@@ -50,6 +50,8 @@ export const AccountDetailView: React.FC<AccountDetailViewProps> = ({
     depositToWalletAccount,
     setAccountBalanceWithLog,
     logSpend,
+    updateBank,
+    updateCreditCard,
     removeBank,
     removeCreditCard,
     undoEntry,
@@ -61,6 +63,12 @@ export const AccountDetailView: React.FC<AccountDetailViewProps> = ({
   const [actionCategory, setActionCategory] =
     useState<SpendCategoryKey>('food');
   const [actionIcon, setActionIcon] = useState<string>('shopping-bag');
+
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [editLimitText, setEditLimitText] = useState('');
+  const [editCutoffText, setEditCutoffText] = useState('');
+  const [editError, setEditError] = useState<string | null>(null);
 
   const isCash = selectedAccountId === 'cash';
   const selectedBank = banks.find((b) => b.id === selectedAccountId);
@@ -141,6 +149,56 @@ export const AccountDetailView: React.FC<AccountDetailViewProps> = ({
     setActionNote('');
   };
 
+  const openEditAccountModal = () => {
+    if (isCash) return;
+    triggerLightHaptic();
+    setEditError(null);
+    if (selectedBank) {
+      setEditName(selectedBank.name);
+      setEditLimitText('');
+      setEditCutoffText('');
+    } else if (selectedCard) {
+      setEditName(selectedCard.name);
+      setEditLimitText(formatPesoInput(String(Math.round(selectedCard.limit))));
+      setEditCutoffText(String(selectedCard.cutoffDay));
+    }
+    setShowEditModal(true);
+  };
+
+  const handleSaveAccountEdit = () => {
+    const trimmed = editName.trim();
+    if (!trimmed) {
+      setEditError(
+        selectedCard
+          ? 'Please enter a credit card name.'
+          : 'Please enter a bank or e-wallet name.'
+      );
+      return;
+    }
+    if (selectedBank) {
+      updateBank(selectedBank.id, trimmed);
+      setShowEditModal(false);
+      return;
+    }
+    if (selectedCard) {
+      const limit = parsePesoInput(editLimitText);
+      if (limit <= 0) {
+        setEditError('Please enter a credit limit greater than ₱0.');
+        return;
+      }
+      const cutoff = Math.max(
+        1,
+        Math.min(
+          31,
+          parseInt(editCutoffText.replace(/[^0-9]/g, ''), 10) ||
+            selectedCard.cutoffDay
+        )
+      );
+      updateCreditCard(selectedCard.id, trimmed, limit, cutoff);
+      setShowEditModal(false);
+    }
+  };
+
   const currentBalance = isCash
     ? cashOnHand
     : selectedBank
@@ -189,34 +247,49 @@ export const AccountDetailView: React.FC<AccountDetailViewProps> = ({
             </ScalePressable>
 
             {!isCash && (
-              <ScalePressable
-                onPress={() => {
-                  triggerLightHaptic();
-                  const bankId = selectedBank?.id;
-                  const cardId = selectedCard?.id;
-                  onRequestConfirm({
-                    title: selectedBank
-                      ? 'Remove Bank Account?'
-                      : 'Remove Credit Card?',
-                    message: `Remove "${accountTitle}" from your Wallet? Existing transaction logs will remain in your history.`,
-                    confirmLabel: 'Remove',
-                    onConfirm: () => {
-                      if (bankId) removeBank(bankId);
-                      else if (cardId) removeCreditCard(cardId);
-                      onBack();
-                    },
-                  });
-                }}
-                style={[
-                  styles.deleteAccPill,
-                  { backgroundColor: shade.warningSoft },
-                ]}
-              >
-                <AppIcon name="trash-2" size={12} color={shade.warning} />
-                <Text style={[styles.deleteAccText, { color: shade.warning }]}>
-                  Remove
-                </Text>
-              </ScalePressable>
+              <View style={styles.headerActions}>
+                <ScalePressable
+                  onPress={openEditAccountModal}
+                  style={[
+                    styles.editAccPill,
+                    { backgroundColor: shade.surface, borderColor: shade.border },
+                  ]}
+                >
+                  <AppIcon name="edit-2" size={12} color={shade.text} />
+                  <Text style={[styles.editAccText, { color: shade.text }]}>
+                    Edit
+                  </Text>
+                </ScalePressable>
+
+                <ScalePressable
+                  onPress={() => {
+                    triggerLightHaptic();
+                    const bankId = selectedBank?.id;
+                    const cardId = selectedCard?.id;
+                    onRequestConfirm({
+                      title: selectedBank
+                        ? 'Remove Bank Account?'
+                        : 'Remove Credit Card?',
+                      message: `Remove "${accountTitle}" from your Wallet? Existing transaction logs will remain in your history.`,
+                      confirmLabel: 'Remove',
+                      onConfirm: () => {
+                        if (bankId) removeBank(bankId);
+                        else if (cardId) removeCreditCard(cardId);
+                        onBack();
+                      },
+                    });
+                  }}
+                  style={[
+                    styles.deleteAccPill,
+                    { backgroundColor: shade.warningSoft },
+                  ]}
+                >
+                  <AppIcon name="trash-2" size={12} color={shade.warning} />
+                  <Text style={[styles.deleteAccText, { color: shade.warning }]}>
+                    Remove
+                  </Text>
+                </ScalePressable>
+              </View>
             )}
           </View>
 
@@ -637,6 +710,128 @@ export const AccountDetailView: React.FC<AccountDetailViewProps> = ({
           </Text>
         </ScalePressable>
       </FormModal>
+
+      <FormModal
+        visible={showEditModal}
+        title={selectedCard ? 'Edit Credit Card' : 'Edit Bank Account'}
+        subtitle={
+          selectedCard
+            ? 'Update card name, credit limit, or cut-off date'
+            : 'Rename this bank or e-wallet without losing logs'
+        }
+        icon="edit-2"
+        accentColor={selectedCard ? shade.dopamine : shade.accent}
+        onClose={() => {
+          setEditError(null);
+          setShowEditModal(false);
+        }}
+      >
+        <Text style={[styles.catLabel, { color: shade.muted }]}>
+          ACCOUNT NAME
+        </Text>
+        <TextInput
+          value={editName}
+          onChangeText={(t) => {
+            setEditName(t);
+            if (editError) setEditError(null);
+          }}
+          placeholder={
+            selectedCard ? 'Card name (e.g., BDO Visa)' : 'Bank name (e.g., BPI)'
+          }
+          placeholderTextColor={shade.muted}
+          autoFocus
+          style={[
+            styles.textInput,
+            {
+              backgroundColor: shade.surface,
+              color: shade.text,
+              borderColor: shade.border,
+            },
+          ]}
+        />
+
+        {selectedCard && (
+          <View style={styles.editTwoCols}>
+            <View style={{ flex: 2, minWidth: 0, gap: 4 }}>
+              <Text style={[styles.catLabel, { color: shade.muted }]}>
+                CREDIT LIMIT
+              </Text>
+              <View
+                style={[
+                  styles.fullAmountBox,
+                  { backgroundColor: shade.surface, borderColor: shade.border },
+                ]}
+              >
+                <Text style={[styles.pesoPrefix, { color: shade.dopamine }]}>
+                  ₱
+                </Text>
+                <TextInput
+                  value={editLimitText}
+                  onChangeText={(t) => {
+                    setEditLimitText(formatPesoInput(t));
+                    if (editError) setEditError(null);
+                  }}
+                  keyboardType="numeric"
+                  placeholder="Limit"
+                  placeholderTextColor={shade.muted}
+                  style={[styles.amountInput, { color: shade.text }]}
+                />
+              </View>
+            </View>
+
+            <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
+              <Text style={[styles.catLabel, { color: shade.muted }]}>
+                CUT-OFF DAY
+              </Text>
+              <TextInput
+                value={editCutoffText}
+                onChangeText={(t) =>
+                  setEditCutoffText(t.replace(/[^0-9]/g, '').slice(0, 2))
+                }
+                keyboardType="numeric"
+                maxLength={2}
+                placeholder="1–31"
+                placeholderTextColor={shade.muted}
+                style={[
+                  styles.textInput,
+                  {
+                    backgroundColor: shade.surface,
+                    color: shade.text,
+                    borderColor: shade.border,
+                    textAlign: 'center',
+                    fontWeight: '800',
+                  },
+                ]}
+              />
+            </View>
+          </View>
+        )}
+
+        {editError && (
+          <Text style={[styles.formErrorText, { color: shade.warning }]}>
+            {editError}
+          </Text>
+        )}
+
+        <ScalePressable
+          onPress={handleSaveAccountEdit}
+          style={[
+            styles.submitBtn,
+            {
+              backgroundColor: selectedCard ? shade.dopamine : shade.accent,
+            },
+          ]}
+        >
+          <Text
+            style={[
+              styles.submitText,
+              { color: selectedCard ? '#FFFFFF' : shade.accentText },
+            ]}
+          >
+            Save Changes
+          </Text>
+        </ScalePressable>
+      </FormModal>
     </ScrollView>
   );
 };
@@ -668,6 +863,24 @@ const styles = StyleSheet.create({
   },
   backPillText: {
     fontSize: 12,
+    fontWeight: '800',
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  editAccPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 11,
+    paddingVertical: 7,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  editAccText: {
+    fontSize: 11,
     fontWeight: '800',
   },
   deleteAccPill: {
@@ -868,5 +1081,14 @@ const styles = StyleSheet.create({
   submitText: {
     fontSize: 13,
     fontWeight: '800',
+  },
+  editTwoCols: {
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'flex-end',
+  },
+  formErrorText: {
+    fontSize: 12,
+    fontWeight: '700',
   },
 });

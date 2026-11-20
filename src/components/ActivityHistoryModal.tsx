@@ -1,0 +1,617 @@
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Animated,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
+import { useBudget } from '../context/BudgetContext';
+import { TransactionType } from '../types/budget';
+import { triggerLightHaptic } from '../utils/haptics';
+import { formatMonthKeyLabel } from '../utils/insightsEngine';
+import {
+  formatEntryDateLocal,
+  getTransactionPresentation,
+} from '../utils/transactionDisplay';
+import { ScalePressable } from './AnimatedPrimitives';
+import { AppIcon, IconBadge } from './AppIcon';
+
+type HistoryFilterKey =
+  | 'all'
+  | 'spend'
+  | 'envelopes'
+  | 'bills'
+  | 'savings'
+  | 'wallet';
+
+const HISTORY_FILTERS: Array<{ key: HistoryFilterKey; label: string }> = [
+  { key: 'all', label: 'All' },
+  { key: 'spend', label: 'Spends' },
+  { key: 'envelopes', label: 'Envelopes' },
+  { key: 'bills', label: 'Bills' },
+  { key: 'savings', label: 'Savings' },
+  { key: 'wallet', label: 'Wallet' },
+];
+
+const PAGE_SIZE = 30;
+
+function matchesHistoryFilter(
+  type: TransactionType,
+  filter: HistoryFilterKey
+): boolean {
+  switch (filter) {
+    case 'all':
+      return true;
+    case 'spend':
+      return type === 'spend';
+    case 'envelopes':
+      return type === 'envelope_spend' || type === 'envelope_refill';
+    case 'bills':
+      return type === 'bill_paid' || type === 'installment_paid';
+    case 'savings':
+      return (
+        type === 'save_direct' ||
+        type === 'treat_direct' ||
+        type === 'impulse_skipped' ||
+        type === 'midnight_split' ||
+        type === 'sinking_fund'
+      );
+    case 'wallet':
+      return type === 'wallet_deposit' || type === 'wallet_adjust';
+  }
+}
+
+interface ActivityHistoryModalProps {
+  visible: boolean;
+  initialMonthKey?: string | null;
+  onClose: () => void;
+}
+
+/**
+ * Full searchable & filterable transaction history modal with paginated
+ * rendering and 1-tap Undo for every entry.
+ */
+export const ActivityHistoryModal: React.FC<ActivityHistoryModalProps> = ({
+  visible,
+  initialMonthKey = null,
+  onClose,
+}) => {
+  const { shade, privacyMode, entries, undoEntry } = useBudget();
+  const cardScale = useRef(new Animated.Value(0.95)).current;
+
+  const [query, setQuery] = useState('');
+  const [filterKey, setFilterKey] = useState<HistoryFilterKey>('all');
+  const [monthFilter, setMonthFilter] = useState<string | null>(initialMonthKey);
+  const [visibleLimit, setVisibleLimit] = useState(PAGE_SIZE);
+
+  useEffect(() => {
+    if (!visible) return;
+    setMonthFilter(initialMonthKey || null);
+    setVisibleLimit(PAGE_SIZE);
+    cardScale.setValue(0.95);
+    Animated.spring(cardScale, {
+      toValue: 1,
+      speed: 28,
+      bounciness: 6,
+      useNativeDriver: true,
+    }).start();
+  }, [visible, initialMonthKey, cardScale]);
+
+  const monthOptions = useMemo(() => {
+    const keys = new Set<string>();
+    for (const entry of entries) {
+      const mk = formatEntryDateLocal(entry).slice(0, 7);
+      if (/^\d{4}-\d{2}$/.test(mk)) {
+        keys.add(mk);
+      }
+    }
+    return Array.from(keys).sort((a, b) => b.localeCompare(a));
+  }, [entries]);
+
+  const filteredEntries = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    return entries.filter((entry) => {
+      if (!matchesHistoryFilter(entry.type, filterKey)) return false;
+      const entryDate = formatEntryDateLocal(entry);
+      if (monthFilter && !entryDate.startsWith(monthFilter)) return false;
+      if (needle) {
+        const haystack = [
+          entry.label,
+          entry.paymentSourceLabel || '',
+          entryDate,
+          entry.category || '',
+        ]
+          .join(' ')
+          .toLowerCase();
+        if (!haystack.includes(needle)) return false;
+      }
+      return true;
+    });
+  }, [entries, filterKey, monthFilter, query]);
+
+  const visibleEntries = useMemo(
+    () => filteredEntries.slice(0, visibleLimit),
+    [filteredEntries, visibleLimit]
+  );
+
+  const hasMore = filteredEntries.length > visibleEntries.length;
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
+    >
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={styles.backdrop}
+      >
+        <Pressable
+          style={StyleSheet.absoluteFill}
+          onPress={onClose}
+          accessibilityLabel="Dismiss activity history"
+        />
+        <Animated.View
+          style={[
+            styles.card,
+            {
+              backgroundColor: shade.card,
+              borderColor: shade.border,
+              transform: [{ scale: cardScale }],
+            },
+          ]}
+        >
+          <View style={styles.headerRow}>
+            <View style={styles.titleRow}>
+              <IconBadge
+                name="list"
+                size={16}
+                color={shade.accent}
+                bg={shade.surface}
+                boxSize={36}
+              />
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.title, { color: shade.text }]}>
+                  Activity History
+                </Text>
+                <Text style={[styles.subtitle, { color: shade.muted }]}>
+                  {entries.length} total logged{' '}
+                  {entries.length === 1 ? 'entry' : 'entries'}
+                </Text>
+              </View>
+            </View>
+
+            <ScalePressable
+              onPress={() => {
+                triggerLightHaptic();
+                onClose();
+              }}
+              accessibilityLabel="Close activity history"
+              hitSlop={8}
+              style={[styles.closeBtn, { backgroundColor: shade.surface }]}
+            >
+              <AppIcon name="x" size={16} color={shade.muted} />
+            </ScalePressable>
+          </View>
+
+          <View
+            style={[
+              styles.searchBox,
+              { backgroundColor: shade.surface, borderColor: shade.border },
+            ]}
+          >
+            <AppIcon name="search" size={14} color={shade.muted} />
+            <TextInput
+              value={query}
+              onChangeText={(text) => {
+                setQuery(text);
+                setVisibleLimit(PAGE_SIZE);
+              }}
+              placeholder="Search note, category, or account..."
+              placeholderTextColor={shade.muted}
+              style={[styles.searchInput, { color: shade.text }]}
+            />
+            {query.length > 0 && (
+              <ScalePressable
+                onPress={() => {
+                  setQuery('');
+                  setVisibleLimit(PAGE_SIZE);
+                }}
+                accessibilityLabel="Clear search"
+                hitSlop={6}
+              >
+                <AppIcon name="x" size={14} color={shade.muted} />
+              </ScalePressable>
+            )}
+          </View>
+
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.chipsRow}
+            style={styles.chipsScroll}
+          >
+            {HISTORY_FILTERS.map((f) => {
+              const active = filterKey === f.key;
+              return (
+                <ScalePressable
+                  key={f.key}
+                  onPress={() => {
+                    triggerLightHaptic();
+                    setFilterKey(f.key);
+                    setVisibleLimit(PAGE_SIZE);
+                  }}
+                  style={[
+                    styles.chipPill,
+                    {
+                      backgroundColor: active ? shade.accent : shade.surface,
+                      borderColor: active ? shade.accent : shade.border,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.chipText,
+                      { color: active ? shade.accentText : shade.text },
+                    ]}
+                  >
+                    {f.label}
+                  </Text>
+                </ScalePressable>
+              );
+            })}
+          </ScrollView>
+
+          {monthOptions.length > 1 && (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.chipsRow}
+              style={styles.chipsScroll}
+            >
+              <ScalePressable
+                onPress={() => {
+                  triggerLightHaptic();
+                  setMonthFilter(null);
+                  setVisibleLimit(PAGE_SIZE);
+                }}
+                style={[
+                  styles.monthPill,
+                  {
+                    backgroundColor:
+                      monthFilter === null ? shade.dopamineSoft : shade.surface,
+                    borderColor:
+                      monthFilter === null ? shade.dopamine : shade.border,
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.monthText,
+                    {
+                      color:
+                        monthFilter === null ? shade.dopamine : shade.muted,
+                    },
+                  ]}
+                >
+                  All Months
+                </Text>
+              </ScalePressable>
+
+              {monthOptions.map((mk) => {
+                const active = monthFilter === mk;
+                return (
+                  <ScalePressable
+                    key={mk}
+                    onPress={() => {
+                      triggerLightHaptic();
+                      setMonthFilter(mk);
+                      setVisibleLimit(PAGE_SIZE);
+                    }}
+                    style={[
+                      styles.monthPill,
+                      {
+                        backgroundColor: active
+                          ? shade.dopamineSoft
+                          : shade.surface,
+                        borderColor: active ? shade.dopamine : shade.border,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.monthText,
+                        { color: active ? shade.dopamine : shade.muted },
+                      ]}
+                    >
+                      {formatMonthKeyLabel(mk)}
+                    </Text>
+                  </ScalePressable>
+                );
+              })}
+            </ScrollView>
+          )}
+
+          <Text style={[styles.countMeta, { color: shade.muted }]}>
+            Showing {visibleEntries.length} of {filteredEntries.length} matching{' '}
+            {filteredEntries.length === 1 ? 'log' : 'logs'}
+          </Text>
+
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={styles.listBody}
+            style={styles.listScroll}
+          >
+            {visibleEntries.length === 0 ? (
+              <View
+                style={[
+                  styles.emptyBox,
+                  { backgroundColor: shade.surface, borderColor: shade.border },
+                ]}
+              >
+                <Text style={[styles.emptyText, { color: shade.muted }]}>
+                  No logs match your current search or filters.
+                </Text>
+              </View>
+            ) : (
+              visibleEntries.map((entry) => {
+                const { deltaText, deltaColor, isTreatHighlight } =
+                  getTransactionPresentation(entry, shade, privacyMode);
+                const dateStr = formatEntryDateLocal(entry);
+                return (
+                  <View
+                    key={entry.id}
+                    style={[
+                      styles.rowCard,
+                      {
+                        backgroundColor: shade.surface,
+                        borderColor: isTreatHighlight
+                          ? shade.dopamine
+                          : shade.border,
+                      },
+                    ]}
+                  >
+                    <View style={styles.rowLeft}>
+                      <IconBadge
+                        name={entry.icon}
+                        size={13}
+                        color={deltaColor}
+                        bg={shade.card}
+                        boxSize={30}
+                      />
+                      <View style={{ flex: 1 }}>
+                        <Text
+                          numberOfLines={1}
+                          style={[styles.rowLabel, { color: shade.text }]}
+                        >
+                          {entry.label}
+                        </Text>
+                        <Text style={[styles.rowSub, { color: shade.muted }]}>
+                          {dateStr}
+                          {entry.paymentSourceLabel
+                            ? ` • ${entry.paymentSourceLabel}`
+                            : ''}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <View style={styles.rowRight}>
+                      <Text style={[styles.rowDelta, { color: deltaColor }]}>
+                        {deltaText}
+                      </Text>
+                      <ScalePressable
+                        onPress={() => undoEntry(entry.id)}
+                        accessibilityLabel={`Undo ${entry.label}`}
+                        hitSlop={6}
+                        style={[styles.undoBtn, { backgroundColor: shade.card }]}
+                      >
+                        <Text style={[styles.undoText, { color: shade.muted }]}>
+                          Undo
+                        </Text>
+                      </ScalePressable>
+                    </View>
+                  </View>
+                );
+              })
+            )}
+
+            {hasMore && (
+              <ScalePressable
+                onPress={() => {
+                  triggerLightHaptic();
+                  setVisibleLimit((prev) => prev + PAGE_SIZE);
+                }}
+                style={[
+                  styles.loadMoreBtn,
+                  { backgroundColor: shade.surface, borderColor: shade.border },
+                ]}
+              >
+                <Text style={[styles.loadMoreText, { color: shade.accent }]}>
+                  Load {Math.min(PAGE_SIZE, filteredEntries.length - visibleEntries.length)} More
+                </Text>
+              </ScalePressable>
+            )}
+          </ScrollView>
+        </Animated.View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+};
+
+const styles = StyleSheet.create({
+  backdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(17, 24, 39, 0.45)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 18,
+  },
+  card: {
+    width: '100%',
+    maxWidth: 390,
+    minWidth: 0,
+    overflow: 'hidden',
+    borderRadius: 24,
+    borderWidth: 1,
+    padding: 18,
+    gap: 10,
+    maxHeight: '88%',
+    shadowColor: '#111318',
+    shadowOpacity: 0.14,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 10,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flex: 1,
+  },
+  title: {
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  subtitle: {
+    fontSize: 11,
+    marginTop: 1,
+  },
+  closeBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  searchBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 11,
+    paddingVertical: 8,
+  },
+  searchInput: {
+    flex: 1,
+    minWidth: 0,
+    fontSize: 14,
+    paddingVertical: 0,
+  },
+  chipsScroll: {
+    flexGrow: 0,
+  },
+  chipsRow: {
+    gap: 6,
+    paddingVertical: 1,
+  },
+  chipPill: {
+    paddingHorizontal: 11,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  chipText: {
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  monthPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 9,
+    borderWidth: 1,
+  },
+  monthText: {
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  countMeta: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  listScroll: {
+    flexShrink: 1,
+    minHeight: 160,
+  },
+  listBody: {
+    gap: 6,
+    paddingBottom: 6,
+  },
+  emptyBox: {
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: 18,
+    alignItems: 'center',
+  },
+  emptyText: {
+    fontSize: 12,
+    textAlign: 'center',
+  },
+  rowCard: {
+    borderRadius: 13,
+    borderWidth: 1,
+    paddingHorizontal: 11,
+    paddingVertical: 9,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  rowLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+    flex: 1,
+    minWidth: 0,
+  },
+  rowLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  rowSub: {
+    fontSize: 10,
+  },
+  rowRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+  },
+  rowDelta: {
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  undoBtn: {
+    paddingHorizontal: 7,
+    paddingVertical: 4,
+    borderRadius: 7,
+  },
+  undoText: {
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  loadMoreBtn: {
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingVertical: 10,
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  loadMoreText: {
+    fontSize: 12,
+    fontWeight: '800',
+  },
+});

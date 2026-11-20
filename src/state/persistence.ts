@@ -269,28 +269,70 @@ export function normalizePersistedState(
     unlockedMilestones: Array.isArray(raw.unlockedMilestones)
       ? raw.unlockedMilestones.filter((m): m is string => typeof m === 'string')
       : [],
+    lastBackupAt:
+      typeof raw.lastBackupAt === 'string' &&
+      !Number.isNaN(Date.parse(raw.lastBackupAt))
+        ? raw.lastBackupAt
+        : undefined,
   };
 }
 
-export async function loadPersistedState(): Promise<PersistedBudgetState | null> {
+export async function readRawPersistedState(): Promise<string | null> {
   try {
     const raw =
       (await AsyncStorage.getItem(STORAGE_KEY)) ||
       (await AsyncStorage.getItem(LEGACY_STORAGE_KEY_V5));
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<PersistedBudgetState>;
-    return normalizePersistedState(parsed);
+    if (raw) return raw;
   } catch {
-    return null;
+    // Fall through to Web localStorage check below if available
   }
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      return (
+        window.localStorage.getItem(STORAGE_KEY) ||
+        window.localStorage.getItem(LEGACY_STORAGE_KEY_V5)
+      );
+    }
+  } catch {
+    // Ignore localStorage access failures
+  }
+  return null;
+}
+
+export async function loadPersistedStateWithStatus(): Promise<{
+  state: PersistedBudgetState | null;
+  corrupted: boolean;
+}> {
+  try {
+    const raw =
+      (await AsyncStorage.getItem(STORAGE_KEY)) ||
+      (await AsyncStorage.getItem(LEGACY_STORAGE_KEY_V5));
+    if (!raw) return { state: null, corrupted: false };
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return { state: null, corrupted: true };
+    }
+    return {
+      state: normalizePersistedState(parsed as Partial<PersistedBudgetState>),
+      corrupted: false,
+    };
+  } catch {
+    return { state: null, corrupted: true };
+  }
+}
+
+export async function loadPersistedState(): Promise<PersistedBudgetState | null> {
+  const result = await loadPersistedStateWithStatus();
+  return result.state;
 }
 
 export async function savePersistedState(
   state: PersistedBudgetState
-): Promise<void> {
+): Promise<boolean> {
   try {
     await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    return true;
   } catch {
-    // Ignore storage write errors
+    return false;
   }
 }

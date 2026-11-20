@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityHistoryModal } from '../../components/ActivityHistoryModal';
 import {
   AnimatedProgressBar,
   FadeSlideIn,
@@ -39,6 +40,7 @@ export const InsightsSection: React.FC<InsightsSectionProps> = ({
   } = useBudget();
 
   const [selectedMonthKey, setSelectedMonthKey] = useState<string | null>(null);
+  const [showAllActivity, setShowAllActivity] = useState(false);
 
   const sortedArchives = useMemo(
     () =>
@@ -406,19 +408,37 @@ export const InsightsSection: React.FC<InsightsSectionProps> = ({
             ? `${formatMonthKeyLabel(selectedArchive.monthKey).toUpperCase()} ACTIVITY`
             : 'RECENT ACTIVITY'}
         </Text>
-        {selectedArchive && (
-          <ScalePressable
-            onPress={() => {
-              triggerLightHaptic();
-              setSelectedMonthKey(null);
-            }}
-            style={[styles.backToNowChip, { backgroundColor: shade.surface }]}
-          >
-            <Text style={[styles.backToNowText, { color: shade.accent }]}>
-              Back to This Month ›
-            </Text>
-          </ScalePressable>
-        )}
+        <View style={styles.inlineRow}>
+          {entries.length > 0 && (
+            <ScalePressable
+              onPress={() => {
+                triggerLightHaptic();
+                setShowAllActivity(true);
+              }}
+              style={[
+                styles.backToNowChip,
+                { backgroundColor: shade.card, borderWidth: 1, borderColor: shade.border },
+              ]}
+            >
+              <Text style={[styles.backToNowText, { color: shade.text }]}>
+                Search / All ({entries.length})
+              </Text>
+            </ScalePressable>
+          )}
+          {selectedArchive && (
+            <ScalePressable
+              onPress={() => {
+                triggerLightHaptic();
+                setSelectedMonthKey(null);
+              }}
+              style={[styles.backToNowChip, { backgroundColor: shade.surface }]}
+            >
+              <Text style={[styles.backToNowText, { color: shade.accent }]}>
+                Back to This Month ›
+              </Text>
+            </ScalePressable>
+          )}
+        </View>
       </View>
 
       <View style={styles.listGap}>
@@ -496,6 +516,12 @@ export const InsightsSection: React.FC<InsightsSectionProps> = ({
           })
         )}
       </View>
+
+      <ActivityHistoryModal
+        visible={showAllActivity}
+        initialMonthKey={selectedArchive?.monthKey ?? null}
+        onClose={() => setShowAllActivity(false)}
+      />
     </FadeSlideIn>
   );
 };

@@ -1,5 +1,12 @@
-import React, { useState } from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import {
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import {
   FadeSlideIn,
   PopValueText,
@@ -17,7 +24,9 @@ import { useBudget } from '../context/BudgetContext';
 import { BillItem, ThemeMode } from '../types/budget';
 import {
   buildTransactionsCsv,
+  pickJsonFileTextOnWeb,
   shareOrDownloadText,
+  summarizeBackupJson,
 } from '../utils/backupExport';
 import { triggerLightHaptic } from '../utils/haptics';
 
@@ -37,6 +46,8 @@ export const SetupAndStyleScreen: React.FC = () => {
     themeMode,
     setThemeMode,
     todayKey,
+    lastBackupAt,
+    markBackupExported,
     settings,
     billItems,
     envelopes,
@@ -45,6 +56,7 @@ export const SetupAndStyleScreen: React.FC = () => {
     updateBudgetConfig,
     updateSalarySchedule,
     updateBillAmount,
+    updateBillItem,
     updateBillDueDay,
     addBillItem,
     removeBillItem,
@@ -65,6 +77,7 @@ export const SetupAndStyleScreen: React.FC = () => {
 
   const [showRestoreBox, setShowRestoreBox] = useState(false);
   const [restoreText, setRestoreText] = useState('');
+  const [pickedFileName, setPickedFileName] = useState<string | null>(null);
   const [restoreError, setRestoreError] = useState<string | null>(null);
   const [backupStatus, setBackupStatus] = useState<{
     ok: boolean;
@@ -78,6 +91,22 @@ export const SetupAndStyleScreen: React.FC = () => {
     icon?: string;
     onConfirm: () => void;
   } | null>(null);
+
+  const restorePreview = useMemo(
+    () => (restoreText.trim() ? summarizeBackupJson(restoreText) : null),
+    [restoreText]
+  );
+
+  const daysSinceBackup = useMemo(() => {
+    if (!lastBackupAt) return null;
+    const ms = Date.parse(lastBackupAt);
+    if (Number.isNaN(ms)) return null;
+    return Math.max(0, Math.floor((Date.now() - ms) / (1000 * 60 * 60 * 24)));
+  }, [lastBackupAt]);
+
+  const showBackupNudge =
+    (daysSinceBackup === null && entries.length >= 5) ||
+    (daysSinceBackup !== null && daysSinceBackup >= 14 && entries.length > 0);
 
   const handleExportCsv = async () => {
     triggerLightHaptic();
@@ -105,6 +134,9 @@ export const SetupAndStyleScreen: React.FC = () => {
       'application/json',
       'Velvet Budget Full Backup (JSON)'
     );
+    if (ok) {
+      markBackupExported();
+    }
     setBackupStatus({
       ok,
       text: ok
@@ -113,12 +145,27 @@ export const SetupAndStyleScreen: React.FC = () => {
     });
   };
 
+  const handlePickBackupFile = async () => {
+    triggerLightHaptic();
+    const picked = await pickJsonFileTextOnWeb();
+    if (!picked.ok) {
+      if (!picked.cancelled && picked.error) {
+        setRestoreError(picked.error);
+      }
+      return;
+    }
+    setPickedFileName(picked.filename);
+    setRestoreText(picked.text);
+    setRestoreError(null);
+  };
+
   const handleRestoreJson = () => {
     const res = importBackupJsonString(restoreText);
     setBackupStatus({ ok: res.ok, text: res.message });
     if (res.ok) {
       setRestoreError(null);
       setRestoreText('');
+      setPickedFileName(null);
       setShowRestoreBox(false);
     } else {
       setRestoreError(res.message);
@@ -177,6 +224,7 @@ export const SetupAndStyleScreen: React.FC = () => {
             currentMonthKey={todayKey.slice(0, 7)}
             privacyMode={privacyMode}
             onUpdateAmount={updateBillAmount}
+            onUpdateBillItem={updateBillItem}
             onUpdateDueDay={updateBillDueDay}
             onAddBill={addBillItem}
             onRemoveBill={removeBillItem}
@@ -371,6 +419,31 @@ export const SetupAndStyleScreen: React.FC = () => {
           3. BACKUP & EXPORT
         </Text>
 
+        {daysSinceBackup !== null ? (
+          <Text style={[styles.backupFreshText, { color: shade.muted }]}>
+            Last JSON backup:{' '}
+            {daysSinceBackup === 0
+              ? 'Today'
+              : daysSinceBackup === 1
+              ? '1 day ago'
+              : `${daysSinceBackup} days ago`}
+          </Text>
+        ) : null}
+
+        {showBackupNudge && (
+          <View
+            style={[
+              styles.backupNudgeCard,
+              { backgroundColor: shade.surface, borderColor: shade.border },
+            ]}
+          >
+            <AppIcon name="shield" size={14} color={shade.dopamine} />
+            <Text style={[styles.backupNudgeText, { color: shade.text }]}>
+              Tip: Export a JSON backup to protect your logs if you clear browser data.
+            </Text>
+          </View>
+        )}
+
         <ScalePressable
           onPress={handleExportCsv}
           style={[
@@ -405,6 +478,7 @@ export const SetupAndStyleScreen: React.FC = () => {
           onPress={() => {
             triggerLightHaptic();
             setRestoreError(null);
+            setPickedFileName(null);
             setShowRestoreBox(true);
             setBackupStatus(null);
           }}
@@ -436,17 +510,38 @@ export const SetupAndStyleScreen: React.FC = () => {
       <FormModal
         visible={showRestoreBox}
         title="Restore Backup"
-        subtitle="Paste your exported JSON backup text below"
+        subtitle="Load a .json backup file or paste exported JSON below"
         icon="upload"
         onClose={() => {
           setRestoreError(null);
+          setPickedFileName(null);
           setShowRestoreBox(false);
         }}
       >
+        {Platform.OS === 'web' && (
+          <ScalePressable
+            onPress={() => {
+              void handlePickBackupFile();
+            }}
+            style={[
+              styles.filePickBtn,
+              { backgroundColor: shade.surface, borderColor: shade.accent },
+            ]}
+          >
+            <AppIcon name="file-text" size={14} color={shade.accent} />
+            <Text style={[styles.filePickText, { color: shade.accent }]}>
+              {pickedFileName
+                ? `Loaded: ${pickedFileName}`
+                : 'Choose .json File'}
+            </Text>
+          </ScalePressable>
+        )}
+
         <TextInput
           value={restoreText}
           onChangeText={(t) => {
             setRestoreText(t);
+            setPickedFileName(null);
             if (restoreError) setRestoreError(null);
           }}
           multiline
@@ -457,23 +552,71 @@ export const SetupAndStyleScreen: React.FC = () => {
             {
               backgroundColor: shade.surface,
               color: shade.text,
-              borderColor: restoreError ? shade.warning : shade.border,
+              borderColor:
+                restoreError || (restorePreview && !restorePreview.ok)
+                  ? shade.warning
+                  : shade.border,
             },
           ]}
         />
-        {restoreError && (
+
+        {restorePreview && restorePreview.ok && (
+          <View
+            style={[
+              styles.previewCard,
+              {
+                backgroundColor: shade.positiveSoft,
+                borderColor: shade.positive,
+              },
+            ]}
+          >
+            <Text style={[styles.previewCardTitle, { color: shade.positive }]}>
+              Backup Ready to Restore
+            </Text>
+            <Text style={[styles.previewCardSub, { color: shade.text }]}>
+              {restorePreview.summary.exportedAt
+                ? `Exported ${new Date(
+                    restorePreview.summary.exportedAt
+                  ).toLocaleDateString()} • `
+                : ''}
+              Income ₱{restorePreview.summary.monthlyIncome.toLocaleString()} •{' '}
+              {restorePreview.summary.entriesCount} logs •{' '}
+              {restorePreview.summary.banksCount +
+                restorePreview.summary.creditCardsCount}{' '}
+              accounts • {restorePreview.summary.envelopesCount} envelopes
+            </Text>
+          </View>
+        )}
+
+        {(restoreError || (restorePreview && !restorePreview.ok)) && (
           <Text style={[styles.restoreErrorText, { color: shade.warning }]}>
-            {restoreError}
+            {restoreError ||
+              (restorePreview && !restorePreview.ok ? restorePreview.error : '')}
           </Text>
         )}
+
         <ScalePressable
+          disabled={!restorePreview?.ok}
           onPress={handleRestoreJson}
-          style={[styles.restoreConfirm, { backgroundColor: shade.accent }]}
+          style={[
+            styles.restoreConfirm,
+            {
+              backgroundColor: restorePreview?.ok
+                ? shade.accent
+                : shade.surface,
+              opacity: restorePreview?.ok ? 1 : 0.65,
+            },
+          ]}
         >
           <Text
-            style={[styles.restoreConfirmText, { color: shade.accentText }]}
+            style={[
+              styles.restoreConfirmText,
+              {
+                color: restorePreview?.ok ? shade.accentText : shade.muted,
+              },
+            ]}
           >
-            Restore Data
+            {restorePreview?.ok ? 'Confirm & Restore Backup' : 'Restore Data'}
           </Text>
         </ScalePressable>
       </FormModal>
@@ -565,6 +708,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   restoreInput: {
+    minWidth: 0,
     minHeight: 90,
     borderRadius: 12,
     borderWidth: 1,
@@ -580,6 +724,54 @@ const styles = StyleSheet.create({
   restoreConfirmText: {
     fontSize: 13,
     fontWeight: '800',
+  },
+  backupFreshText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  backupNudgeCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  backupNudgeText: {
+    flex: 1,
+    fontSize: 11,
+    fontWeight: '600',
+    lineHeight: 16,
+  },
+  filePickBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingVertical: 11,
+  },
+  filePickText: {
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  previewCard: {
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 11,
+    paddingVertical: 9,
+    gap: 3,
+  },
+  previewCardTitle: {
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  previewCardSub: {
+    fontSize: 11,
+    fontWeight: '600',
+    lineHeight: 16,
   },
   backupStatusText: {
     fontSize: 12,

@@ -16,6 +16,7 @@ import {
   FadeSlideIn,
   ScalePressable,
 } from './src/components/AnimatedPrimitives';
+import { AppErrorBoundary } from './src/components/AppErrorBoundary';
 import { AppIcon } from './src/components/AppIcon';
 import { InteractiveTutorialModal } from './src/components/InteractiveTutorialModal';
 import { BudgetProvider, useBudget } from './src/context/BudgetContext';
@@ -96,6 +97,7 @@ const AppShell: React.FC = () => {
       style.id = 'velvet-web-polish';
       style.textContent = [
         'input:focus, textarea:focus { outline: none !important; box-shadow: none !important; }',
+        '@supports (-webkit-touch-callout: none) { input, textarea, select { font-size: 16px !important; } }',
         'html, body { height: 100%; margin: 0; padding: 0; }',
         'body { padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); box-sizing: border-box; }',
       ].join('\n');
@@ -103,6 +105,23 @@ const AppShell: React.FC = () => {
     }
     document.body.style.backgroundColor = shade.dark ? '#06070A' : shade.bg;
   }, [shade.bg, shade.dark]);
+
+  useEffect(() => {
+    if (
+      Platform.OS !== 'web' ||
+      typeof window === 'undefined' ||
+      typeof navigator === 'undefined' ||
+      !('serviceWorker' in navigator) ||
+      window.location.protocol !== 'https:'
+    ) {
+      return;
+    }
+    navigator.serviceWorker
+      .register('./sw.js', { updateViaCache: 'none' })
+      .catch(() => {
+        // Ignore service worker registration errors silently
+      });
+  }, []);
 
   const isDesktopWeb = Platform.OS === 'web' && width > 500;
   const headerTopPad = isDesktopWeb ? 12 : Math.max(insets.top, 12);
@@ -375,11 +394,13 @@ const AppShell: React.FC = () => {
 export default function App() {
   return (
     <SafeAreaProvider>
-      <ToastProvider>
-        <BudgetProvider>
-          <AppShell />
-        </BudgetProvider>
-      </ToastProvider>
+      <AppErrorBoundary>
+        <ToastProvider>
+          <BudgetProvider>
+            <AppShell />
+          </BudgetProvider>
+        </ToastProvider>
+      </AppErrorBoundary>
     </SafeAreaProvider>
   );
 }
