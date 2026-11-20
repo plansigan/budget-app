@@ -1,0 +1,28 @@
+{
+  "expo": {
+    "name": "Velvet Budget",
+    "slug": "velvet-budget",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "backgroundColor": "#18151F",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.velvetbudget.app"
+    },
+    "android": {
+      "package": "com.velvetbudget.app",
+      "backgroundColor": "#18151F"
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single",
+      "name": "Velvet Budget",
+      "shortName": "Velvet",
+      "description": "Minimalist personal budget & treat vault tracker",
+      "themeColor": "#141519",
+      "backgroundColor": "#18151F",
+      "display": "standalone"
+    }
+  }
+}
