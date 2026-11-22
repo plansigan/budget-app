@@ -12,7 +12,7 @@ import {
   PopValueText,
   ScalePressable,
 } from '../components/AnimatedPrimitives';
-import { AppIcon } from '../components/AppIcon';
+import { AppIcon, IconBadge } from '../components/AppIcon';
 import { BudgetStepperRow } from '../components/BudgetStepperRow';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { FormModal } from '../components/FormModal';
@@ -21,6 +21,10 @@ import { PayBillModal } from '../components/PayBillModal';
 import { SalaryScheduleCard } from '../components/SalaryScheduleCard';
 import { SpendingEnvelopesCard } from '../components/SpendingEnvelopesCard';
 import { useBudget } from '../context/BudgetContext';
+import {
+  AutoBackupSnapshot,
+  formatSnapshotAgeLabel,
+} from '../state/autoSnapshots';
 import { BillItem, ThemeMode } from '../types/budget';
 import {
   buildTransactionsCsv,
@@ -36,18 +40,32 @@ const THEME_OPTIONS: Array<{ mode: ThemeMode; label: string; icon: string }> = [
   { mode: 'dark', label: 'Dark', icon: 'moon' },
 ];
 
+const SNAPSHOT_REASON_LABEL: Record<AutoBackupSnapshot['reason'], string> = {
+  auto_interval: '10-min auto',
+  before_restore: 'Before restore/reset',
+  manual: 'Manual save',
+};
+
 /**
- * Budget & Schedule setup screen (no theme/layout switchers—locked to Velvet Dusk Metal Card).
+ * Clean 2-segment Budget screen separating Plan (income, schedule, bills,
+ * envelopes, savings) from Settings (appearance, auto-snapshots, tools).
  */
 export const SetupAndStyleScreen: React.FC = () => {
   const {
     shade,
     privacyMode,
+    formatVisiblePeso,
     themeMode,
     setThemeMode,
     todayKey,
     lastBackupAt,
     markBackupExported,
+    lastAutoSnapshotAt,
+    autoSnapshotCount,
+    storagePersisted,
+    listAutoSnapshots,
+    restoreAutoSnapshot,
+    captureAutoSnapshotNow,
     settings,
     billItems,
     envelopes,
@@ -73,6 +91,7 @@ export const SetupAndStyleScreen: React.FC = () => {
     importBackupJsonString,
   } = useBudget();
 
+  const [subTab, setSubTab] = useState<'plan' | 'settings'>('plan');
   const [billToPay, setBillToPay] = useState<BillItem | null>(null);
 
   const [showRestoreBox, setShowRestoreBox] = useState(false);
@@ -83,6 +102,11 @@ export const SetupAndStyleScreen: React.FC = () => {
     ok: boolean;
     text: string;
   } | null>(null);
+
+  const [showSnapshotsModal, setShowSnapshotsModal] = useState(false);
+  const [snapshots, setSnapshots] = useState<AutoBackupSnapshot[]>([]);
+  const [loadingSnapshots, setLoadingSnapshots] = useState(false);
+
   const [pendingConfirm, setPendingConfirm] = useState<{
     title: string;
     message: string;
@@ -172,29 +196,119 @@ export const SetupAndStyleScreen: React.FC = () => {
     }
   };
 
+  const handleOpenSnapshots = async () => {
+    triggerLightHaptic();
+    setShowSnapshotsModal(true);
+    setLoadingSnapshots(true);
+    try {
+      const list = await listAutoSnapshots();
+      setSnapshots(list);
+    } finally {
+      setLoadingSnapshots(false);
+    }
+  };
+
+  const handleRestoreSnapshot = async (snap: AutoBackupSnapshot) => {
+    triggerLightHaptic();
+    const res = await restoreAutoSnapshot(snap.id);
+    setBackupStatus({ ok: res.ok, text: res.message });
+    if (res.ok) {
+      setShowSnapshotsModal(false);
+    }
+  };
+
+  const manualBackupSubtext =
+    daysSinceBackup === null
+      ? showBackupNudge
+        ? 'Tip: Export a JSON copy for off-device safety'
+        : 'Save a portable .json copy anytime'
+      : daysSinceBackup === 0
+      ? 'Last exported: Today'
+      : daysSinceBackup === 1
+      ? 'Last exported: 1 day ago'
+      : `Last exported: ${daysSinceBackup} days ago`;
+
   return (
     <ScrollView
       contentContainerStyle={styles.scrollContent}
       showsVerticalScrollIndicator={false}
     >
-      {/* Section 1: Monthly Income, Salary Schedule, Bills & Savings */}
-      <FadeSlideIn delay={0} style={styles.section}>
-        <View style={styles.rowBetween}>
-          <Text style={[styles.sectionTitle, { color: shade.muted }]}>
-            1. YOUR MONTHLY BUDGET (₱)
+      {/* 2-Segment Control: Plan vs Settings */}
+      <View
+        style={[
+          styles.subTabBar,
+          { backgroundColor: shade.surface, borderColor: shade.border },
+        ]}
+      >
+        <ScalePressable
+          onPress={() => {
+            triggerLightHaptic();
+            setSubTab('plan');
+          }}
+          style={[
+            styles.subTabBtn,
+            subTab === 'plan' && { backgroundColor: shade.card },
+          ]}
+        >
+          <Text
+            style={[
+              styles.subTabText,
+              { color: subTab === 'plan' ? shade.text : shade.muted },
+            ]}
+          >
+            Plan
           </Text>
-          <PopValueText valueTrigger={baseDailyAllowance}>
-            <Text style={[styles.previewBadge, { color: shade.positive }]}>
-              Base: ₱
-              {baseDailyAllowance.toLocaleString(undefined, {
-                maximumFractionDigits: 0,
-              })}
-              /day
-            </Text>
-          </PopValueText>
-        </View>
+        </ScalePressable>
 
-        <View style={styles.listGap}>
+        <ScalePressable
+          onPress={() => {
+            triggerLightHaptic();
+            setSubTab('settings');
+          }}
+          style={[
+            styles.subTabBtn,
+            subTab === 'settings' && { backgroundColor: shade.card },
+          ]}
+        >
+          <Text
+            style={[
+              styles.subTabText,
+              { color: subTab === 'settings' ? shade.text : shade.muted },
+            ]}
+          >
+            Settings
+          </Text>
+        </ScalePressable>
+      </View>
+
+      {subTab === 'plan' ? (
+        <FadeSlideIn delay={0} style={styles.section}>
+          {/* Live Daily Budget Formula Hero Strip */}
+          <View
+            style={[
+              styles.formulaCard,
+              {
+                backgroundColor: shade.heroBg,
+                borderColor: shade.heroBorder,
+              },
+            ]}
+          >
+            <View style={{ flex: 1, gap: 4 }}>
+              <Text style={[styles.formulaKicker, { color: shade.heroMuted }]}>
+                DAILY BUDGET FORMULA
+              </Text>
+              <Text style={[styles.formulaSub, { color: shade.heroText }]}>
+                {formatVisiblePeso(settings.monthlyIncome)} in − Bills, Env &{' '}
+                {formatVisiblePeso(settings.monthlySavingsGoal)} save
+              </Text>
+            </View>
+            <PopValueText valueTrigger={baseDailyAllowance}>
+              <Text style={[styles.formulaResult, { color: '#4ADE80' }]}>
+                {formatVisiblePeso(baseDailyAllowance)}/day
+              </Text>
+            </PopValueText>
+          </View>
+
           <BudgetStepperRow
             label="Monthly Income"
             hint="How much you take home"
@@ -221,6 +335,8 @@ export const SetupAndStyleScreen: React.FC = () => {
             bills={billItems}
             shade={shade}
             enableTracking
+            collapsible
+            defaultExpanded={false}
             currentMonthKey={todayKey.slice(0, 7)}
             privacyMode={privacyMode}
             onUpdateAmount={updateBillAmount}
@@ -236,6 +352,8 @@ export const SetupAndStyleScreen: React.FC = () => {
             salaryFrequency={settings.salaryFrequency}
             shade={shade}
             privacyMode={privacyMode}
+            collapsible
+            defaultExpanded={false}
             onAddEnvelope={addEnvelope}
             onUpdateEnvelope={updateEnvelope}
             onDeleteEnvelope={deleteEnvelope}
@@ -244,7 +362,7 @@ export const SetupAndStyleScreen: React.FC = () => {
 
           <BudgetStepperRow
             label="Monthly Savings Goal"
-            hint="How much you want to save"
+            hint="Set aside first each month"
             value={settings.monthlySavingsGoal}
             shade={shade}
             onChange={(val) =>
@@ -255,19 +373,22 @@ export const SetupAndStyleScreen: React.FC = () => {
               )
             }
           />
-
+        </FadeSlideIn>
+      ) : (
+        <FadeSlideIn delay={0} style={styles.section}>
+          {/* Appearance */}
           <View
             style={[
               styles.appearanceCard,
               { backgroundColor: shade.card, borderColor: shade.border },
             ]}
           >
-            <View>
-              <Text style={[styles.appearanceTitle, { color: shade.text }]}>
+            <View style={{ gap: 2 }}>
+              <Text style={[styles.cardTitle, { color: shade.text }]}>
                 Appearance
               </Text>
-              <Text style={[styles.appearanceSub, { color: shade.muted }]}>
-                Follow your device theme or force Light / Dark mode
+              <Text style={[styles.cardSub, { color: shade.muted }]}>
+                Follow device theme or lock Light / Dark mode
               </Text>
             </View>
             <View
@@ -289,7 +410,7 @@ export const SetupAndStyleScreen: React.FC = () => {
                   >
                     <AppIcon
                       name={opt.icon}
-                      size={13}
+                      size={14}
                       color={active ? shade.accentText : shade.muted}
                     />
                     <Text
@@ -305,207 +426,339 @@ export const SetupAndStyleScreen: React.FC = () => {
               })}
             </View>
           </View>
-        </View>
-      </FadeSlideIn>
 
-      {/* Section 2: Onboarding, Tutorial & Reset */}
-      <FadeSlideIn delay={70} style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: shade.muted }]}>
-          2. GUIDE & RESET
-        </Text>
-
-        <ScalePressable
-          onPress={openTutorial}
-          style={[
-            styles.replayBtn,
-            { backgroundColor: shade.surface, borderColor: shade.dopamine },
-          ]}
-        >
-          <View style={styles.btnIconRow}>
-            <AppIcon name="help-circle" size={15} color={shade.dopamine} />
-            <Text style={[styles.replayBtnText, { color: shade.dopamine }]}>
-              Open App Guide
-            </Text>
-          </View>
-        </ScalePressable>
-
-        <ScalePressable
-          onPress={reopenOnboarding}
-          style={[
-            styles.replayBtn,
-            { backgroundColor: shade.surface, borderColor: shade.accent },
-          ]}
-        >
-          <View style={styles.btnIconRow}>
-            <AppIcon name="sliders" size={15} color={shade.text} />
-            <Text style={[styles.replayBtnText, { color: shade.text }]}>
-              Re-do Setup Questions
-            </Text>
-          </View>
-        </ScalePressable>
-
-        <ScalePressable
-          onPress={() => {
-            triggerLightHaptic();
-            setPendingConfirm({
-              title: 'Start Fresh?',
-              message:
-                'This will erase all your logged transactions, treats, installments, sinking funds, and reset savings to ₱0. Export a JSON backup first if you want to keep your data.',
-              confirmLabel: 'Reset Everything',
-              destructive: true,
-              icon: 'rotate-ccw',
-              onConfirm: resetToNewUser,
-            });
-          }}
-          style={[
-            styles.replayBtn,
-            { backgroundColor: shade.card, borderColor: shade.border },
-          ]}
-        >
-          <View style={styles.btnIconRow}>
-            <AppIcon name="rotate-ccw" size={15} color={shade.text} />
-            <Text style={[styles.replayBtnText, { color: shade.text }]}>
-              Start Fresh (0 Treats, ₱0)
-            </Text>
-          </View>
-        </ScalePressable>
-
-        <View style={styles.demoRow}>
-          <ScalePressable
-            onPress={simulateMidnightSplit}
-            style={[styles.demoBtnPrimary, { backgroundColor: shade.dopamine }]}
-          >
-            <View style={styles.btnIconRow}>
-              <AppIcon name="moon" size={14} color="#FFFFFF" />
-              <Text style={[styles.demoBtnPrimaryText, { color: '#FFFFFF' }]}>
-                Test 50/50 Midnight Split
-              </Text>
-            </View>
-          </ScalePressable>
-
-          <ScalePressable
-            onPress={() => {
-              triggerLightHaptic();
-              setPendingConfirm({
-                title: 'Load Demo Data?',
-                message:
-                  'This will replace your current budget, accounts, and logs with sample demo data.',
-                confirmLabel: 'Load Demo',
-                destructive: true,
-                icon: 'star',
-                onConfirm: resetDemoState,
-              });
-            }}
-            style={[
-              styles.demoBtnSecondary,
-              { backgroundColor: shade.surface, borderColor: shade.border },
-            ]}
-          >
-            <View style={styles.btnIconRow}>
-              <AppIcon name="star" size={14} color={shade.text} />
-              <Text
-                style={[styles.demoBtnSecondaryText, { color: shade.text }]}
-              >
-                Load Demo
-              </Text>
-            </View>
-          </ScalePressable>
-        </View>
-      </FadeSlideIn>
-
-      {/* Section 3: Backup & Export (CSV / JSON) */}
-      <FadeSlideIn delay={130} style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: shade.muted }]}>
-          3. BACKUP & EXPORT
-        </Text>
-
-        {daysSinceBackup !== null ? (
-          <Text style={[styles.backupFreshText, { color: shade.muted }]}>
-            Last JSON backup:{' '}
-            {daysSinceBackup === 0
-              ? 'Today'
-              : daysSinceBackup === 1
-              ? '1 day ago'
-              : `${daysSinceBackup} days ago`}
-          </Text>
-        ) : null}
-
-        {showBackupNudge && (
+          {/* Grouped Backup & Auto-Recovery Card */}
           <View
             style={[
-              styles.backupNudgeCard,
-              { backgroundColor: shade.surface, borderColor: shade.border },
+              styles.groupedCard,
+              { backgroundColor: shade.card, borderColor: shade.border },
             ]}
           >
-            <AppIcon name="shield" size={14} color={shade.dopamine} />
-            <Text style={[styles.backupNudgeText, { color: shade.text }]}>
-              Tip: Export a JSON backup to protect your logs if you clear browser data.
-            </Text>
-          </View>
-        )}
+            <View
+              style={[
+                styles.autoHeaderRow,
+                { borderBottomColor: shade.border },
+              ]}
+            >
+              <View style={styles.autoLeftCluster}>
+                <View
+                  style={[styles.liveDot, { backgroundColor: shade.positive }]}
+                />
+                <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+                  <Text style={[styles.cardTitle, { color: shade.text }]}>
+                    Auto-save & 10-min Recovery
+                  </Text>
+                  <Text style={[styles.cardSub, { color: shade.muted }]}>
+                    Last snapshot: {formatSnapshotAgeLabel(lastAutoSnapshotAt)} •{' '}
+                    {autoSnapshotCount}{' '}
+                    {autoSnapshotCount === 1 ? 'point' : 'points'}
+                    {storagePersisted ? ' • Persistent' : ''}
+                  </Text>
+                </View>
+              </View>
+              <ScalePressable
+                onPress={() => {
+                  triggerLightHaptic();
+                  void captureAutoSnapshotNow();
+                }}
+                style={[
+                  styles.saveNowPill,
+                  { backgroundColor: shade.positiveSoft },
+                ]}
+              >
+                <Text style={[styles.saveNowText, { color: shade.positive }]}>
+                  Save Now
+                </Text>
+              </ScalePressable>
+            </View>
 
-        <ScalePressable
-          onPress={handleExportCsv}
-          style={[
-            styles.replayBtn,
-            { backgroundColor: shade.card, borderColor: shade.border },
-          ]}
-        >
-          <View style={styles.btnIconRow}>
-            <AppIcon name="file-text" size={15} color={shade.text} />
-            <Text style={[styles.replayBtnText, { color: shade.text }]}>
-              Export Logs (CSV)
-            </Text>
-          </View>
-        </ScalePressable>
+            <ScalePressable
+              onPress={() => {
+                void handleOpenSnapshots();
+              }}
+              style={[styles.groupedRow, { borderBottomColor: shade.border }]}
+            >
+              <View style={styles.rowLeft}>
+                <IconBadge
+                  name="rotate-ccw"
+                  size={15}
+                  color={shade.dopamine}
+                  bg={shade.dopamineSoft}
+                  boxSize={34}
+                />
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={[styles.rowTitle, { color: shade.text }]}>
+                    Auto-Snapshots ({autoSnapshotCount})
+                  </Text>
+                  <Text style={[styles.rowSub, { color: shade.muted }]}>
+                    Restore an automatic rolling checkpoint
+                  </Text>
+                </View>
+              </View>
+              <AppIcon name="chevron-right" size={17} color={shade.muted} />
+            </ScalePressable>
 
-        <ScalePressable
-          onPress={handleExportJson}
-          style={[
-            styles.replayBtn,
-            { backgroundColor: shade.card, borderColor: shade.border },
-          ]}
-        >
-          <View style={styles.btnIconRow}>
-            <AppIcon name="download" size={15} color={shade.text} />
-            <Text style={[styles.replayBtnText, { color: shade.text }]}>
-              Export Full Backup (JSON)
-            </Text>
-          </View>
-        </ScalePressable>
+            <ScalePressable
+              onPress={() => {
+                void handleExportJson();
+              }}
+              style={[styles.groupedRow, { borderBottomColor: shade.border }]}
+            >
+              <View style={styles.rowLeft}>
+                <IconBadge
+                  name="download"
+                  size={15}
+                  color={shade.positive}
+                  bg={shade.positiveSoft}
+                  boxSize={34}
+                />
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={[styles.rowTitle, { color: shade.text }]}>
+                    Export Full Backup (JSON)
+                  </Text>
+                  <Text
+                    style={[
+                      styles.rowSub,
+                      { color: showBackupNudge ? shade.dopamine : shade.muted },
+                    ]}
+                  >
+                    {manualBackupSubtext}
+                  </Text>
+                </View>
+              </View>
+              <AppIcon name="chevron-right" size={17} color={shade.muted} />
+            </ScalePressable>
 
-        <ScalePressable
-          onPress={() => {
-            triggerLightHaptic();
-            setRestoreError(null);
-            setPickedFileName(null);
-            setShowRestoreBox(true);
-            setBackupStatus(null);
-          }}
-          style={[
-            styles.replayBtn,
-            { backgroundColor: shade.surface, borderColor: shade.border },
-          ]}
-        >
-          <View style={styles.btnIconRow}>
-            <AppIcon name="upload" size={15} color={shade.text} />
-            <Text style={[styles.replayBtnText, { color: shade.text }]}>
-              Restore Backup (JSON)
-            </Text>
-          </View>
-        </ScalePressable>
+            <ScalePressable
+              onPress={() => {
+                triggerLightHaptic();
+                setRestoreError(null);
+                setPickedFileName(null);
+                setShowRestoreBox(true);
+                setBackupStatus(null);
+              }}
+              style={[styles.groupedRow, { borderBottomColor: shade.border }]}
+            >
+              <View style={styles.rowLeft}>
+                <IconBadge
+                  name="upload"
+                  size={15}
+                  color={shade.text}
+                  bg={shade.surface}
+                  boxSize={34}
+                />
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={[styles.rowTitle, { color: shade.text }]}>
+                    Restore Backup (JSON)
+                  </Text>
+                  <Text style={[styles.rowSub, { color: shade.muted }]}>
+                    Pick a .json file or paste exported data
+                  </Text>
+                </View>
+              </View>
+              <AppIcon name="chevron-right" size={17} color={shade.muted} />
+            </ScalePressable>
 
-        {backupStatus && (
-          <Text
+            <ScalePressable
+              onPress={() => {
+                void handleExportCsv();
+              }}
+              style={[styles.groupedRow, { borderBottomWidth: 0 }]}
+            >
+              <View style={styles.rowLeft}>
+                <IconBadge
+                  name="file-text"
+                  size={15}
+                  color={shade.text}
+                  bg={shade.surface}
+                  boxSize={34}
+                />
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={[styles.rowTitle, { color: shade.text }]}>
+                    Export Activity Logs (CSV)
+                  </Text>
+                  <Text style={[styles.rowSub, { color: shade.muted }]}>
+                    Spreadsheet copy of {entries.length}{' '}
+                    {entries.length === 1 ? 'log' : 'logs'}
+                  </Text>
+                </View>
+              </View>
+              <AppIcon name="chevron-right" size={17} color={shade.muted} />
+            </ScalePressable>
+          </View>
+
+          {backupStatus && (
+            <Text
+              style={[
+                styles.backupStatusText,
+                { color: backupStatus.ok ? shade.positive : shade.warning },
+              ]}
+            >
+              {backupStatus.text}
+            </Text>
+          )}
+
+          {/* Grouped App Tools & Reset Card */}
+          <View
             style={[
-              styles.backupStatusText,
-              { color: backupStatus.ok ? shade.positive : shade.warning },
+              styles.groupedCard,
+              { backgroundColor: shade.card, borderColor: shade.border },
             ]}
           >
-            {backupStatus.text}
+            <ScalePressable
+              onPress={openTutorial}
+              style={[styles.groupedRow, { borderBottomColor: shade.border }]}
+            >
+              <View style={styles.rowLeft}>
+                <AppIcon name="help-circle" size={16} color={shade.dopamine} />
+                <Text style={[styles.rowTitle, { color: shade.dopamine }]}>
+                  Open App Guide
+                </Text>
+              </View>
+              <AppIcon name="chevron-right" size={17} color={shade.muted} />
+            </ScalePressable>
+
+            <ScalePressable
+              onPress={reopenOnboarding}
+              style={[styles.groupedRow, { borderBottomColor: shade.border }]}
+            >
+              <View style={styles.rowLeft}>
+                <AppIcon name="sliders" size={16} color={shade.text} />
+                <Text style={[styles.rowTitle, { color: shade.text }]}>
+                  Re-do Setup Questions
+                </Text>
+              </View>
+              <AppIcon name="chevron-right" size={17} color={shade.muted} />
+            </ScalePressable>
+
+            <ScalePressable
+              onPress={simulateMidnightSplit}
+              style={[styles.groupedRow, { borderBottomColor: shade.border }]}
+            >
+              <View style={styles.rowLeft}>
+                <AppIcon name="moon" size={16} color={shade.text} />
+                <Text style={[styles.rowTitle, { color: shade.text }]}>
+                  Test 50/50 Midnight Split
+                </Text>
+              </View>
+              <AppIcon name="chevron-right" size={17} color={shade.muted} />
+            </ScalePressable>
+
+            <ScalePressable
+              onPress={() => {
+                triggerLightHaptic();
+                setPendingConfirm({
+                  title: 'Load Demo Data?',
+                  message:
+                    'This will replace your current budget, accounts, and logs with sample demo data. An automatic recovery snapshot is saved beforehand.',
+                  confirmLabel: 'Load Demo',
+                  destructive: true,
+                  icon: 'star',
+                  onConfirm: resetDemoState,
+                });
+              }}
+              style={[styles.groupedRow, { borderBottomColor: shade.border }]}
+            >
+              <View style={styles.rowLeft}>
+                <AppIcon name="star" size={16} color={shade.text} />
+                <Text style={[styles.rowTitle, { color: shade.text }]}>
+                  Load Sample Demo Data
+                </Text>
+              </View>
+              <AppIcon name="chevron-right" size={17} color={shade.muted} />
+            </ScalePressable>
+
+            <ScalePressable
+              onPress={() => {
+                triggerLightHaptic();
+                setPendingConfirm({
+                  title: 'Start Fresh?',
+                  message:
+                    'This will erase all logged transactions, treats, installments, and reset savings to ₱0. An automatic recovery snapshot will be captured first.',
+                  confirmLabel: 'Reset Everything',
+                  destructive: true,
+                  icon: 'rotate-ccw',
+                  onConfirm: resetToNewUser,
+                });
+              }}
+              style={[styles.groupedRow, { borderBottomWidth: 0 }]}
+            >
+              <View style={styles.rowLeft}>
+                <AppIcon name="rotate-ccw" size={16} color={shade.warning} />
+                <Text style={[styles.rowTitle, { color: shade.warning }]}>
+                  Start Fresh (0 Treats, ₱0)
+                </Text>
+              </View>
+              <AppIcon name="chevron-right" size={17} color={shade.warning} />
+            </ScalePressable>
+          </View>
+        </FadeSlideIn>
+      )}
+
+      {/* Auto-Snapshot Recovery Modal */}
+      <FormModal
+        visible={showSnapshotsModal}
+        title="Auto-Recovery Snapshots"
+        subtitle="Captured automatically every 10 mins & before resets"
+        icon="rotate-ccw"
+        accentColor={shade.dopamine}
+        onClose={() => setShowSnapshotsModal(false)}
+      >
+        {loadingSnapshots ? (
+          <Text style={[styles.snapshotEmptyText, { color: shade.muted }]}>
+            Loading saved recovery points...
           </Text>
+        ) : snapshots.length === 0 ? (
+          <Text style={[styles.snapshotEmptyText, { color: shade.muted }]}>
+            No snapshots yet. Tap Save Now or log activity to create your first recovery point.
+          </Text>
+        ) : (
+          <View style={{ gap: 10 }}>
+            {snapshots.map((snap) => (
+              <View
+                key={snap.id}
+                style={[
+                  styles.snapshotRow,
+                  {
+                    backgroundColor: shade.surface,
+                    borderColor: shade.border,
+                  },
+                ]}
+              >
+                <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+                  <Text style={[styles.snapshotTime, { color: shade.text }]}>
+                    {new Date(snap.savedAt).toLocaleString()} (
+                    {formatSnapshotAgeLabel(snap.savedAt)})
+                  </Text>
+                  <Text style={[styles.snapshotMeta, { color: shade.muted }]}>
+                    {SNAPSHOT_REASON_LABEL[snap.reason]} • {snap.entriesCount}{' '}
+                    logs • {snap.accountsCount} accts • Income ₱
+                    {Math.round(snap.monthlyIncome).toLocaleString()}
+                  </Text>
+                </View>
+                <ScalePressable
+                  onPress={() => {
+                    void handleRestoreSnapshot(snap);
+                  }}
+                  style={[
+                    styles.snapshotRestoreBtn,
+                    { backgroundColor: shade.accent },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.snapshotRestoreText,
+                      { color: shade.accentText },
+                    ]}
+                  >
+                    Restore
+                  </Text>
+                </ScalePressable>
+              </View>
+            ))}
+          </View>
         )}
-      </FadeSlideIn>
+      </FormModal>
 
       <FormModal
         visible={showRestoreBox}
@@ -642,70 +895,173 @@ export const SetupAndStyleScreen: React.FC = () => {
 
 const styles = StyleSheet.create({
   scrollContent: {
-    paddingBottom: 36,
-    gap: 18,
+    paddingBottom: 40,
+    gap: 16,
   },
-  section: {
-    gap: 8,
-  },
-  sectionTitle: {
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 0.9,
-  },
-  listGap: {
-    gap: 8,
-  },
-  rowBetween: {
+  subTabBar: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-  previewBadge: {
-    fontSize: 12,
-    fontWeight: '800',
-  },
-  replayBtn: {
-    paddingVertical: 13,
-    borderRadius: 14,
+    borderRadius: 15,
     borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
+    padding: 4,
+    gap: 4,
   },
-  btnIconRow: {
-    flexDirection: 'row',
+  subTabBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 11,
     alignItems: 'center',
-    gap: 7,
   },
-  replayBtnText: {
+  subTabText: {
     fontSize: 13,
     fontWeight: '800',
   },
-  demoRow: {
+  section: {
+    gap: 14,
+  },
+  formulaCard: {
+    borderRadius: 22,
+    borderWidth: 1,
+    padding: 18,
     flexDirection: 'row',
-    gap: 8,
-  },
-  demoBtnPrimary: {
-    flex: 2,
-    paddingVertical: 13,
-    borderRadius: 14,
     alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
   },
-  demoBtnPrimaryText: {
+  formulaKicker: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.9,
+  },
+  formulaSub: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  formulaResult: {
+    fontSize: 20,
+    fontWeight: '800',
+  },
+  appearanceCard: {
+    borderRadius: 20,
+    borderWidth: 1,
+    padding: 16,
+    gap: 12,
+  },
+  cardTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  cardSub: {
+    fontSize: 12,
+  },
+  themeSegRow: {
+    flexDirection: 'row',
+    borderRadius: 13,
+    padding: 4,
+    gap: 4,
+  },
+  themeSegBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 9,
+    borderRadius: 9,
+  },
+  themeSegText: {
     fontSize: 12,
     fontWeight: '800',
   },
-  demoBtnSecondary: {
+  groupedCard: {
+    borderRadius: 20,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  autoHeaderRow: {
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  autoLeftCluster: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
     flex: 1,
-    paddingVertical: 13,
+    minWidth: 0,
+  },
+  liveDot: {
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+  },
+  saveNowPill: {
+    paddingHorizontal: 11,
+    paddingVertical: 7,
+    borderRadius: 10,
+  },
+  saveNowText: {
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  groupedRow: {
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    minHeight: 56,
+    borderBottomWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  rowLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+    minWidth: 0,
+  },
+  rowTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  rowSub: {
+    fontSize: 12,
+    marginTop: 1,
+  },
+  snapshotEmptyText: {
+    fontSize: 13,
+    textAlign: 'center',
+    paddingVertical: 14,
+    lineHeight: 19,
+  },
+  snapshotRow: {
     borderRadius: 14,
     borderWidth: 1,
+    padding: 12,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
   },
-  demoBtnSecondaryText: {
+  snapshotTime: {
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  snapshotMeta: {
+    fontSize: 11,
+  },
+  snapshotRestoreBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+  },
+  snapshotRestoreText: {
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '800',
   },
   restoreInput: {
     minWidth: 0,
@@ -724,25 +1080,6 @@ const styles = StyleSheet.create({
   restoreConfirmText: {
     fontSize: 13,
     fontWeight: '800',
-  },
-  backupFreshText: {
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  backupNudgeCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    borderRadius: 12,
-    borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  backupNudgeText: {
-    flex: 1,
-    fontSize: 11,
-    fontWeight: '600',
-    lineHeight: 16,
   },
   filePickBtn: {
     flexDirection: 'row',
@@ -781,37 +1118,5 @@ const styles = StyleSheet.create({
   restoreErrorText: {
     fontSize: 12,
     fontWeight: '700',
-  },
-  appearanceCard: {
-    borderRadius: 18,
-    borderWidth: 1,
-    padding: 13,
-    gap: 10,
-  },
-  appearanceTitle: {
-    fontSize: 14,
-    fontWeight: '800',
-  },
-  appearanceSub: {
-    fontSize: 11,
-  },
-  themeSegRow: {
-    flexDirection: 'row',
-    borderRadius: 12,
-    padding: 4,
-    gap: 4,
-  },
-  themeSegBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 5,
-    paddingVertical: 8,
-    borderRadius: 9,
-  },
-  themeSegText: {
-    fontSize: 12,
-    fontWeight: '800',
   },
 });

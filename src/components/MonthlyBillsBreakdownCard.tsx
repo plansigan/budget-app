@@ -37,6 +37,8 @@ interface MonthlyBillsBreakdownCardProps {
   privacyMode?: boolean;
   onUpdateDueDay?: (billId: string, dueDay?: number) => void;
   onRequestPayBill?: (bill: BillItem) => void;
+  collapsible?: boolean;
+  defaultExpanded?: boolean;
 }
 
 const QUICK_BILL_PRESETS = [
@@ -64,7 +66,10 @@ export const MonthlyBillsBreakdownCard: React.FC<
   privacyMode = false,
   onUpdateDueDay,
   onRequestPayBill,
+  collapsible = false,
+  defaultExpanded = true,
 }) => {
+  const [expanded, setExpanded] = useState(collapsible ? defaultExpanded : true);
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingBillId, setEditingBillId] = useState<string | null>(null);
   const [newIcon, setNewIcon] = useState('droplet');
@@ -163,40 +168,86 @@ export const MonthlyBillsBreakdownCard: React.FC<
         { backgroundColor: shade.card, borderColor: shade.border },
       ]}
     >
-      {/* Header with Live Total */}
+      {/* Header with Live Total & Optional Collapse Trigger */}
       <View style={styles.headerRow}>
-        <View style={{ flex: 1 }}>
+        <ScalePressable
+          disabled={!collapsible}
+          onPress={() => {
+            triggerLightHaptic();
+            setExpanded((v) => !v);
+          }}
+          style={{ flex: 1 }}
+        >
           <Text style={[styles.title, { color: shade.text }]}>
-            Monthly fixed bills
+            Monthly fixed bills ({bills.length})
           </Text>
           <Text style={[styles.subtitle, { color: shade.muted }]}>
-            Tap any amount to edit.
+            {collapsible
+              ? `${
+                  enableTracking ? `${paidCount}/${bills.length} paid • ` : ''
+                }${privacyMode ? '₱••••' : `₱${totalBills.toLocaleString()}`}/mo`
+              : 'Tap any amount to edit.'}
           </Text>
-        </View>
+        </ScalePressable>
 
         <View style={styles.headerPillsWrap}>
-          {enableTracking && bills.length > 0 && (
-            <View
-              style={[styles.paidCountPill, { backgroundColor: shade.positiveSoft }]}
-            >
-              <Text style={[styles.paidCountText, { color: shade.positive }]}>
-                {paidCount}/{bills.length} paid
-              </Text>
-            </View>
+          {collapsible ? (
+            <>
+              <ScalePressable
+                onPress={openAddBillModal}
+                style={[styles.customToggle, { backgroundColor: shade.surface }]}
+              >
+                <AppIcon name="plus" size={12} color={shade.dopamine} />
+                <Text
+                  style={[styles.customToggleText, { color: shade.dopamine }]}
+                >
+                  Add
+                </Text>
+              </ScalePressable>
+              <ScalePressable
+                onPress={() => {
+                  triggerLightHaptic();
+                  setExpanded((v) => !v);
+                }}
+                hitSlop={8}
+              >
+                <AppIcon
+                  name={expanded ? 'chevron-down' : 'chevron-right'}
+                  size={18}
+                  color={shade.muted}
+                />
+              </ScalePressable>
+            </>
+          ) : (
+            <>
+              {enableTracking && bills.length > 0 && (
+                <View
+                  style={[
+                    styles.paidCountPill,
+                    { backgroundColor: shade.positiveSoft },
+                  ]}
+                >
+                  <Text style={[styles.paidCountText, { color: shade.positive }]}>
+                    {paidCount}/{bills.length} paid
+                  </Text>
+                </View>
+              )}
+              <PopValueText valueTrigger={totalBills}>
+                <View style={[styles.totalPill, { backgroundColor: shade.surface }]}>
+                  <Text style={[styles.totalText, { color: shade.accent }]}>
+                    Total:{' '}
+                    {privacyMode ? '₱••••' : `₱${totalBills.toLocaleString()}`}
+                  </Text>
+                </View>
+              </PopValueText>
+            </>
           )}
-          <PopValueText valueTrigger={totalBills}>
-            <View style={[styles.totalPill, { backgroundColor: shade.surface }]}>
-              <Text style={[styles.totalText, { color: shade.accent }]}>
-                Total:{' '}
-                {privacyMode ? '₱••••' : `₱${totalBills.toLocaleString()}`}
-              </Text>
-            </View>
-          </PopValueText>
         </View>
       </View>
 
       {/* Individual Bill Rows */}
-      <View style={styles.billList}>
+      {expanded && (
+        <View style={styles.billList}>
         {bills.length === 0 ? (
           <View style={[styles.emptyRow, { backgroundColor: shade.bg }]}>
             <Text style={[styles.emptyText, { color: shade.muted }]}>
@@ -380,42 +431,45 @@ export const MonthlyBillsBreakdownCard: React.FC<
             );
           })
         )}
-      </View>
-
-      {/* Quick Presets + Custom Bill Modal Trigger */}
-      <View style={styles.presetSection}>
-        <View style={styles.headerRow}>
-          <Text style={[styles.presetLabel, { color: shade.muted }]}>
-            QUICK ADD BILLS
-          </Text>
-          <ScalePressable
-            onPress={openAddBillModal}
-            style={[styles.customToggle, { backgroundColor: shade.surface }]}
-          >
-            <AppIcon name="plus" size={12} color={shade.dopamine} />
-            <Text style={[styles.customToggleText, { color: shade.dopamine }]}>
-              Custom Bill
-            </Text>
-          </ScalePressable>
         </View>
+      )}
 
-        <View style={styles.presetChips}>
-          {QUICK_BILL_PRESETS.map((preset) => (
+      {/* Quick Presets + Custom Bill Modal Trigger (kept in Onboarding; hidden in compact Setup) */}
+      {expanded && !collapsible && (
+        <View style={styles.presetSection}>
+          <View style={styles.headerRow}>
+            <Text style={[styles.presetLabel, { color: shade.muted }]}>
+              QUICK ADD BILLS
+            </Text>
             <ScalePressable
-              key={preset.name}
-              onPress={() =>
-                onAddBill(preset.name, preset.icon, preset.amount)
-              }
-              style={[styles.presetChip, { backgroundColor: shade.surface }]}
+              onPress={openAddBillModal}
+              style={[styles.customToggle, { backgroundColor: shade.surface }]}
             >
-              <AppIcon name={preset.icon} size={12} color={shade.text} />
-              <Text style={[styles.presetChipText, { color: shade.text }]}>
-                {preset.name} ₱{preset.amount.toLocaleString()}
+              <AppIcon name="plus" size={12} color={shade.dopamine} />
+              <Text style={[styles.customToggleText, { color: shade.dopamine }]}>
+                Custom Bill
               </Text>
             </ScalePressable>
-          ))}
+          </View>
+
+          <View style={styles.presetChips}>
+            {QUICK_BILL_PRESETS.map((preset) => (
+              <ScalePressable
+                key={preset.name}
+                onPress={() =>
+                  onAddBill(preset.name, preset.icon, preset.amount)
+                }
+                style={[styles.presetChip, { backgroundColor: shade.surface }]}
+              >
+                <AppIcon name={preset.icon} size={12} color={shade.text} />
+                <Text style={[styles.presetChipText, { color: shade.text }]}>
+                  {preset.name} ₱{preset.amount.toLocaleString()}
+                </Text>
+              </ScalePressable>
+            ))}
+          </View>
         </View>
-      </View>
+      )}
 
       {/* Clean Modal for Adding or Editing a Bill */}
       <FormModal
@@ -433,6 +487,33 @@ export const MonthlyBillsBreakdownCard: React.FC<
           setShowAddForm(false);
         }}
       >
+        {!editingBillId && collapsible && (
+          <View style={{ gap: 6 }}>
+            <Text style={[styles.modalLabel, { color: shade.muted }]}>
+              Quick Starters (tap to fill)
+            </Text>
+            <View style={styles.presetChips}>
+              {QUICK_BILL_PRESETS.map((preset) => (
+                <ScalePressable
+                  key={preset.name}
+                  onPress={() => {
+                    triggerLightHaptic();
+                    setNewName(preset.name);
+                    setNewIcon(preset.icon);
+                    setNewAmountText(formatPesoInput(String(preset.amount)));
+                    setBillFormError(null);
+                  }}
+                  style={[styles.presetChip, { backgroundColor: shade.surface }]}
+                >
+                  <AppIcon name={preset.icon} size={12} color={shade.dopamine} />
+                  <Text style={[styles.presetChipText, { color: shade.text }]}>
+                    {preset.name} ₱{preset.amount.toLocaleString()}
+                  </Text>
+                </ScalePressable>
+              ))}
+            </View>
+          </View>
+        )}
         <Text style={[styles.modalLabel, { color: shade.muted }]}>
           Pick an icon
         </Text>
@@ -632,10 +713,10 @@ export const MonthlyBillsBreakdownCard: React.FC<
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: 18,
+    borderRadius: 20,
     borderWidth: 1,
-    padding: 13,
-    gap: 11,
+    padding: 16,
+    gap: 12,
   },
   headerRow: {
     flexDirection: 'row',
@@ -644,11 +725,12 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   title: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '800',
   },
   subtitle: {
-    fontSize: 11,
+    fontSize: 12,
+    marginTop: 1,
   },
   totalPill: {
     paddingHorizontal: 10,

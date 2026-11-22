@@ -15,7 +15,6 @@ import {
 import { AppIcon, IconBadge } from '../components/AppIcon';
 import { PayBillModal } from '../components/PayBillModal';
 import { PaydayCheckInModal } from '../components/PaydayCheckInModal';
-import { SavingsCoachCard } from '../components/SavingsCoachCard';
 import { WeeklyBelt } from '../components/WeeklyBelt';
 import { useBudget } from '../context/BudgetContext';
 import { parseDateKeyLocal } from '../state/budgetMath';
@@ -31,18 +30,14 @@ import { getTransactionPresentation } from '../utils/transactionDisplay';
 
 interface TodayScreenProps {
   onOpenVault: () => void;
-  onOpenBudgetSetup: () => void;
+  onOpenBudgetSetup?: () => void;
 }
 
 /**
- * Primary home screen locked to the Velvet Dusk Luxury Metal Card aesthetic,
- * featuring the top Weekly Belt, single "Spend!" trigger (exact amount modal),
- * Dual-Bucket Savings & Treat Pass, and Selected Day's Activity feed.
+ * Calm, spacious Today screen focused on daily safe-to-spend, quick-spend
+ * envelopes, tappable Savings/Treats buckets, and recent activity.
  */
-export const TodayScreen: React.FC<TodayScreenProps> = ({
-  onOpenVault,
-  onOpenBudgetSetup,
-}) => {
+export const TodayScreen: React.FC<TodayScreenProps> = ({ onOpenVault }) => {
   const {
     shade,
     privacyMode,
@@ -57,9 +52,6 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
     todayKey,
     selectedDateKey,
     safeToSpendOnSelectedDay,
-    streakDays,
-    disciplineScore,
-    cardTier,
     treats,
     activeTreat,
     entries,
@@ -126,12 +118,11 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
       showsVerticalScrollIndicator={false}
     >
       <View style={styles.stack}>
-        {/* Top Mon-Sun Weekly Belt */}
         <FadeSlideIn delay={0} distance={10}>
           <WeeklyBelt />
         </FadeSlideIn>
 
-        {/* Dark Obsidian Hero Card */}
+        {/* Calmer Dark Obsidian Hero Card */}
         <FadeSlideIn delay={40} distance={14}>
           <View
             style={[
@@ -142,69 +133,33 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
               },
             ]}
           >
-            {/* Top Meta Row: Tier, Payday Badge & Score */}
             <View style={styles.rowBetween}>
-              <View style={styles.tierRow}>
-                <View
-                  style={[styles.tierDot, { backgroundColor: '#FFFFFF' }]}
-                />
-                <Text style={[styles.tierText, { color: shade.heroMuted }]}>
-                  {cardTier.toUpperCase()}
-                </Text>
-              </View>
+              <Text style={[styles.balanceLabel, { color: shade.heroMuted }]}>
+                {isTodaySelected
+                  ? 'Safe to Spend Today'
+                  : `Safe to Spend (${selectedDateKey})`}
+              </Text>
 
-              <View style={styles.rightPills}>
-                <ScalePressable
-                  onPress={() => {
-                    triggerLightHaptic();
-                    setShowPaydayModal(true);
-                  }}
-                  accessibilityLabel="Open Payday Check-In"
-                  hitSlop={4}
-                  style={[
-                    styles.paydayPill,
-                    { backgroundColor: shade.heroSurface },
-                  ]}
-                >
-                  <AppIcon name="calendar" size={11} color="#4ADE80" />
-                  <Text style={[styles.paydayText, { color: '#4ADE80' }]}>
-                    {paydayLabel}
-                  </Text>
-                </ScalePressable>
-                <PopValueText valueTrigger={disciplineScore}>
-                  <View
-                    style={[
-                      styles.scoreBadge,
-                      { backgroundColor: shade.heroSurface },
-                    ]}
-                  >
-                    <Text style={[styles.scoreText, { color: shade.heroMuted }]}>
-                      SCORE{' '}
-                      <Text style={{ color: shade.heroText, fontWeight: '800' }}>
-                        {disciplineScore}
-                      </Text>
-                    </Text>
-                  </View>
-                </PopValueText>
-              </View>
+              <ScalePressable
+                onPress={() => {
+                  triggerLightHaptic();
+                  setShowPaydayModal(true);
+                }}
+                accessibilityLabel="Open Payday Check-In"
+                hitSlop={4}
+                style={[
+                  styles.paydayPill,
+                  { backgroundColor: shade.heroSurface },
+                ]}
+              >
+                <AppIcon name="calendar" size={12} color="#4ADE80" />
+                <Text style={[styles.paydayText, { color: '#4ADE80' }]}>
+                  {paydayLabel}
+                </Text>
+              </ScalePressable>
             </View>
 
-            {/* Balance Block */}
             <View style={styles.balanceBlock}>
-              <View style={styles.rowBetween}>
-                <Text style={[styles.balanceLabel, { color: shade.heroMuted }]}>
-                  {isTodaySelected
-                    ? 'Safe to Spend Today'
-                    : `Safe to Spend (${selectedDateKey})`}
-                </Text>
-                <View style={styles.streakInlineRow}>
-                  <AppIcon name="zap" size={12} color="#A5B4FC" />
-                  <Text style={[styles.streakInline, { color: '#A5B4FC' }]}>
-                    {streakDays}d streak
-                  </Text>
-                </View>
-              </View>
-
               <PopValueText valueTrigger={safeToSpendOnSelectedDay}>
                 <AnimatedCounter
                   value={Math.max(0, safeToSpendOnSelectedDay)}
@@ -217,34 +172,18 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
                 />
               </PopValueText>
 
-              <View style={styles.rowBetween}>
-                <Text style={[styles.subBalance, { color: shade.heroMuted }]}>
-                  {formatVisiblePeso(baseDailyAllowance)} base
-                  {isTodaySelected && rolloverBalance > 0
-                    ? ` • +${formatVisiblePeso(rolloverBalance)} rollover`
-                    : ''}
-                </Text>
-                <ScalePressable
-                  onPress={onOpenBudgetSetup}
-                  style={[
-                    styles.editBudgetChip,
-                    { backgroundColor: shade.heroSurface },
-                  ]}
-                >
-                  <Text
-                    style={[styles.editBudgetText, { color: shade.heroText }]}
-                  >
-                    Edit Budget
-                  </Text>
-                </ScalePressable>
-              </View>
+              <Text style={[styles.subBalance, { color: shade.heroMuted }]}>
+                {formatVisiblePeso(baseDailyAllowance)} base
+                {isTodaySelected && rolloverBalance > 0
+                  ? ` • +${formatVisiblePeso(rolloverBalance)} rollover`
+                  : ''}
+              </Text>
             </View>
 
-            {/* Single Primary "Spend!" Button + End Day & Save */}
             <View style={styles.primaryActionsRow}>
               <ScalePressable
                 onPress={() => openModal('spend')}
-                scaleTo={0.95}
+                scaleTo={0.96}
                 style={[styles.spendPrimaryBtn, { backgroundColor: '#FFFFFF' }]}
               >
                 <Text style={[styles.spendPrimaryText, { color: '#141519' }]}>
@@ -254,7 +193,7 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
 
               <ScalePressable
                 onPress={bankTodaySurplus}
-                scaleTo={0.95}
+                scaleTo={0.96}
                 style={[
                   styles.bankBtn,
                   {
@@ -277,7 +216,7 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
           </View>
         </FadeSlideIn>
 
-        {/* Payday Check-In Prompt Banner */}
+        {/* Payday Check-In Reminder */}
         {isPaydayPromptVisible && (
           <FadeSlideIn delay={60} distance={10}>
             <View
@@ -289,10 +228,10 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
               <View style={styles.paydayBannerLeft}>
                 <IconBadge
                   name="dollar-sign"
-                  size={15}
+                  size={16}
                   color={shade.positive}
                   bg={shade.positiveSoft}
-                  boxSize={34}
+                  boxSize={38}
                 />
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.paydayBannerTitle, { color: shade.text }]}>
@@ -326,18 +265,98 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
                     { backgroundColor: shade.surface },
                   ]}
                 >
-                  <AppIcon name="x" size={13} color={shade.muted} />
+                  <AppIcon name="x" size={14} color={shade.muted} />
                 </ScalePressable>
               </View>
             </View>
           </FadeSlideIn>
         )}
 
-        {/* Dual-Bucket Row: Pure White Elevated Cards */}
-        <FadeSlideIn delay={80} distance={14}>
+        {/* Spacious Horizontal Quick-Spend Envelopes Strip */}
+        {envelopes.length > 0 && (
+          <FadeSlideIn delay={75} distance={12}>
+            <View style={styles.sectionBlock}>
+              <View style={styles.rowBetween}>
+                <Text style={[styles.sectionKicker, { color: shade.muted }]}>
+                  SPENDING ENVELOPES
+                </Text>
+                <Text style={[styles.sectionSubHint, { color: shade.muted }]}>
+                  Tap to spend
+                </Text>
+              </View>
+
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.envStripScroll}
+              >
+                {envelopes.map((env) => {
+                  const pct =
+                    env.amountPerCycle > 0
+                      ? Math.min(
+                          100,
+                          Math.max(
+                            0,
+                            Math.round((env.balance / env.amountPerCycle) * 100)
+                          )
+                        )
+                      : 0;
+                  return (
+                    <ScalePressable
+                      key={env.id}
+                      onPress={() => openModal('spend', env.id)}
+                      style={[
+                        styles.envPillCard,
+                        {
+                          backgroundColor: shade.card,
+                          borderColor: shade.border,
+                        },
+                      ]}
+                    >
+                      <View style={styles.envCardTop}>
+                        <IconBadge
+                          name={env.icon}
+                          size={15}
+                          color={shade.dopamine}
+                          bg={shade.dopamineSoft}
+                          boxSize={32}
+                        />
+                        <View style={{ flex: 1, minWidth: 0 }}>
+                          <Text
+                            numberOfLines={1}
+                            style={[styles.envCardName, { color: shade.text }]}
+                          >
+                            {env.name}
+                          </Text>
+                          <Text
+                            style={[
+                              styles.envCardBal,
+                              { color: shade.dopamine },
+                            ]}
+                          >
+                            {formatVisiblePeso(env.balance)} left
+                          </Text>
+                        </View>
+                      </View>
+                      <AnimatedProgressBar
+                        percentage={pct}
+                        trackColor={shade.surface}
+                        fillColor={shade.dopamine}
+                        height={4}
+                      />
+                    </ScalePressable>
+                  );
+                })}
+              </ScrollView>
+            </View>
+          </FadeSlideIn>
+        )}
+
+        {/* Spacious Tappable Dual-Bucket Cards (No Stacked Extra Buttons) */}
+        <FadeSlideIn delay={90} distance={14}>
           <View style={styles.dualRow}>
-            {/* Bucket 1: Real Monthly Savings Jar */}
-            <View
+            <ScalePressable
+              onPress={() => openModal('save')}
               style={[
                 styles.bucketCard,
                 { backgroundColor: shade.card, borderColor: shade.border },
@@ -354,7 +373,7 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
               <Text style={[styles.bucketValue, { color: shade.text }]}>
                 {formatVisiblePeso(monthlySaved)}{' '}
                 <Text
-                  style={{ fontSize: 11, color: shade.muted, fontWeight: '600' }}
+                  style={{ fontSize: 12, color: shade.muted, fontWeight: '600' }}
                 >
                   / {formatVisiblePeso(settings.monthlySavingsGoal)}
                 </Text>
@@ -365,212 +384,94 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
                 fillColor={shade.positive}
                 height={7}
               />
-              <ScalePressable
-                onPress={() => openModal('save')}
-                style={[
-                  styles.bucketBtn,
-                  { backgroundColor: shade.positiveSoft },
-                ]}
-              >
-                <Text style={[styles.bucketBtnText, { color: shade.positive }]}>
-                  + Save to Jar
-                </Text>
-              </ScalePressable>
-            </View>
+              <Text style={[styles.bucketTapHint, { color: shade.positive }]}>
+                + Save to Jar
+              </Text>
+            </ScalePressable>
 
-            {/* Bucket 2: Treat Wishlist (0 to 3 Locked Treats) */}
-            <View
+            <ScalePressable
+              onPress={() =>
+                treatReady && activeTreat
+                  ? claimTreat(activeTreat.id)
+                  : activeTreat
+                  ? openModal('treat')
+                  : onOpenVault()
+              }
               style={[
                 styles.bucketCard,
                 { backgroundColor: shade.card, borderColor: shade.border },
               ]}
             >
-              <ScalePressable onPress={onOpenVault}>
-                <View style={styles.rowBetween}>
-                  <Text style={[styles.bucketKicker, { color: shade.dopamine }]}>
-                    TREATS ({treats.length}/3)
-                  </Text>
+              <View style={styles.rowBetween}>
+                <Text style={[styles.bucketKicker, { color: shade.dopamine }]}>
+                  TREAT ({treats.length}/3)
+                </Text>
+                <ScalePressable onPress={onOpenVault} hitSlop={8}>
                   <Text style={[styles.bucketPct, { color: shade.dopamine }]}>
                     {activeTreat ? `${treatPct}% ›` : 'Open ›'}
                   </Text>
-                </View>
-              </ScalePressable>
+                </ScalePressable>
+              </View>
 
               {activeTreat ? (
                 <>
-                  <View style={styles.treatValRow}>
-                    <AppIcon
-                      name={activeTreat.icon}
-                      size={14}
-                      color={shade.dopamine}
-                    />
+                  <Text
+                    numberOfLines={1}
+                    style={[styles.bucketValue, { color: shade.text }]}
+                  >
+                    {formatVisiblePeso(activeTreat.funded)}{' '}
                     <Text
-                      numberOfLines={1}
-                      style={[styles.bucketValue, { color: shade.text, flex: 1 }]}
+                      style={{
+                        fontSize: 12,
+                        color: shade.muted,
+                        fontWeight: '600',
+                      }}
                     >
-                      {formatVisiblePeso(activeTreat.funded)}{' '}
-                      <Text
-                        style={{
-                          fontSize: 11,
-                          color: shade.muted,
-                          fontWeight: '600',
-                        }}
-                      >
-                        / {formatVisiblePeso(activeTreat.target)}
-                      </Text>
+                      / {formatVisiblePeso(activeTreat.target)}
                     </Text>
-                  </View>
+                  </Text>
                   <AnimatedProgressBar
                     percentage={treatPct}
                     trackColor={shade.surface}
                     fillColor={shade.dopamine}
                     height={7}
                   />
+                  <Text
+                    numberOfLines={1}
+                    style={[styles.bucketTapHint, { color: shade.dopamine }]}
+                  >
+                    {treatReady
+                      ? `Claim ${activeTreat.name}`
+                      : `+ Fund ${activeTreat.name}`}
+                  </Text>
                 </>
               ) : (
-                <Text style={[styles.emptyTreatVal, { color: shade.muted }]}>
-                  0 of 3 added
-                </Text>
+                <>
+                  <Text style={[styles.emptyTreatVal, { color: shade.muted }]}>
+                    No treats yet
+                  </Text>
+                  <Text
+                    style={[styles.bucketTapHint, { color: shade.dopamine }]}
+                  >
+                    + Add Treat Goal
+                  </Text>
+                </>
               )}
-
-              {treatReady && activeTreat ? (
-                <ScalePressable
-                  onPress={() => claimTreat(activeTreat.id)}
-                  style={[styles.bucketBtn, { backgroundColor: shade.dopamine }]}
-                >
-                  <Text style={[styles.bucketBtnText, { color: '#FFFFFF' }]}>
-                    Claim Treat
-                  </Text>
-                </ScalePressable>
-              ) : activeTreat ? (
-                <ScalePressable
-                  onPress={() => openModal('treat')}
-                  style={[
-                    styles.bucketBtn,
-                    { backgroundColor: shade.dopamineSoft },
-                  ]}
-                >
-                  <Text style={[styles.bucketBtnText, { color: shade.dopamine }]}>
-                    + Fund Treat
-                  </Text>
-                </ScalePressable>
-              ) : (
-                <ScalePressable
-                  onPress={onOpenVault}
-                  style={[
-                    styles.bucketBtn,
-                    { backgroundColor: shade.dopamineSoft },
-                  ]}
-                >
-                  <Text style={[styles.bucketBtnText, { color: shade.dopamine }]}>
-                    + Add Treat
-                  </Text>
-                </ScalePressable>
-              )}
-            </View>
+            </ScalePressable>
           </View>
         </FadeSlideIn>
 
-        {/* Guilt-Free Spending Envelopes Card */}
-        {envelopes.length > 0 && (
-          <FadeSlideIn delay={90} distance={14}>
-            <View
-              style={[
-                styles.billsDueCard,
-                { backgroundColor: shade.card, borderColor: shade.border },
-              ]}
-            >
-              <View style={styles.rowBetween}>
-                <Text style={[styles.microHint, { color: shade.dopamine }]}>
-                  SPENDING ENVELOPES
-                </Text>
-                <Text style={[styles.envelopeBadgeText, { color: shade.muted }]}>
-                  Guilt-free • budget intact
-                </Text>
-              </View>
-
-              <View style={{ gap: 8 }}>
-                {envelopes.map((env) => {
-                  const pct =
-                    env.amountPerCycle > 0
-                      ? Math.min(
-                          100,
-                          Math.max(
-                            0,
-                            Math.round((env.balance / env.amountPerCycle) * 100)
-                          )
-                        )
-                      : 0;
-                  return (
-                    <View
-                      key={env.id}
-                      style={[
-                        styles.envelopeRowCard,
-                        { backgroundColor: shade.surface },
-                      ]}
-                    >
-                      <View style={styles.rowBetween}>
-                        <View style={styles.activityLeftRow}>
-                          <IconBadge
-                            name={env.icon}
-                            size={13}
-                            color={shade.dopamine}
-                            bg={shade.dopamineSoft}
-                            boxSize={30}
-                          />
-                          <View style={{ flex: 1 }}>
-                            <Text
-                              numberOfLines={1}
-                              style={[styles.activityLabel, { color: shade.text }]}
-                            >
-                              {env.name}
-                            </Text>
-                            <Text
-                              style={[styles.sourceSub, { color: shade.muted }]}
-                            >
-                              {formatVisiblePeso(env.balance)} /{' '}
-                              {formatVisiblePeso(env.amountPerCycle)} •{' '}
-                              {env.cadence === 'per_payday' ? 'cutoff' : 'mo'}
-                            </Text>
-                          </View>
-                        </View>
-
-                        <ScalePressable
-                          onPress={() => openModal('spend', env.id)}
-                          style={[
-                            styles.envSpendBtn,
-                            { backgroundColor: shade.dopamine },
-                          ]}
-                        >
-                          <Text style={styles.envSpendBtnText}>Spend</Text>
-                        </ScalePressable>
-                      </View>
-
-                      <AnimatedProgressBar
-                        percentage={pct}
-                        trackColor={shade.card}
-                        fillColor={shade.dopamine}
-                        height={5}
-                      />
-                    </View>
-                  );
-                })}
-              </View>
-            </View>
-          </FadeSlideIn>
-        )}
-
-        {/* Upcoming Bills Due Soon Card */}
+        {/* Upcoming Bills Due Soon */}
         {upcomingUnpaidBills.length > 0 && (
-          <FadeSlideIn delay={95} distance={14}>
+          <FadeSlideIn delay={105} distance={14}>
             <View
               style={[
-                styles.billsDueCard,
+                styles.sectionCard,
                 { backgroundColor: shade.card, borderColor: shade.border },
               ]}
             >
               <View style={styles.rowBetween}>
-                <Text style={[styles.microHint, { color: shade.muted }]}>
+                <Text style={[styles.sectionKicker, { color: shade.muted }]}>
                   BILLS DUE SOON
                 </Text>
                 <Text style={[styles.billsDueCount, { color: shade.warning }]}>
@@ -578,7 +479,7 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
                 </Text>
               </View>
 
-              <View style={{ gap: 7 }}>
+              <View style={{ gap: 8 }}>
                 {upcomingUnpaidBills.map(({ bill, daysLeft }) => (
                   <View
                     key={bill.id}
@@ -587,24 +488,24 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
                       { backgroundColor: shade.surface },
                     ]}
                   >
-                    <View style={styles.activityLeftRow}>
+                    <View style={styles.billLeftRow}>
                       <IconBadge
                         name={bill.icon}
-                        size={13}
+                        size={14}
                         color={daysLeft <= 1 ? shade.warning : shade.text}
                         bg={daysLeft <= 1 ? shade.warningSoft : shade.card}
-                        boxSize={30}
+                        boxSize={34}
                       />
-                      <View style={{ flex: 1 }}>
+                      <View style={{ flex: 1, minWidth: 0 }}>
                         <Text
                           numberOfLines={1}
-                          style={[styles.activityLabel, { color: shade.text }]}
+                          style={[styles.rowTitle, { color: shade.text }]}
                         >
                           {bill.name}
                         </Text>
                         <Text
                           style={[
-                            styles.sourceSub,
+                            styles.rowSub,
                             {
                               color:
                                 daysLeft <= 1 ? shade.warning : shade.muted,
@@ -620,8 +521,8 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
                       </View>
                     </View>
 
-                    <View style={styles.activityRight}>
-                      <Text style={[styles.activityDelta, { color: shade.text }]}>
+                    <View style={styles.billRightRow}>
+                      <Text style={[styles.rowDelta, { color: shade.text }]}>
                         {formatVisiblePeso(bill.amount)}
                       </Text>
                       <ScalePressable
@@ -651,28 +552,23 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
           </FadeSlideIn>
         )}
 
-        {/* Smart Personalized Savings Coach */}
-        <FadeSlideIn delay={110} distance={14}>
-          <SavingsCoachCard />
-        </FadeSlideIn>
-
-        {/* Selected Day's Activity Strip */}
+        {/* Selected Day's Activity (Spacious 4-Row Cap + View All Modal) */}
         <FadeSlideIn delay={120} distance={14}>
           <View
             style={[
-              styles.activityCard,
+              styles.sectionCard,
               { backgroundColor: shade.card, borderColor: shade.border },
             ]}
           >
             <View style={styles.rowBetween}>
-              <Text style={[styles.microHint, { color: shade.muted }]}>
+              <Text style={[styles.sectionKicker, { color: shade.muted }]}>
                 {isTodaySelected
                   ? "TODAY'S ACTIVITY"
                   : `ACTIVITY (${selectedDateKey})`}
               </Text>
               <View style={styles.activityHeaderRight}>
-                <Text style={[styles.microHint, { color: shade.accent }]}>
-                  {selectedDayEntries.length} logged
+                <Text style={[styles.sectionSubHint, { color: shade.muted }]}>
+                  {selectedDayEntries.length} today
                 </Text>
                 {entries.length > 0 && (
                   <ScalePressable
@@ -702,12 +598,12 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
                 style={[styles.activityEmpty, { backgroundColor: shade.surface }]}
               >
                 <Text style={[styles.activityEmptyText, { color: shade.muted }]}>
-                  Nothing logged yet. Tap Spend! or + Save to Jar.
+                  Nothing logged yet. Tap Spend! or Savings Jar above.
                 </Text>
               </View>
             ) : (
-              <View style={{ gap: 6 }}>
-                {selectedDayEntries.slice(0, 8).map((entry) => {
+              <View style={{ gap: 8 }}>
+                {selectedDayEntries.slice(0, 4).map((entry) => {
                   const { deltaText, deltaColor } = getTransactionPresentation(
                     entry,
                     shade,
@@ -722,54 +618,52 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
                         { backgroundColor: shade.surface },
                       ]}
                     >
-                      <View style={styles.activityLeftRow}>
-                        <IconBadge
-                          name={entry.icon}
-                          size={13}
-                          color={deltaColor}
-                          bg={shade.card}
-                          boxSize={30}
-                        />
-                        <View style={{ flex: 1 }}>
+                      <IconBadge
+                        name={entry.icon}
+                        size={14}
+                        color={deltaColor}
+                        bg={shade.card}
+                        boxSize={34}
+                      />
+                      <View style={styles.activityContent}>
+                        <View style={styles.rowBetween}>
                           <Text
                             numberOfLines={1}
-                            style={[styles.activityLabel, { color: shade.text }]}
+                            style={[styles.rowTitle, { color: shade.text, flex: 1 }]}
                           >
                             {entry.label}
                           </Text>
-                          {entry.paymentSourceLabel ? (
-                            <Text
-                              style={[styles.sourceSub, { color: shade.muted }]}
-                            >
-                              via {entry.paymentSourceLabel}
-                            </Text>
-                          ) : null}
-                        </View>
-                      </View>
-                      <View style={styles.activityRight}>
-                        <Text
-                          style={[styles.activityDelta, { color: deltaColor }]}
-                        >
-                          {deltaText}
-                        </Text>
-                        <ScalePressable
-                          onPress={() => undoEntry(entry.id)}
-                          accessibilityLabel={`Undo ${entry.label}`}
-                          hitSlop={6}
-                          style={[
-                            styles.undoMini,
-                            { backgroundColor: shade.card },
-                          ]}
-                        >
-                          <Text
+                          <ScalePressable
+                            onPress={() => undoEntry(entry.id)}
+                            accessibilityLabel={`Undo ${entry.label}`}
+                            hitSlop={6}
                             style={[
-                              styles.undoMiniText,
-                              { color: shade.muted },
+                              styles.undoMini,
+                              { backgroundColor: shade.card },
                             ]}
                           >
-                            Undo
+                            <Text
+                              style={[styles.undoMiniText, { color: shade.muted }]}
+                            >
+                              Undo
+                            </Text>
+                          </ScalePressable>
+                        </View>
+                        <View style={styles.rowBottomWrap}>
+                          <Text
+                            numberOfLines={1}
+                            style={[styles.rowSub, { color: shade.muted }]}
+                          >
+                            {entry.paymentSourceLabel
+                              ? `via ${entry.paymentSourceLabel}`
+                              : isTodaySelected
+                              ? 'Today'
+                              : selectedDateKey}
                           </Text>
-                        </ScalePressable>
+                          <Text style={[styles.rowDelta, { color: deltaColor }]}>
+                            {deltaText}
+                          </Text>
+                        </View>
                       </View>
                     </View>
                   );
@@ -810,10 +704,13 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
 
 const styles = StyleSheet.create({
   scrollContent: {
-    paddingBottom: 36,
+    paddingBottom: 40,
   },
   stack: {
-    gap: 12,
+    gap: 15,
+  },
+  sectionBlock: {
+    gap: 8,
   },
   rowBetween: {
     flexDirection: 'row',
@@ -825,98 +722,40 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     borderWidth: 1,
     padding: 20,
-    gap: 14,
+    gap: 15,
     shadowColor: '#111318',
     shadowOpacity: 0.14,
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 8 },
     elevation: 6,
   },
-  tierRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-  },
-  tierDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-  },
-  tierText: {
-    fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 1,
-  },
-  rightPills: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
   paydayPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    gap: 5,
+    paddingHorizontal: 11,
+    paddingVertical: 6,
     borderRadius: 999,
-  },
-  streakInlineRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-  },
-  treatValRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  activityLeftRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 9,
-    flex: 1,
   },
   paydayText: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '800',
-  },
-  scoreBadge: {
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-    borderRadius: 999,
-  },
-  scoreText: {
-    fontSize: 10,
-    fontWeight: '600',
   },
   balanceBlock: {
     gap: 4,
   },
   balanceLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  streakInline: {
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: '700',
   },
   bigBalance: {
-    fontSize: 38,
+    fontSize: 42,
     fontWeight: '800',
-    letterSpacing: -0.8,
+    letterSpacing: -0.9,
   },
   subBalance: {
-    fontSize: 11,
-    fontWeight: '500',
-  },
-  editBudgetChip: {
-    paddingHorizontal: 9,
-    paddingVertical: 5,
-    borderRadius: 9,
-  },
-  editBudgetText: {
-    fontSize: 10,
-    fontWeight: '800',
+    fontSize: 13,
+    fontWeight: '600',
   },
   primaryActionsRow: {
     flexDirection: 'row',
@@ -924,16 +763,16 @@ const styles = StyleSheet.create({
     paddingTop: 2,
   },
   spendPrimaryBtn: {
-    flex: 1.35,
+    flex: 1.25,
     paddingVertical: 14,
     borderRadius: 15,
     alignItems: 'center',
     justifyContent: 'center',
   },
   spendPrimaryText: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '900',
-    letterSpacing: 0.3,
+    letterSpacing: 0.2,
   },
   bankBtn: {
     flex: 1,
@@ -943,19 +782,44 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   bankBtnText: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '800',
+  },
+  envStripScroll: {
+    gap: 10,
+    paddingVertical: 2,
+  },
+  envPillCard: {
+    minWidth: 156,
+    borderRadius: 18,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    gap: 8,
+  },
+  envCardTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+  },
+  envCardName: {
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  envCardBal: {
+    fontSize: 12,
+    fontWeight: '700',
   },
   dualRow: {
     flexDirection: 'row',
-    gap: 10,
+    gap: 12,
   },
   bucketCard: {
     flex: 1,
     borderRadius: 20,
     borderWidth: 1,
-    padding: 14,
-    gap: 9,
+    padding: 16,
+    gap: 10,
     justifyContent: 'space-between',
     shadowColor: '#111318',
     shadowOpacity: 0.04,
@@ -964,104 +828,120 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   bucketKicker: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '800',
     letterSpacing: 0.5,
   },
   bucketPct: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '800',
   },
   bucketValue: {
-    fontSize: 16,
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  bucketTapHint: {
+    fontSize: 12,
     fontWeight: '800',
   },
   emptyTreatVal: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '600',
   },
-  emptyTreatLink: {
-    paddingVertical: 6,
-    paddingHorizontal: 8,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  bucketBtn: {
-    paddingVertical: 10,
-    borderRadius: 11,
-    alignItems: 'center',
-  },
-  bucketBtnText: {
-    fontSize: 11,
-    fontWeight: '800',
-  },
-  activityCard: {
+  sectionCard: {
     borderRadius: 20,
     borderWidth: 1,
-    padding: 15,
-    gap: 9,
+    padding: 16,
+    gap: 12,
     shadowColor: '#111318',
     shadowOpacity: 0.04,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 3 },
     elevation: 2,
   },
-  microHint: {
-    fontSize: 10,
+  sectionKicker: {
+    fontSize: 11,
     fontWeight: '800',
-    letterSpacing: 0.6,
+    letterSpacing: 0.8,
+  },
+  sectionSubHint: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  activityHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  viewAllChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 9,
+    borderWidth: 1,
+  },
+  viewAllText: {
+    fontSize: 11,
+    fontWeight: '800',
   },
   activityEmpty: {
-    borderRadius: 12,
-    padding: 12,
+    borderRadius: 14,
+    padding: 16,
   },
   activityEmptyText: {
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: '600',
     textAlign: 'center',
-    lineHeight: 16,
+    lineHeight: 19,
   },
   activityRow: {
-    borderRadius: 12,
-    paddingHorizontal: 11,
-    paddingVertical: 9,
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  activityContent: {
+    flex: 1,
+    minWidth: 0,
+    gap: 4,
+  },
+  rowBottomWrap: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 8,
+    flexWrap: 'wrap',
+    gap: 6,
   },
-  activityLabel: {
-    fontSize: 12,
+  rowTitle: {
+    fontSize: 13,
     fontWeight: '700',
+    minWidth: 0,
   },
-  sourceSub: {
-    fontSize: 10,
+  rowSub: {
+    fontSize: 11,
     fontWeight: '600',
-    marginTop: 1,
+    flexShrink: 1,
   },
-  activityRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  activityDelta: {
-    fontSize: 12,
+  rowDelta: {
+    fontSize: 13,
     fontWeight: '800',
+    flexShrink: 0,
   },
   undoMini: {
-    paddingHorizontal: 7,
+    paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: 7,
+    borderRadius: 8,
   },
   undoMiniText: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '700',
   },
   paydayBanner: {
-    borderRadius: 18,
+    borderRadius: 20,
     borderWidth: 1.2,
-    paddingHorizontal: 13,
-    paddingVertical: 11,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -1070,104 +950,71 @@ const styles = StyleSheet.create({
   paydayBannerLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 12,
     flex: 1,
   },
   paydayBannerTitle: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '800',
   },
   paydayBannerSub: {
-    fontSize: 11,
+    fontSize: 12,
+    marginTop: 1,
   },
   paydayBannerActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 8,
   },
   paydayCheckInBtn: {
-    paddingHorizontal: 11,
-    paddingVertical: 8,
-    borderRadius: 10,
+    paddingHorizontal: 13,
+    paddingVertical: 9,
+    borderRadius: 11,
   },
   paydayCheckInText: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '800',
     color: '#FFFFFF',
   },
   paydayDismissBtn: {
-    width: 28,
-    height: 28,
-    borderRadius: 9,
+    width: 32,
+    height: 32,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  billsDueCard: {
-    borderRadius: 20,
-    borderWidth: 1,
-    padding: 15,
-    gap: 9,
-    shadowColor: '#111318',
-    shadowOpacity: 0.04,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 2,
-  },
   billsDueCount: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '800',
   },
   billDueRow: {
-    borderRadius: 12,
-    paddingHorizontal: 11,
-    paddingVertical: 9,
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 8,
+    gap: 10,
   },
-  payMiniBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 8,
+  billLeftRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flex: 1,
+    minWidth: 0,
   },
-  payMiniText: {
-    fontSize: 11,
-    fontWeight: '800',
-  },
-  envelopeBadgeText: {
-    fontSize: 10,
-    fontWeight: '700',
-  },
-  envelopeRowCard: {
-    borderRadius: 12,
-    paddingHorizontal: 11,
-    paddingVertical: 9,
-    gap: 7,
-  },
-  envSpendBtn: {
-    paddingHorizontal: 11,
-    paddingVertical: 6,
-    borderRadius: 8,
-  },
-  envSpendBtnText: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: '#FFFFFF',
-  },
-  activityHeaderRight: {
+  billRightRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
   },
-  viewAllChip: {
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-    borderRadius: 8,
-    borderWidth: 1,
+  payMiniBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 9,
   },
-  viewAllText: {
-    fontSize: 10,
+  payMiniText: {
+    fontSize: 12,
     fontWeight: '800',
   },
 });

@@ -11,6 +11,10 @@ import {
   TransactionEntry,
   TreatVaultItem,
 } from '../types/budget';
+import {
+  mirrorLatestStateToIdb,
+  readLatestStateFromIdb,
+} from './autoSnapshots';
 import { getTodayKey, roundCurrency, safeNum, sumBills } from './budgetMath';
 import {
   DEFAULT_BILLS,
@@ -299,6 +303,28 @@ export async function readRawPersistedState(): Promise<string | null> {
   return null;
 }
 
+async function tryRecoverFromIdb(): Promise<PersistedBudgetState | null> {
+  try {
+    const idbRaw = await readLatestStateFromIdb();
+    if (!idbRaw) return null;
+    const parsed = JSON.parse(idbRaw) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return null;
+    }
+    const normalized = normalizePersistedState(
+      parsed as Partial<PersistedBudgetState>
+    );
+    try {
+      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(normalized));
+    } catch {
+      // Ignore re-heal write errors
+    }
+    return normalized;
+  } catch {
+    return null;
+  }
+}
+
 export async function loadPersistedStateWithStatus(): Promise<{
   state: PersistedBudgetState | null;
   corrupted: boolean;
@@ -307,9 +333,14 @@ export async function loadPersistedStateWithStatus(): Promise<{
     const raw =
       (await AsyncStorage.getItem(STORAGE_KEY)) ||
       (await AsyncStorage.getItem(LEGACY_STORAGE_KEY_V5));
-    if (!raw) return { state: null, corrupted: false };
+    if (!raw) {
+      const recovered = await tryRecoverFromIdb();
+      return { state: recovered, corrupted: false };
+    }
     const parsed = JSON.parse(raw) as unknown;
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      const recovered = await tryRecoverFromIdb();
+      if (recovered) return { state: recovered, corrupted: false };
       return { state: null, corrupted: true };
     }
     return {
@@ -317,6 +348,8 @@ export async function loadPersistedStateWithStatus(): Promise<{
       corrupted: false,
     };
   } catch {
+    const recovered = await tryRecoverFromIdb();
+    if (recovered) return { state: recovered, corrupted: false };
     return { state: null, corrupted: true };
   }
 }
@@ -330,7 +363,9 @@ export async function savePersistedState(
   state: PersistedBudgetState
 ): Promise<boolean> {
   try {
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    const serialized = JSON.stringify(state);
+    await AsyncStorage.setItem(STORAGE_KEY, serialized);
+    void mirrorLatestStateToIdb(serialized);
     return true;
   } catch {
     return false;

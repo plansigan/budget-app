@@ -10,6 +10,15 @@ import React, {
 } from 'react';
 import { AppState, AppStateStatus, Platform, useColorScheme } from 'react-native';
 import {
+  AUTO_SNAPSHOT_INTERVAL_MS,
+  AutoBackupSnapshot,
+  captureAutoSnapshot,
+  getLatestAutoSnapshotMeta,
+  listAutoSnapshots as listStoredAutoSnapshots,
+  requestPersistentStorageIfSupported,
+  shouldCaptureAutoSnapshot,
+} from '../state/autoSnapshots';
+import {
   computeBaseDailyAllowance,
   computeDayMetricsFromEntries,
   getBudgetedInstallmentsTotal,
@@ -249,6 +258,14 @@ interface BudgetContextValue {
   deleteSinkingFund: (id: string) => void;
   exportBackupJsonString: () => string;
   importBackupJsonString: (raw: string) => { ok: boolean; message: string };
+  lastAutoSnapshotAt?: string;
+  autoSnapshotCount: number;
+  storagePersisted: boolean;
+  listAutoSnapshots: () => Promise<AutoBackupSnapshot[]>;
+  restoreAutoSnapshot: (
+    snapshotId: string
+  ) => Promise<{ ok: boolean; message: string }>;
+  captureAutoSnapshotNow: () => Promise<boolean>;
 }
 
 const BudgetContext = createContext<BudgetContextValue | null>(null);
@@ -279,10 +296,36 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
   const [isEditingOnboarding, setIsEditingOnboarding] = useState(false);
   const [pendingMilestone, setPendingMilestone] =
     useState<MilestoneDefinition | null>(null);
+  const [lastAutoSnapshotAt, setLastAutoSnapshotAt] = useState<
+    string | undefined
+  >(undefined);
+  const [autoSnapshotCount, setAutoSnapshotCount] = useState(0);
+  const [storagePersisted, setStoragePersisted] = useState(false);
 
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingSaveRef = useRef(false);
   const lastSaveWarnRef = useRef(0);
+  const snapshotDirtyRef = useRef(false);
+  const lastAutoSnapshotMsRef = useRef(0);
+
+  const runSnapshotCapture = useCallback(
+    async (
+      snapshotState: PersistedBudgetState,
+      reason: AutoBackupSnapshot['reason']
+    ): Promise<boolean> => {
+      const captured = await captureAutoSnapshot(snapshotState, reason);
+      if (!captured) return false;
+      const parsedMs = Date.parse(captured.savedAt);
+      if (!Number.isNaN(parsedMs)) {
+        lastAutoSnapshotMsRef.current = parsedMs;
+      }
+      setLastAutoSnapshotAt(captured.savedAt);
+      const list = await listStoredAutoSnapshots();
+      setAutoSnapshotCount(list.length);
+      return true;
+    },
+    []
+  );
 
   const persistWithWarning = useCallback(
     (snapshot: PersistedBudgetState) => {
@@ -317,6 +360,18 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
 
   useEffect(() => {
     let mounted = true;
+    void requestPersistentStorageIfSupported().then((ok) => {
+      if (mounted) setStoragePersisted(ok);
+    });
+    void getLatestAutoSnapshotMeta().then((meta) => {
+      if (!mounted || !meta) return;
+      const parsedMs = Date.parse(meta.savedAt);
+      if (!Number.isNaN(parsedMs)) {
+        lastAutoSnapshotMsRef.current = parsedMs;
+      }
+      setLastAutoSnapshotAt(meta.savedAt);
+      setAutoSnapshotCount(meta.count);
+    });
     loadPersistedStateWithStatus()
       .then((res) => {
         if (!mounted) return;
@@ -324,7 +379,7 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
         setTodayKey(today);
         if (res.corrupted) {
           showToast(
-            'Saved data looked corrupted. Restore a JSON backup in Budget → Backup.',
+            'Saved data looked corrupted. Restore a JSON backup or Auto-Snapshot in Budget → Settings.',
             false
           );
         }
@@ -347,17 +402,46 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
     };
   }, [showToast]);
 
-  // Debounced persistence (350ms) with flush on background/unmount
+  // Debounced persistence (350ms) + automatic 10-minute rolling recovery snapshot
   useEffect(() => {
     if (!isHydrated) return;
     pendingSaveRef.current = true;
+    snapshotDirtyRef.current = true;
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
       saveTimerRef.current = null;
       pendingSaveRef.current = false;
-      persistWithWarning(stateRef.current);
+      const curr = stateRef.current;
+      persistWithWarning(curr);
+      if (
+        curr.hasCompletedOnboarding &&
+        shouldCaptureAutoSnapshot(lastAutoSnapshotMsRef.current, Date.now())
+      ) {
+        snapshotDirtyRef.current = false;
+        void runSnapshotCapture(curr, 'auto_interval');
+      }
     }, 350);
-  }, [state, isHydrated, persistWithWarning]);
+  }, [state, isHydrated, persistWithWarning, runSnapshotCapture]);
+
+  // Rolling 10-minute snapshot check while the app remains open
+  useEffect(() => {
+    if (!isHydrated) return;
+    const snapInterval = setInterval(() => {
+      const curr = stateRef.current;
+      if (
+        snapshotDirtyRef.current &&
+        curr.hasCompletedOnboarding &&
+        shouldCaptureAutoSnapshot(lastAutoSnapshotMsRef.current, Date.now())
+      ) {
+        snapshotDirtyRef.current = false;
+        void runSnapshotCapture(curr, 'auto_interval');
+      }
+    }, AUTO_SNAPSHOT_INTERVAL_MS);
+
+    return () => {
+      clearInterval(snapInterval);
+    };
+  }, [isHydrated, runSnapshotCapture]);
 
   useEffect(() => {
     return () => {
@@ -1205,21 +1289,29 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const resetToNewUser = useCallback(() => {
     triggerLightHaptic();
+    const curr = stateRef.current;
+    if (curr.hasCompletedOnboarding && curr.entries.length > 0) {
+      void runSnapshotCapture(curr, 'before_restore');
+    }
     const freshToday = getTodayKey();
     setPendingMilestone(null);
     dispatch({ type: 'RESET_NEW_USER', todayKey: freshToday });
     setSelectedDateKeyState(freshToday);
     showToast('✨ Reset as a new user (₱0 saved)', false);
-  }, [showToast]);
+  }, [showToast, runSnapshotCapture]);
 
   const resetDemoState = useCallback(() => {
     triggerLightHaptic();
+    const curr = stateRef.current;
+    if (curr.hasCompletedOnboarding && curr.entries.length > 0) {
+      void runSnapshotCapture(curr, 'before_restore');
+    }
     const freshToday = getTodayKey();
     setPendingMilestone(null);
     dispatch({ type: 'RESET_DEMO', todayKey: freshToday });
     setSelectedDateKeyState(freshToday);
     showToast('Loaded sample demo data', false);
-  }, [showToast]);
+  }, [showToast, runSnapshotCapture]);
 
   const togglePrivacyMode = useCallback(() => {
     triggerLightHaptic();
@@ -1609,6 +1701,11 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
         return { ok: false, message: parsedRes.error };
       }
 
+      const curr = stateRef.current;
+      if (curr.hasCompletedOnboarding && curr.entries.length > 0) {
+        void runSnapshotCapture(curr, 'before_restore');
+      }
+
       const d = parsedRes.data as Partial<PersistedBudgetState>;
       triggerCelebrationHaptic();
       setIsEditingOnboarding(false);
@@ -1618,8 +1715,38 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
       showToast('✅ Backup restored successfully!', true);
       return { ok: true, message: 'Backup restored!' };
     },
-    [showToast]
+    [showToast, runSnapshotCapture]
   );
+
+  const listAutoSnapshots = useCallback(async () => {
+    const list = await listStoredAutoSnapshots();
+    setAutoSnapshotCount(list.length);
+    if (list.length > 0) {
+      setLastAutoSnapshotAt(list[0].savedAt);
+    }
+    return list;
+  }, []);
+
+  const restoreAutoSnapshot = useCallback(
+    async (snapshotId: string): Promise<{ ok: boolean; message: string }> => {
+      const list = await listStoredAutoSnapshots();
+      const found = list.find((s) => s.id === snapshotId);
+      if (!found) {
+        return { ok: false, message: 'Recovery snapshot not found.' };
+      }
+      return importBackupJsonString(found.json);
+    },
+    [importBackupJsonString]
+  );
+
+  const captureAutoSnapshotNow = useCallback(async (): Promise<boolean> => {
+    const ok = await runSnapshotCapture(stateRef.current, 'manual');
+    if (ok) {
+      snapshotDirtyRef.current = false;
+      showToast('Recovery snapshot saved!', true);
+    }
+    return ok;
+  }, [runSnapshotCapture, showToast]);
 
   const activeTreat = useMemo(() => {
     if (state.treats.length === 0) return null;
@@ -1730,6 +1857,12 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
       deleteSinkingFund,
       exportBackupJsonString,
       importBackupJsonString,
+      lastAutoSnapshotAt,
+      autoSnapshotCount,
+      storagePersisted,
+      listAutoSnapshots,
+      restoreAutoSnapshot,
+      captureAutoSnapshotNow,
     }),
     [
       isHydrated,
@@ -1802,6 +1935,12 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
       deleteSinkingFund,
       exportBackupJsonString,
       importBackupJsonString,
+      lastAutoSnapshotAt,
+      autoSnapshotCount,
+      storagePersisted,
+      listAutoSnapshots,
+      restoreAutoSnapshot,
+      captureAutoSnapshotNow,
     ]
   );
 
