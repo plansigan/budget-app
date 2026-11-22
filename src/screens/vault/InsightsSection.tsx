@@ -68,7 +68,7 @@ export const InsightsSection: React.FC<InsightsSectionProps> = ({
       ? Math.min(
           100,
           Math.round(
-            (liquidTotal / Math.max(1, health.emergencyTarget3Mo)) * 100
+            (liquidTotal / Math.max(0.01, health.emergencyTarget3Mo)) * 100
           )
         )
       : 0;

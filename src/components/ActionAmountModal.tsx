@@ -13,7 +13,11 @@ import {
 import { useBudget } from '../context/BudgetContext';
 import { SpendCategoryKey } from '../types/budget';
 import { triggerLightHaptic } from '../utils/haptics';
-import { formatPesoInput, parsePesoInput } from '../utils/numberFormat';
+import {
+  formatPeso,
+  formatPesoInput,
+  parsePesoInput,
+} from '../utils/numberFormat';
 import { useWebKeyboardInset } from '../utils/useWebKeyboardInset';
 import { FadeSlideIn, ScalePressable } from './AnimatedPrimitives';
 import { AppIcon, SPEND_CATEGORIES } from './AppIcon';
@@ -242,7 +246,8 @@ export const ActionAmountModal: React.FC<ActionAmountModalProps> = ({
               <TextInput
                 value={amountText}
                 onChangeText={(t) => setAmountText(formatPesoInput(t))}
-                keyboardType="numeric"
+                keyboardType="decimal-pad"
+                inputMode="decimal"
                 placeholder="How much? (₱)"
                 placeholderTextColor={shade.muted}
                 autoFocus
@@ -367,7 +372,7 @@ export const ActionAmountModal: React.FC<ActionAmountModalProps> = ({
                     ]}
                   >
                     {numericAmount > activeEnvelope.balance
-                      ? `Exceeds ${activeEnvelope.name} balance by ₱${(numericAmount - activeEnvelope.balance).toLocaleString()} (still won't touch daily Safe-to-Spend).`
+                      ? `Exceeds ${activeEnvelope.name} balance by ${formatPeso(numericAmount - activeEnvelope.balance)} (still won't touch daily Safe-to-Spend).`
                       : `Guilt-free allowance • won't reduce today's Safe-to-Spend`}
                   </Text>
                 )}
@@ -672,14 +677,14 @@ export const ActionAmountModal: React.FC<ActionAmountModalProps> = ({
               >
                 {mode === 'spend'
                   ? numericAmount > 0
-                    ? `Spend ₱${numericAmount.toLocaleString()}!`
+                    ? `Spend ${formatPeso(numericAmount)}!`
                     : 'Enter Amount to Spend!'
                   : mode === 'treat'
                   ? numericAmount > 0
-                    ? `Add ₱${numericAmount.toLocaleString()} to Treat`
+                    ? `Add ${formatPeso(numericAmount)} to Treat`
                     : 'Enter Treat Amount'
                   : numericAmount > 0
-                  ? `Save ₱${numericAmount.toLocaleString()} to Jar`
+                  ? `Save ${formatPeso(numericAmount)} to Jar`
                   : 'Enter Amount to Save'}
               </Text>
             </ScalePressable>

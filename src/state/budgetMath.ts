@@ -9,7 +9,9 @@ import {
 import { formatLocalDateKey } from '../utils/transactionDisplay';
 
 export function sumBills(items: BillItem[]): number {
-  return items.reduce((acc, item) => acc + Math.max(0, item.amount), 0);
+  return roundCurrency(
+    items.reduce((acc, item) => acc + Math.max(0, item.amount), 0)
+  );
 }
 
 export function getTodayKey(fromDate: Date = new Date()): string {
@@ -48,9 +50,11 @@ export function roundCurrency(value: number): number {
 export function getBudgetedInstallmentsTotal(
   installments: InstallmentItem[]
 ): number {
-  return installments
-    .filter((item) => item.includeInBudget && item.paidMonths < item.totalMonths)
-    .reduce((sum, item) => sum + Math.max(0, item.monthlyAmount), 0);
+  return roundCurrency(
+    installments
+      .filter((item) => item.includeInBudget && item.paidMonths < item.totalMonths)
+      .reduce((sum, item) => sum + Math.max(0, item.monthlyAmount), 0)
+  );
 }
 
 export function getMonthlyEnvelopeAllocation(

@@ -315,7 +315,7 @@ export const WalletOverview: React.FC<WalletOverviewProps> = ({
                   {creditCards.map((card) => {
                     const usedPct = Math.min(
                       100,
-                      Math.round((card.used / Math.max(1, card.limit)) * 100)
+                      Math.round((card.used / Math.max(0.01, card.limit)) * 100)
                     );
                     const avail = Math.max(0, card.limit - card.used);
                     const daysToCutoff = getDaysUntilDayOfMonth(card.cutoffDay);
@@ -376,20 +376,47 @@ export const WalletOverview: React.FC<WalletOverviewProps> = ({
                           </View>
                         </View>
 
-                        <View style={styles.rowBetween}>
-                          <Text
-                            style={[styles.accountSub, { color: shade.muted }]}
+                        <View style={{ gap: 2 }}>
+                          <View
+                            style={[
+                              styles.rowBetween,
+                              { flexWrap: 'wrap', gap: 6 },
+                            ]}
                           >
-                            Used: {formatVisiblePeso(card.used)} /{' '}
-                            {formatVisiblePeso(card.limit)}
-                          </Text>
+                            <Text
+                              style={[
+                                styles.accountSub,
+                                {
+                                  color: shade.muted,
+                                  fontVariant: ['tabular-nums'],
+                                },
+                              ]}
+                            >
+                              Used {formatVisiblePeso(card.used)}
+                            </Text>
+                            <Text
+                              style={[
+                                styles.accountSub,
+                                {
+                                  color: shade.positive,
+                                  fontWeight: '800',
+                                  fontVariant: ['tabular-nums'],
+                                },
+                              ]}
+                            >
+                              {formatVisiblePeso(avail)} avail
+                            </Text>
+                          </View>
                           <Text
                             style={[
                               styles.accountSub,
-                              { color: shade.positive, fontWeight: '800' },
+                              {
+                                color: shade.muted,
+                                fontVariant: ['tabular-nums'],
+                              },
                             ]}
                           >
-                            {formatVisiblePeso(avail)} avail
+                            of {formatVisiblePeso(card.limit)} limit
                           </Text>
                         </View>
 
@@ -451,7 +478,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.9,
   },
   bigTotal: {
-    fontSize: 34,
+    fontSize: 32,
     fontWeight: '800',
     letterSpacing: -0.6,
   },
@@ -530,6 +557,7 @@ const styles = StyleSheet.create({
   rowRightCluster: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexShrink: 0,
     gap: 6,
   },
   accountName: {
@@ -543,6 +571,7 @@ const styles = StyleSheet.create({
   balanceValue: {
     fontSize: 15,
     fontWeight: '800',
+    fontVariant: ['tabular-nums'],
   },
   addToggle: {
     flexDirection: 'row',

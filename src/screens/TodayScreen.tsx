@@ -111,11 +111,16 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
     .sort((a, b) => a.daysLeft - b.daysLeft)
     .slice(0, 3);
 
-  const goal = Math.max(1, settings.monthlySavingsGoal);
+  const goal = Math.max(0.01, settings.monthlySavingsGoal);
   const savPct = Math.min(100, Math.round((monthlySaved / goal) * 100));
 
   const treatPct = activeTreat
-    ? Math.min(100, Math.round((activeTreat.funded / activeTreat.target) * 100))
+    ? Math.min(
+        100,
+        Math.round(
+          (activeTreat.funded / Math.max(0.01, activeTreat.target)) * 100
+        )
+      )
     : 0;
   const treatReady =
     Boolean(activeTreat) &&
@@ -356,6 +361,7 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
                             {env.name}
                           </Text>
                           <Text
+                            numberOfLines={1}
                             style={[
                               styles.envCardBal,
                               { color: shade.dopamine },
@@ -397,14 +403,30 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
                   {savPct}%
                 </Text>
               </View>
-              <Text style={[styles.bucketValue, { color: shade.text }]}>
-                {formatVisiblePeso(monthlySaved)}{' '}
+              <View style={{ gap: 2 }}>
                 <Text
-                  style={{ fontSize: 12, color: shade.muted, fontWeight: '600' }}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.78}
+                  style={[
+                    styles.bucketValue,
+                    { color: shade.text, fontVariant: ['tabular-nums'] },
+                  ]}
                 >
-                  / {formatVisiblePeso(settings.monthlySavingsGoal)}
+                  {formatVisiblePeso(monthlySaved)}
                 </Text>
-              </Text>
+                <Text
+                  numberOfLines={1}
+                  style={{
+                    fontSize: 11,
+                    color: shade.muted,
+                    fontWeight: '600',
+                    fontVariant: ['tabular-nums'],
+                  }}
+                >
+                  of {formatVisiblePeso(settings.monthlySavingsGoal)}
+                </Text>
+              </View>
               <AnimatedProgressBar
                 percentage={savPct}
                 trackColor={shade.surface}
@@ -442,21 +464,30 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
 
               {activeTreat ? (
                 <>
-                  <Text
-                    numberOfLines={1}
-                    style={[styles.bucketValue, { color: shade.text }]}
-                  >
-                    {formatVisiblePeso(activeTreat.funded)}{' '}
+                  <View style={{ gap: 2 }}>
                     <Text
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.78}
+                      style={[
+                        styles.bucketValue,
+                        { color: shade.text, fontVariant: ['tabular-nums'] },
+                      ]}
+                    >
+                      {formatVisiblePeso(activeTreat.funded)}
+                    </Text>
+                    <Text
+                      numberOfLines={1}
                       style={{
-                        fontSize: 12,
+                        fontSize: 11,
                         color: shade.muted,
                         fontWeight: '600',
+                        fontVariant: ['tabular-nums'],
                       }}
                     >
-                      / {formatVisiblePeso(activeTreat.target)}
+                      of {formatVisiblePeso(activeTreat.target)}
                     </Text>
-                  </Text>
+                  </View>
                   <AnimatedProgressBar
                     percentage={treatPct}
                     trackColor={shade.surface}
@@ -858,7 +889,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   bigBalance: {
-    fontSize: 42,
+    fontSize: 38,
     fontWeight: '800',
     letterSpacing: -0.9,
   },
@@ -899,7 +930,7 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
   },
   envPillCard: {
-    minWidth: 156,
+    minWidth: 174,
     borderRadius: 18,
     borderWidth: 1,
     paddingHorizontal: 14,
@@ -918,6 +949,7 @@ const styles = StyleSheet.create({
   envCardBal: {
     fontSize: 12,
     fontWeight: '700',
+    fontVariant: ['tabular-nums'],
   },
   dualRow: {
     flexDirection: 'row',
@@ -1035,6 +1067,7 @@ const styles = StyleSheet.create({
   rowDelta: {
     fontSize: 13,
     fontWeight: '800',
+    fontVariant: ['tabular-nums'],
     flexShrink: 0,
   },
   undoMini: {
@@ -1115,6 +1148,7 @@ const styles = StyleSheet.create({
   billRightRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexShrink: 0,
     gap: 8,
   },
   payMiniBtn: {

@@ -33,6 +33,7 @@ import {
   summarizeBackupJson,
 } from '../utils/backupExport';
 import { triggerLightHaptic } from '../utils/haptics';
+import { formatPeso } from '../utils/numberFormat';
 
 const THEME_OPTIONS: Array<{ mode: ThemeMode; label: string; icon: string }> = [
   { mode: 'system', label: 'System', icon: 'monitor' },
@@ -305,7 +306,7 @@ export const SetupAndStyleScreen: React.FC<SetupAndStyleScreenProps> = ({
               },
             ]}
           >
-            <View style={{ flex: 1, gap: 4 }}>
+            <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
               <Text style={[styles.formulaKicker, { color: shade.heroMuted }]}>
                 DAILY BUDGET FORMULA
               </Text>
@@ -315,7 +316,10 @@ export const SetupAndStyleScreen: React.FC<SetupAndStyleScreenProps> = ({
               </Text>
             </View>
             <PopValueText valueTrigger={baseDailyAllowance}>
-              <Text style={[styles.formulaResult, { color: '#4ADE80' }]}>
+              <Text
+                numberOfLines={1}
+                style={[styles.formulaResult, { color: '#4ADE80' }]}
+              >
                 {formatVisiblePeso(baseDailyAllowance)}/day
               </Text>
             </PopValueText>
@@ -745,8 +749,8 @@ export const SetupAndStyleScreen: React.FC<SetupAndStyleScreenProps> = ({
                   </Text>
                   <Text style={[styles.snapshotMeta, { color: shade.muted }]}>
                     {SNAPSHOT_REASON_LABEL[snap.reason]} • {snap.entriesCount}{' '}
-                    logs • {snap.accountsCount} accts • Income ₱
-                    {Math.round(snap.monthlyIncome).toLocaleString()}
+                    logs • {snap.accountsCount} accts • Income{' '}
+                    {formatPeso(snap.monthlyIncome)}
                   </Text>
                 </View>
                 <ScalePressable
@@ -845,7 +849,7 @@ export const SetupAndStyleScreen: React.FC<SetupAndStyleScreenProps> = ({
                     restorePreview.summary.exportedAt
                   ).toLocaleDateString()} • `
                 : ''}
-              Income ₱{restorePreview.summary.monthlyIncome.toLocaleString()} •{' '}
+              Income {formatPeso(restorePreview.summary.monthlyIncome)} •{' '}
               {restorePreview.summary.entriesCount} logs •{' '}
               {restorePreview.summary.banksCount +
                 restorePreview.summary.creditCardsCount}{' '}
@@ -950,8 +954,10 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   formulaResult: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '800',
+    flexShrink: 0,
+    fontVariant: ['tabular-nums'],
   },
   appearanceCard: {
     borderRadius: 20,

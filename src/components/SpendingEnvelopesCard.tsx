@@ -8,7 +8,13 @@ import {
   SpendingEnvelopeItem,
 } from '../types/budget';
 import { triggerLightHaptic } from '../utils/haptics';
-import { formatPesoInput, parsePesoInput } from '../utils/numberFormat';
+import {
+  formatPeso,
+  formatPesoDisplay,
+  formatPesoInput,
+  formatPesoNumber,
+  parsePesoInput,
+} from '../utils/numberFormat';
 import { PopValueText, ScalePressable } from './AnimatedPrimitives';
 import { AppIcon, ENVELOPE_ICON_CHOICES, IconBadge } from './AppIcon';
 import { ConfirmModal } from './ConfirmModal';
@@ -117,8 +123,7 @@ export const SpendingEnvelopesCard: React.FC<SpendingEnvelopesCardProps> = ({
   const [pendingDelete, setPendingDelete] =
     useState<SpendingEnvelopeItem | null>(null);
 
-  const mask = (amt: number) =>
-    privacyMode ? '₱••••' : `₱${Math.round(amt).toLocaleString()}`;
+  const mask = (amt: number) => formatPesoDisplay(amt, privacyMode);
 
   const totalMonthly = envelopes.reduce(
     (sum, env) => sum + getMonthlyEnvelopeAllocation(env, salaryFrequency),
@@ -143,8 +148,8 @@ export const SpendingEnvelopesCard: React.FC<SpendingEnvelopesCardProps> = ({
     setEditingEnvelope(env);
     setFormIcon(env.icon);
     setFormName(env.name);
-    setFormAmountText(formatPesoInput(String(env.amountPerCycle)));
-    setFormBalanceText(formatPesoInput(String(env.balance)));
+    setFormAmountText(formatPesoNumber(env.amountPerCycle));
+    setFormBalanceText(formatPesoNumber(env.balance));
     setFormCadence(env.cadence);
     setFormRolloverMode(env.rolloverMode);
     setFormError(null);
@@ -163,7 +168,7 @@ export const SpendingEnvelopesCard: React.FC<SpendingEnvelopesCardProps> = ({
       return;
     }
     if (parsedCycleAmt <= 0) {
-      setFormError('Please enter an amount greater than ₱0.');
+      setFormError('Please enter an amount greater than ₱0.00.');
       return;
     }
     setFormError(null);
@@ -282,14 +287,17 @@ export const SpendingEnvelopesCard: React.FC<SpendingEnvelopesCardProps> = ({
                       bg={shade.dopamineSoft}
                       boxSize={30}
                     />
-                    <View style={{ flex: 1 }}>
+                    <View style={{ flex: 1, minWidth: 0 }}>
                       <Text
                         numberOfLines={1}
                         style={[styles.envName, { color: shade.text }]}
                       >
                         {env.name}
                       </Text>
-                      <Text style={[styles.envMeta, { color: shade.muted }]}>
+                      <Text
+                        numberOfLines={1}
+                        style={[styles.envMeta, { color: shade.muted }]}
+                      >
                         {mask(env.amountPerCycle)} / {cadenceLabel} • {modeLabel}
                       </Text>
                     </View>
@@ -301,7 +309,10 @@ export const SpendingEnvelopesCard: React.FC<SpendingEnvelopesCardProps> = ({
                       { backgroundColor: shade.card, borderColor: shade.border },
                     ]}
                   >
-                    <Text style={[styles.balanceText, { color: shade.dopamine }]}>
+                    <Text
+                      numberOfLines={1}
+                      style={[styles.balanceText, { color: shade.dopamine }]}
+                    >
                       {mask(env.balance)} left
                     </Text>
                   </View>
@@ -397,7 +408,7 @@ export const SpendingEnvelopesCard: React.FC<SpendingEnvelopesCardProps> = ({
               >
                 <AppIcon name={preset.icon} size={12} color={shade.dopamine} />
                 <Text style={[styles.presetChipText, { color: shade.text }]}>
-                  {preset.name} ₱{preset.amount.toLocaleString()}
+                  {preset.name} {formatPeso(preset.amount)}
                 </Text>
               </ScalePressable>
             ))}
@@ -429,7 +440,7 @@ export const SpendingEnvelopesCard: React.FC<SpendingEnvelopesCardProps> = ({
                     triggerLightHaptic();
                     setFormName(preset.name);
                     setFormIcon(preset.icon);
-                    setFormAmountText(formatPesoInput(String(preset.amount)));
+                    setFormAmountText(formatPesoNumber(preset.amount));
                     setFormCadence(preset.cadence);
                     setFormRolloverMode(preset.rolloverMode);
                     setFormError(null);
@@ -438,7 +449,7 @@ export const SpendingEnvelopesCard: React.FC<SpendingEnvelopesCardProps> = ({
                 >
                   <AppIcon name={preset.icon} size={12} color={shade.dopamine} />
                   <Text style={[styles.presetChipText, { color: shade.text }]}>
-                    {preset.name} ₱{preset.amount.toLocaleString()}
+                    {preset.name} {formatPeso(preset.amount)}
                   </Text>
                 </ScalePressable>
               ))}
@@ -506,7 +517,8 @@ export const SpendingEnvelopesCard: React.FC<SpendingEnvelopesCardProps> = ({
               setFormAmountText(formatPesoInput(t));
               if (formError) setFormError(null);
             }}
-            keyboardType="numeric"
+            keyboardType="decimal-pad"
+            inputMode="decimal"
             placeholder={
               formCadence === 'per_payday'
                 ? 'Amount per cutoff (e.g., 7,500)'
@@ -532,7 +544,8 @@ export const SpendingEnvelopesCard: React.FC<SpendingEnvelopesCardProps> = ({
               <TextInput
                 value={formBalanceText}
                 onChangeText={(t) => setFormBalanceText(formatPesoInput(t))}
-                keyboardType="numeric"
+                keyboardType="decimal-pad"
+                inputMode="decimal"
                 placeholder="0"
                 placeholderTextColor={shade.muted}
                 style={[styles.newAmountInput, { color: shade.text }]}
@@ -750,6 +763,7 @@ const styles = StyleSheet.create({
   totalText: {
     fontSize: 12,
     fontWeight: '800',
+    fontVariant: ['tabular-nums'],
   },
   list: {
     gap: 6,
@@ -781,6 +795,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     flex: 1,
+    minWidth: 0,
   },
   envName: {
     fontSize: 13,
@@ -791,6 +806,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   balancePill: {
+    flexShrink: 0,
     paddingHorizontal: 9,
     paddingVertical: 4,
     borderRadius: 9,
@@ -799,6 +815,7 @@ const styles = StyleSheet.create({
   balanceText: {
     fontSize: 11,
     fontWeight: '800',
+    fontVariant: ['tabular-nums'],
   },
   envActionsRow: {
     flexDirection: 'row',

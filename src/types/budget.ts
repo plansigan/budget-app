@@ -257,7 +257,7 @@ export function getPaydayMatchKey(
  */
 export function getExpectedPaycheckAmount(settings: BudgetSettings): number {
   const divisor = settings.salaryFrequency === 2 ? 2 : 1;
-  return Math.round(Math.max(0, settings.monthlyIncome) / divisor);
+  return Math.round((Math.max(0, settings.monthlyIncome) / divisor) * 100) / 100;
 }
 
 /**
@@ -265,5 +265,7 @@ export function getExpectedPaycheckAmount(settings: BudgetSettings): number {
  */
 export function getExpectedPaycheckSavingsSlice(settings: BudgetSettings): number {
   const divisor = settings.salaryFrequency === 2 ? 2 : 1;
-  return Math.round(Math.max(0, settings.monthlySavingsGoal) / divisor);
+  return (
+    Math.round((Math.max(0, settings.monthlySavingsGoal) / divisor) * 100) / 100
+  );
 }

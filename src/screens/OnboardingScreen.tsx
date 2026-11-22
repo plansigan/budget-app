@@ -24,7 +24,12 @@ import {
 import { BudgetStepperRow } from '../components/BudgetStepperRow';
 import { MonthlyBillsBreakdownCard } from '../components/MonthlyBillsBreakdownCard';
 import { SalaryScheduleCard } from '../components/SalaryScheduleCard';
-import { formatPesoInput } from '../utils/numberFormat';
+import {
+  formatPeso,
+  formatPesoInput,
+  formatPesoNumber,
+  parsePesoInput,
+} from '../utils/numberFormat';
 import {
   computeBaseDailyAllowance,
   sumBills,
@@ -75,7 +80,7 @@ export const OnboardingScreen: React.FC = () => {
   const [treatTargetText, setTreatTargetText] = useState('');
 
   const [localCashText, setLocalCashText] = useState(
-    formatPesoInput(String(cashOnHand))
+    formatPesoNumber(cashOnHand)
   );
 
   useEffect(() => {
@@ -131,10 +136,8 @@ export const OnboardingScreen: React.FC = () => {
   };
 
   const handleFinish = () => {
-    const parsedCash =
-      parseInt(localCashText.replace(/[^0-9]/g, ''), 10) || 0;
-    const parsedTreatTarget =
-      parseInt(treatTargetText.replace(/[^0-9]/g, ''), 10) || 0;
+    const parsedCash = parsePesoInput(localCashText);
+    const parsedTreatTarget = parsePesoInput(treatTargetText);
 
     completeOnboarding({
       income,
@@ -155,13 +158,13 @@ export const OnboardingScreen: React.FC = () => {
   const getPraiseForStep = (currentStep: number): string => {
     switch (currentStep) {
       case 1:
-        return `Nice! ₱${income.toLocaleString()}/month logged. Great start! 👏`;
+        return `Nice! ${formatPeso(income)}/month logged. Great start! 👏`;
       case 2:
         return 'Got it! We’ll keep track of your paydays. 🗓️';
       case 3:
-        return `Awesome! ₱${totalBills.toLocaleString()} in bills set aside safely. 👍`;
+        return `Awesome! ${formatPeso(totalBills)} in bills set aside safely. 👍`;
       case 4:
-        return `Good job! Protecting ₱${savings.toLocaleString()}/month is huge. 🏦`;
+        return `Good job! Protecting ${formatPeso(savings)}/month is huge. 🏦`;
       case 5:
         return treatName.trim()
           ? `Love that goal! "${treatName.trim()}" is locked in. ✨`
@@ -402,11 +405,16 @@ export const OnboardingScreen: React.FC = () => {
                 </View>
 
                 <PopValueText valueTrigger={dailyPreview}>
-                  <Text style={[styles.heroAmount, { color: shade.text }]}>
-                    ₱
-                    {dailyPreview.toLocaleString(undefined, {
-                      maximumFractionDigits: 0,
-                    })}
+                  <Text
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.78}
+                    style={[
+                      styles.heroAmount,
+                      { color: shade.text, fontVariant: ['tabular-nums'] },
+                    ]}
+                  >
+                    {formatPeso(dailyPreview)}
                     <Text style={[styles.heroUnit, { color: shade.muted }]}>
                       {' '}
                       / day
@@ -508,7 +516,8 @@ export const OnboardingScreen: React.FC = () => {
                     onChangeText={(t) =>
                       setTreatTargetText(formatPesoInput(t))
                     }
-                    keyboardType="numeric"
+                    keyboardType="decimal-pad"
+                    inputMode="decimal"
                     placeholder="Type the price"
                     placeholderTextColor={shade.muted}
                     style={[styles.amountInput, { color: shade.text }]}
@@ -557,7 +566,8 @@ export const OnboardingScreen: React.FC = () => {
                   <TextInput
                     value={localCashText}
                     onChangeText={(t) => setLocalCashText(formatPesoInput(t))}
-                    keyboardType="numeric"
+                    keyboardType="decimal-pad"
+                    inputMode="decimal"
                     placeholder="0"
                     placeholderTextColor={shade.muted}
                     selectTextOnFocus
@@ -603,20 +613,21 @@ export const OnboardingScreen: React.FC = () => {
                 </View>
 
                 <Text
-                  style={[styles.previewBalance, { color: shade.heroText }]}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.78}
+                  style={[
+                    styles.previewBalance,
+                    { color: shade.heroText, fontVariant: ['tabular-nums'] },
+                  ]}
                 >
-                  ₱
-                  {dailyPreview.toLocaleString(undefined, {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2,
-                  })}
+                  {formatPeso(dailyPreview)}
                 </Text>
                 <Text style={[styles.previewPass, { color: '#A5B4FC' }]}>
-                  {treatName.trim() && treatTargetText
-                    ? `First Treat: ${treatName.trim()} (₱${(
-                        parseInt(treatTargetText.replace(/[^0-9]/g, ''), 10) ||
-                        0
-                      ).toLocaleString()})`
+                  {treatName.trim() && parsePesoInput(treatTargetText) > 0
+                    ? `First Treat: ${treatName.trim()} (${formatPeso(
+                        parsePesoInput(treatTargetText)
+                      )})`
                     : `0 / 3 Treats • Score ${disciplineScore}`}
                 </Text>
               </View>

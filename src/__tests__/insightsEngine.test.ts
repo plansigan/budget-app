@@ -147,8 +147,8 @@ describe('insightsEngine & transactionDisplay', () => {
     });
     expect(wrapPublic.totalSaved).toBe(10500);
     expect(wrapPublic.grade).toBe('A+');
-    expect(wrapPublic.shareText).toContain('Saved: ₱10,500');
-    expect(wrapPublic.shareText).toContain('Spent: ₱1,200');
+    expect(wrapPublic.shareText).toContain('Saved: ₱10,500.00');
+    expect(wrapPublic.shareText).toContain('Spent: ₱1,200.00');
 
     const wrapPrivate = computeMonthlyWrapUp({
       settings: {
@@ -168,8 +168,8 @@ describe('insightsEngine & transactionDisplay', () => {
       monthKey: '2026-04',
       privacyMode: true,
     });
-    expect(wrapPrivate.shareText).not.toContain('₱10,500');
-    expect(wrapPrivate.shareText).not.toContain('₱1,200');
+    expect(wrapPrivate.shareText).not.toContain('₱10,500.00');
+    expect(wrapPrivate.shareText).not.toContain('₱1,200.00');
     expect(wrapPrivate.shareText).toContain('Savings Rate:');
   });
 });

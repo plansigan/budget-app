@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { roundCurrency } from '../state/budgetMath';
 import { createNewUserState, PersistedBudgetState } from '../state/defaults';
 import { applyMidnightRollover } from '../state/rollover';
 
@@ -158,6 +159,8 @@ describe('applyMidnightRollover', () => {
     expect(res.nextState.monthlySaved).toBe(0);
     const marchArchives = res.nextState.monthlyArchives.filter((a) => a.monthKey === '2026-03');
     expect(marchArchives).toHaveLength(1);
-    expect(marchArchives[0].totalSaved).toBe(Math.round(2000 + res.vaultAdded));
+    expect(marchArchives[0].totalSaved).toBe(
+      roundCurrency(2000 + res.vaultAdded)
+    );
   });
 });

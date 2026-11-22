@@ -3,7 +3,13 @@ import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useBudget } from '../context/BudgetContext';
 import { BillItem } from '../types/budget';
 import { triggerLightHaptic } from '../utils/haptics';
-import { formatOrdinal, formatPesoInput, parsePesoInput } from '../utils/numberFormat';
+import {
+  formatOrdinal,
+  formatPeso,
+  formatPesoInput,
+  formatPesoNumber,
+  parsePesoInput,
+} from '../utils/numberFormat';
 import { ScalePressable } from './AnimatedPrimitives';
 import { AppIcon } from './AppIcon';
 import { FormModal } from './FormModal';
@@ -32,7 +38,7 @@ export const PayBillModal: React.FC<PayBillModalProps> = ({ bill, onClose }) => 
 
   useEffect(() => {
     if (bill) {
-      setAmountText(formatPesoInput(String(bill.amount)));
+      setAmountText(formatPesoNumber(bill.amount));
       setSourceId(banks.length > 0 ? banks[0].id : 'cash');
     }
   }, [bill, banks]);
@@ -68,7 +74,8 @@ export const PayBillModal: React.FC<PayBillModalProps> = ({ bill, onClose }) => 
         <TextInput
           value={amountText}
           onChangeText={(t) => setAmountText(formatPesoInput(t))}
-          keyboardType="numeric"
+          keyboardType="decimal-pad"
+          inputMode="decimal"
           placeholder="Actual amount paid"
           placeholderTextColor={shade.muted}
           autoFocus
@@ -256,7 +263,7 @@ export const PayBillModal: React.FC<PayBillModalProps> = ({ bill, onClose }) => 
         style={[styles.confirmBtn, { backgroundColor: shade.positive }]}
       >
         <Text style={styles.confirmText}>
-          Mark Paid (₱{numericAmount.toLocaleString()})
+          Mark Paid ({formatPeso(numericAmount)})
         </Text>
       </ScalePressable>
     </FormModal>
@@ -297,7 +304,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 12,
     gap: 2,
-    minWidth: 96,
+    minWidth: 114,
   },
   inlineIconTitle: {
     flexDirection: 'row',

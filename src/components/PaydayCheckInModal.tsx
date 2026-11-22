@@ -6,7 +6,11 @@ import {
   getExpectedPaycheckSavingsSlice,
 } from '../types/budget';
 import { triggerLightHaptic } from '../utils/haptics';
-import { formatPesoInput, parsePesoInput } from '../utils/numberFormat';
+import {
+  formatPesoInput,
+  formatPesoNumber,
+  parsePesoInput,
+} from '../utils/numberFormat';
 import { ScalePressable } from './AnimatedPrimitives';
 import { AppIcon } from './AppIcon';
 import { FormModal } from './FormModal';
@@ -47,8 +51,8 @@ export const PaydayCheckInModal: React.FC<PaydayCheckInModalProps> = ({
     if (!visible) return;
     const expectedPay = getExpectedPaycheckAmount(settings);
     const expectedSav = getExpectedPaycheckSavingsSlice(settings);
-    setPayText(expectedPay > 0 ? formatPesoInput(String(expectedPay)) : '');
-    setSavingsText(expectedSav > 0 ? formatPesoInput(String(expectedSav)) : '');
+    setPayText(formatPesoNumber(expectedPay));
+    setSavingsText(formatPesoNumber(expectedSav));
     setIncludeSavings(expectedSav > 0);
     setSourceId(banks.length > 0 ? banks[0].id : 'cash');
     setSelectedEnvelopeIds(
@@ -102,7 +106,8 @@ export const PaydayCheckInModal: React.FC<PaydayCheckInModalProps> = ({
         <TextInput
           value={payText}
           onChangeText={(t) => setPayText(formatPesoInput(t))}
-          keyboardType="numeric"
+          keyboardType="decimal-pad"
+          inputMode="decimal"
           placeholder="0"
           placeholderTextColor={shade.muted}
           autoFocus
@@ -249,7 +254,8 @@ export const PaydayCheckInModal: React.FC<PaydayCheckInModalProps> = ({
             <TextInput
               value={savingsText}
               onChangeText={(t) => setSavingsText(formatPesoInput(t))}
-              keyboardType="numeric"
+              keyboardType="decimal-pad"
+              inputMode="decimal"
               placeholder="0"
               placeholderTextColor={shade.muted}
               style={[styles.savingsInput, { color: shade.text }]}
@@ -386,7 +392,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 12,
     gap: 2,
-    minWidth: 96,
+    minWidth: 114,
   },
   inlineIconTitle: {
     flexDirection: 'row',

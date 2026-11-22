@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { StyleSheet, Text, TextInput, View } from 'react-native';
 import { sumBills } from '../context/BudgetContext';
 import { ThemeShade } from '../theme/palette';
@@ -6,8 +6,11 @@ import { BillItem, getDaysUntilDayOfMonth } from '../types/budget';
 import { triggerLightHaptic } from '../utils/haptics';
 import {
   formatOrdinal,
+  formatPeso,
+  formatPesoDisplay,
   formatPesoInput,
   formatPesoNumber,
+  parsePesoInput,
 } from '../utils/numberFormat';
 import { PopValueText, ScalePressable } from './AnimatedPrimitives';
 import { AppIcon, BILL_ICON_CHOICES, IconBadge } from './AppIcon';
@@ -47,6 +50,54 @@ const QUICK_BILL_PRESETS = [
   { icon: 'credit-card', name: 'Loan / CC', amount: 2000 },
   { icon: 'shield', name: 'Insurance', amount: 1500 },
 ];
+
+interface BillAmountInputProps {
+  value: number;
+  shade: ThemeShade;
+  onChange: (next: number) => void;
+}
+
+const BillAmountInput: React.FC<BillAmountInputProps> = ({
+  value,
+  shade,
+  onChange,
+}) => {
+  const [isFocused, setIsFocused] = useState(false);
+  const [draftText, setDraftText] = useState(() => formatPesoNumber(value));
+
+  useEffect(() => {
+    if (!isFocused) {
+      setDraftText(formatPesoNumber(value));
+    }
+  }, [value, isFocused]);
+
+  return (
+    <TextInput
+      value={isFocused ? draftText : formatPesoNumber(value)}
+      onChangeText={(t) => {
+        const formatted = formatPesoInput(t);
+        setDraftText(formatted);
+        onChange(Math.max(0, parsePesoInput(formatted)));
+      }}
+      onFocus={() => {
+        setIsFocused(true);
+        setDraftText(formatPesoNumber(value));
+      }}
+      onBlur={() => {
+        setIsFocused(false);
+        const parsed = Math.max(0, parsePesoInput(draftText));
+        onChange(parsed);
+        setDraftText(formatPesoNumber(parsed));
+      }}
+      keyboardType="decimal-pad"
+      inputMode="decimal"
+      placeholder="0"
+      placeholderTextColor={shade.muted}
+      selectTextOnFocus
+      style={[styles.amountInput, { color: shade.text }]}
+    />
+  );
+};
 
 /**
  * Interactive Monthly Bills Breakdown allowing users to add, edit, or remove
@@ -92,8 +143,7 @@ export const MonthlyBillsBreakdownCard: React.FC<
   const paidCount = bills.filter(
     (b) => b.lastPaidMonth === activeMonthKey
   ).length;
-  const parsedCustomAmt =
-    parseInt(newAmountText.replace(/[^0-9]/g, ''), 10) || 0;
+  const parsedCustomAmt = parsePesoInput(newAmountText);
   const isCustomBillValid = Boolean(newName.trim()) && parsedCustomAmt > 0;
 
   const parseDueDayDraft = (raw: string): number | undefined => {
@@ -102,12 +152,6 @@ export const MonthlyBillsBreakdownCard: React.FC<
     const parsed = parseInt(cleaned, 10);
     if (!Number.isFinite(parsed) || parsed < 1) return undefined;
     return Math.min(31, parsed);
-  };
-
-  const handleAmountChange = (id: string, text: string) => {
-    const cleaned = text.replace(/[^0-9]/g, '');
-    const parsed = cleaned ? parseInt(cleaned, 10) : 0;
-    onUpdateAmount(id, parsed);
   };
 
   const openAddBillModal = () => {
@@ -185,7 +229,7 @@ export const MonthlyBillsBreakdownCard: React.FC<
             {collapsible
               ? `${
                   enableTracking ? `${paidCount}/${bills.length} paid • ` : ''
-                }${privacyMode ? '₱••••' : `₱${totalBills.toLocaleString()}`}/mo`
+                }${formatPesoDisplay(totalBills, privacyMode)}/mo`
               : 'Tap any amount to edit.'}
           </Text>
         </ScalePressable>
@@ -235,8 +279,7 @@ export const MonthlyBillsBreakdownCard: React.FC<
               <PopValueText valueTrigger={totalBills}>
                 <View style={[styles.totalPill, { backgroundColor: shade.surface }]}>
                   <Text style={[styles.totalText, { color: shade.accent }]}>
-                    Total:{' '}
-                    {privacyMode ? '₱••••' : `₱${totalBills.toLocaleString()}`}
+                    Total: {formatPesoDisplay(totalBills, privacyMode)}
                   </Text>
                 </View>
               </PopValueText>
@@ -303,14 +346,10 @@ export const MonthlyBillsBreakdownCard: React.FC<
                       <Text style={[styles.pesoSign, { color: shade.accent }]}>
                         ₱
                       </Text>
-                      <TextInput
-                        value={formatPesoNumber(bill.amount)}
-                        onChangeText={(t) => handleAmountChange(bill.id, t)}
-                        keyboardType="numeric"
-                        placeholder="0"
-                        placeholderTextColor={shade.muted}
-                        selectTextOnFocus
-                        style={[styles.amountInput, { color: shade.text }]}
+                      <BillAmountInput
+                        value={bill.amount}
+                        shade={shade}
+                        onChange={(next) => onUpdateAmount(bill.id, next)}
                       />
                     </View>
 
@@ -463,7 +502,7 @@ export const MonthlyBillsBreakdownCard: React.FC<
               >
                 <AppIcon name={preset.icon} size={12} color={shade.text} />
                 <Text style={[styles.presetChipText, { color: shade.text }]}>
-                  {preset.name} ₱{preset.amount.toLocaleString()}
+                  {preset.name} {formatPeso(preset.amount)}
                 </Text>
               </ScalePressable>
             ))}
@@ -500,14 +539,14 @@ export const MonthlyBillsBreakdownCard: React.FC<
                     triggerLightHaptic();
                     setNewName(preset.name);
                     setNewIcon(preset.icon);
-                    setNewAmountText(formatPesoInput(String(preset.amount)));
+                    setNewAmountText(formatPesoNumber(preset.amount));
                     setBillFormError(null);
                   }}
                   style={[styles.presetChip, { backgroundColor: shade.surface }]}
                 >
                   <AppIcon name={preset.icon} size={12} color={shade.dopamine} />
                   <Text style={[styles.presetChipText, { color: shade.text }]}>
-                    {preset.name} ₱{preset.amount.toLocaleString()}
+                    {preset.name} {formatPeso(preset.amount)}
                   </Text>
                 </ScalePressable>
               ))}
@@ -575,7 +614,8 @@ export const MonthlyBillsBreakdownCard: React.FC<
               setNewAmountText(formatPesoInput(t));
               if (billFormError) setBillFormError(null);
             }}
-            keyboardType="numeric"
+            keyboardType="decimal-pad"
+            inputMode="decimal"
             placeholder="Monthly amount"
             placeholderTextColor={shade.muted}
             style={[styles.newAmountInput, { color: shade.text }]}
@@ -694,7 +734,7 @@ export const MonthlyBillsBreakdownCard: React.FC<
         title="Remove Monthly Bill?"
         message={
           pendingDeleteBill
-            ? `Remove "${pendingDeleteBill.name}" (₱${pendingDeleteBill.amount.toLocaleString()}/mo) from your fixed bills?`
+            ? `Remove "${pendingDeleteBill.name}" (${formatPeso(pendingDeleteBill.amount)}/mo) from your fixed bills?`
             : ''
         }
         confirmLabel="Remove"
@@ -754,6 +794,7 @@ const styles = StyleSheet.create({
   totalText: {
     fontSize: 12,
     fontWeight: '800',
+    fontVariant: ['tabular-nums'],
   },
   billList: {
     gap: 6,
@@ -829,6 +870,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     flex: 1,
+    minWidth: 0,
   },
   billName: {
     fontSize: 12,
@@ -839,6 +881,7 @@ const styles = StyleSheet.create({
   billRight: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexShrink: 0,
     gap: 6,
   },
   amountBox: {
@@ -848,7 +891,7 @@ const styles = StyleSheet.create({
     borderRadius: 9,
     paddingHorizontal: 8,
     paddingVertical: 4,
-    width: 114,
+    width: 132,
   },
   pesoSign: {
     fontSize: 12,

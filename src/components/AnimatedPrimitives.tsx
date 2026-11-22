@@ -261,7 +261,7 @@ export const AnimatedCounter: React.FC<AnimatedCounterProps> = ({
   value,
   prefix = '₱',
   suffix = '',
-  decimals = 0,
+  decimals = 2,
   masked = false,
   style,
 }) => {
@@ -269,13 +269,15 @@ export const AnimatedCounter: React.FC<AnimatedCounterProps> = ({
   const animVal = useRef(new Animated.Value(safeTarget)).current;
   const [displayValue, setDisplayValue] = useState(safeTarget);
   const formatVal = React.useCallback(
-    (v: number) =>
-      decimals > 0
-        ? v.toLocaleString(undefined, {
-            minimumFractionDigits: decimals,
-            maximumFractionDigits: decimals,
-          })
-        : Math.round(v).toLocaleString(),
+    (v: number) => {
+      const factor = 10 ** decimals;
+      const safe = Number.isFinite(v) ? Math.round(v * factor) / factor : 0;
+      const normalized = Math.abs(safe) === 0 ? 0 : safe;
+      return Math.abs(normalized).toLocaleString('en-US', {
+        minimumFractionDigits: decimals,
+        maximumFractionDigits: decimals,
+      });
+    },
     [decimals]
   );
   const lastFormattedRef = useRef<string>(formatVal(safeTarget));
@@ -318,16 +320,32 @@ export const AnimatedCounter: React.FC<AnimatedCounterProps> = ({
 
   if (masked) {
     return (
-      <Text style={[{ fontVariant: ['tabular-nums'] }, style]}>
+      <Text
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.75}
+        style={[{ fontVariant: ['tabular-nums'] }, style]}
+      >
         {prefix}••••{suffix}
       </Text>
     );
   }
 
+  const factor = 10 ** decimals;
+  const safeDisplay = Number.isFinite(displayValue)
+    ? Math.round(displayValue * factor) / factor
+    : 0;
+  const sign = safeDisplay < 0 && Math.abs(safeDisplay) > 0 ? '-' : '';
   const rounded = formatVal(displayValue);
 
   return (
-    <Text style={[{ fontVariant: ['tabular-nums'] }, style]}>
+    <Text
+      numberOfLines={1}
+      adjustsFontSizeToFit
+      minimumFontScale={0.75}
+      style={[{ fontVariant: ['tabular-nums'] }, style]}
+    >
+      {sign}
       {prefix}
       {rounded}
       {suffix}

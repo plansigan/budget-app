@@ -180,7 +180,8 @@ export const WalletModals: React.FC<WalletModalsProps> = ({
           <TextInput
             value={bankBalanceText}
             onChangeText={(t) => setBankBalanceText(formatPesoInput(t))}
-            keyboardType="numeric"
+            keyboardType="decimal-pad"
+            inputMode="decimal"
             placeholder="Current balance"
             placeholderTextColor={shade.muted}
             style={[styles.amountInput, { color: shade.text }]}
@@ -260,7 +261,8 @@ export const WalletModals: React.FC<WalletModalsProps> = ({
                 setCardLimitText(formatPesoInput(t));
                 if (cardFormError) setCardFormError(null);
               }}
-              keyboardType="numeric"
+              keyboardType="decimal-pad"
+              inputMode="decimal"
               placeholder="Credit Limit"
               placeholderTextColor={shade.muted}
               style={[styles.amountInput, { color: shade.text }]}
@@ -280,7 +282,8 @@ export const WalletModals: React.FC<WalletModalsProps> = ({
             <TextInput
               value={cardUsedText}
               onChangeText={(t) => setCardUsedText(formatPesoInput(t))}
-              keyboardType="numeric"
+              keyboardType="decimal-pad"
+              inputMode="decimal"
               placeholder="Used Balance"
               placeholderTextColor={shade.muted}
               style={[styles.amountInput, { color: shade.text }]}
@@ -412,7 +415,8 @@ export const WalletModals: React.FC<WalletModalsProps> = ({
               setInstMonthlyText(formatPesoInput(t));
               if (instFormError) setInstFormError(null);
             }}
-            keyboardType="numeric"
+            keyboardType="decimal-pad"
+            inputMode="decimal"
             placeholder="Monthly payment"
             placeholderTextColor={shade.muted}
             style={[styles.amountInput, { color: shade.text }]}

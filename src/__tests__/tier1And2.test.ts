@@ -128,7 +128,7 @@ describe('Tier 1 & Tier 2 improvements', () => {
       };
 
       const visible = getTransactionPresentation(entry, VELVET_SHADE, false);
-      expect(visible.deltaText).toBe('₱1,500');
+      expect(visible.deltaText).toBe('₱1,500.00');
       expect(visible.csvSignedAmount).toBe(0);
 
       const masked = getTransactionPresentation(entry, VELVET_SHADE, true);
@@ -420,6 +420,133 @@ describe('Tier 1 & Tier 2 improvements', () => {
       expect(envRes.totalSpent).toBe(850);
       expect(envRes.count).toBe(1);
       expect(envRes.topSlice?.key).toBe('food');
+    });
+  });
+
+  describe('Philippine Peso centavo support', () => {
+    it('supports sub-peso spends, centavo bills, and lossless 2-decimal transfers, edits, and undo', () => {
+      const base = createNewUserState('2026-11-22');
+
+      // 1. Sub-peso spend (₱0.50) from Cash (2,000 -> 1,999.50) and presentation (-₱0.50)
+      const afterSubPeso = budgetReducer(base, {
+        type: 'LOG_SPEND',
+        amount: 0.5,
+        label: 'Candy',
+        icon: 'shopping-bag',
+        paymentSourceId: 'cash',
+        category: 'food',
+        dateKey: '2026-11-22',
+        todayKey: '2026-11-22',
+      });
+      expect(afterSubPeso.cashOnHand).toBe(1999.5);
+      expect(afterSubPeso.entries[0].amount).toBe(0.5);
+      expect(
+        getTransactionPresentation(afterSubPeso.entries[0], VELVET_SHADE, false)
+          .deltaText
+      ).toBe('-₱0.50');
+
+      // 2. Spend with centavos (₱145.75) from BPI (12,000 -> 11,854.25), edit to ₱200.25, then undo back to 12,000
+      const afterBankSpend = budgetReducer(afterSubPeso, {
+        type: 'LOG_SPEND',
+        amount: 145.75,
+        label: 'GrabFood',
+        icon: 'shopping-bag',
+        paymentSourceId: 'bank-bpi',
+        category: 'food',
+        dateKey: '2026-11-22',
+        todayKey: '2026-11-22',
+      });
+      const spendId = afterBankSpend.entries[0].id;
+      expect(
+        afterBankSpend.banks.find((b) => b.id === 'bank-bpi')!.balance
+      ).toBe(11854.25);
+      expect(
+        getTransactionPresentation(
+          afterBankSpend.entries[0],
+          VELVET_SHADE,
+          false
+        ).deltaText
+      ).toBe('-₱145.75');
+
+      const afterEditSpend = budgetReducer(afterBankSpend, {
+        type: 'EDIT_ENTRY',
+        entryId: spendId,
+        amount: 200.25,
+        label: 'GrabFood + Tip',
+        category: 'food',
+        icon: 'shopping-bag',
+      });
+      expect(
+        afterEditSpend.banks.find((b) => b.id === 'bank-bpi')!.balance
+      ).toBe(11799.75);
+
+      const afterUndoSpend = budgetReducer(afterEditSpend, {
+        type: 'UNDO_ENTRY',
+        entryId: spendId,
+      });
+      expect(
+        afterUndoSpend.banks.find((b) => b.id === 'bank-bpi')!.balance
+      ).toBe(12000);
+
+      // 3. Centavo transfer (BPI -> GCash: ₱250.35)
+      const afterXfer = budgetReducer(afterUndoSpend, {
+        type: 'TRANSFER_BETWEEN_ACCOUNTS',
+        fromSourceId: 'bank-bpi',
+        toSourceId: 'bank-gcash',
+        amount: 250.35,
+        note: 'Exact split',
+        todayKey: '2026-11-22',
+      });
+      expect(afterXfer.banks.find((b) => b.id === 'bank-bpi')!.balance).toBe(
+        11749.65
+      );
+      expect(afterXfer.banks.find((b) => b.id === 'bank-gcash')!.balance).toBe(
+        3750.35
+      );
+      expect(
+        getTransactionPresentation(afterXfer.entries[0], VELVET_SHADE, false)
+          .deltaText
+      ).toBe('₱250.35');
+
+      // 4. Add/update/pay monthly bill with centavos & preserve across normalizePersistedState
+      const afterBillAdd = budgetReducer(afterXfer, {
+        type: 'ADD_BILL_ITEM',
+        name: 'Cloud Backup',
+        icon: 'zap',
+        amount: 149.99,
+      });
+      const addedBill = afterBillAdd.billItems.find(
+        (b) => b.name === 'Cloud Backup'
+      )!;
+      expect(addedBill.amount).toBe(149.99);
+
+      const afterBillUpdate = budgetReducer(afterBillAdd, {
+        type: 'UPDATE_BILL_AMOUNT',
+        billId: addedBill.id,
+        amount: 1234.56,
+      });
+      expect(
+        afterBillUpdate.billItems.find((b) => b.id === addedBill.id)!.amount
+      ).toBe(1234.56);
+
+      const afterBillPay = budgetReducer(afterBillUpdate, {
+        type: 'MARK_BILL_PAID',
+        billId: addedBill.id,
+        paymentSourceId: 'cash',
+        amountOverride: 1234.56,
+        todayKey: '2026-11-22',
+      });
+      expect(afterBillPay.cashOnHand).toBe(764.94); // 1999.50 - 1234.56
+      expect(
+        getTransactionPresentation(afterBillPay.entries[0], VELVET_SHADE, false)
+          .deltaText
+      ).toBe('-₱1,234.56');
+
+      const rehydrated = normalizePersistedState(afterBillPay);
+      expect(
+        rehydrated.billItems.find((b) => b.id === addedBill.id)!.amount
+      ).toBe(1234.56);
+      expect(rehydrated.cashOnHand).toBe(764.94);
     });
   });
 });

@@ -2,7 +2,11 @@ import React, { useEffect, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useBudget } from '../context/BudgetContext';
 import { triggerLightHaptic } from '../utils/haptics';
-import { formatPesoInput, parsePesoInput } from '../utils/numberFormat';
+import {
+  formatPeso,
+  formatPesoInput,
+  parsePesoInput,
+} from '../utils/numberFormat';
 import { ScalePressable } from './AnimatedPrimitives';
 import { AppIcon } from './AppIcon';
 import { FormModal } from './FormModal';
@@ -270,7 +274,8 @@ export const TransferModal: React.FC<TransferModalProps> = ({
         <TextInput
           value={amountText}
           onChangeText={(t) => setAmountText(formatPesoInput(t))}
-          keyboardType="numeric"
+          keyboardType="decimal-pad"
+          inputMode="decimal"
           placeholder="Enter exact amount"
           placeholderTextColor={shade.muted}
           autoFocus
@@ -322,8 +327,8 @@ export const TransferModal: React.FC<TransferModalProps> = ({
         >
           {canSubmit
             ? isCardPayment && selectedDest
-              ? `Pay ${selectedDest.label} ₱${numericAmount.toLocaleString()}`
-              : `Transfer ₱${numericAmount.toLocaleString()}`
+              ? `Pay ${selectedDest.label} ${formatPeso(numericAmount)}`
+              : `Transfer ${formatPeso(numericAmount)}`
             : 'Enter Amount to Transfer'}
         </Text>
       </ScalePressable>

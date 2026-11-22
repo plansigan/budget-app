@@ -7,6 +7,7 @@ import {
   TreatVaultItem,
   getDaysUntilDayOfMonth,
 } from '../types/budget';
+import { formatPesoDisplay } from './numberFormat';
 
 export type CoachCategory =
   | 'Budget Health'
@@ -77,8 +78,8 @@ export function computeBudgetHealth(
   const income = Math.max(0, settings.monthlyIncome);
   const bills = Math.max(0, settings.fixedBills);
   const savings = Math.max(0, settings.monthlySavingsGoal);
-  const emergencyTarget3Mo = Math.round(bills * 3);
-  const emergencyTarget6Mo = Math.round(bills * 6);
+  const emergencyTarget3Mo = Math.round(bills * 3 * 100) / 100;
+  const emergencyTarget6Mo = Math.round(bills * 6 * 100) / 100;
 
   if (income <= 0) {
     return {
@@ -90,7 +91,7 @@ export function computeBudgetHealth(
     };
   }
 
-  const safeIncome = Math.max(1, income);
+  const safeIncome = Math.max(0.01, income);
   const billsPct = Math.min(100, Math.round((bills / safeIncome) * 100));
   const savingsPct = Math.min(
     Math.max(0, 100 - billsPct),
@@ -198,7 +199,7 @@ export function generatePersonalizedTips(input: CoachStateInput): CoachTip[] {
   const tips: CoachTip[] = [];
   const health = computeBudgetHealth(input.settings);
   const peso = (amt: number) =>
-    input.privacyMode ? '₱••••' : `₱${Math.round(amt).toLocaleString()}`;
+    formatPesoDisplay(amt, Boolean(input.privacyMode));
   const liquidTotal =
     Math.max(0, input.cashOnHand) +
     input.banks.reduce((sum, b) => sum + Math.max(0, b.balance), 0);
@@ -222,7 +223,7 @@ export function generatePersonalizedTips(input: CoachStateInput): CoachTip[] {
 
   // 2. Credit card utilization warning (>= 30%)
   for (const card of input.creditCards) {
-    const safeLimit = Math.max(1, card.limit);
+    const safeLimit = Math.max(0.01, card.limit);
     const usedRatio = card.used / safeLimit;
     if (card.limit > 0 && usedRatio >= 0.3) {
       const pct = Math.round(usedRatio * 100);
@@ -263,7 +264,7 @@ export function generatePersonalizedTips(input: CoachStateInput): CoachTip[] {
 
   // 3. Daily pacing projection
   if (input.safeToSpendToday > 0) {
-    const projectedMonth = Math.round(input.safeToSpendToday * 30);
+    const projectedMonth = Math.round(input.safeToSpendToday * 30 * 100) / 100;
     tips.push({
       id: 'daily-pace-positive',
       category: 'Daily Pace',
@@ -286,7 +287,8 @@ export function generatePersonalizedTips(input: CoachStateInput): CoachTip[] {
   // 4. Budget Health (50/30/20 check)
   if (input.settings.monthlyIncome > 0) {
     if (health.savingsPct < 20) {
-      const target20 = Math.round(input.settings.monthlyIncome * 0.2);
+      const target20 =
+        Math.round(input.settings.monthlyIncome * 0.2 * 100) / 100;
       tips.push({
         id: 'health-savings-boost',
         category: 'Budget Health',
@@ -311,7 +313,7 @@ export function generatePersonalizedTips(input: CoachStateInput): CoachTip[] {
   if (health.emergencyTarget3Mo > 0) {
     const pctCovered = Math.min(
       100,
-      Math.round((liquidTotal / Math.max(1, health.emergencyTarget3Mo)) * 100)
+      Math.round((liquidTotal / Math.max(0.01, health.emergencyTarget3Mo)) * 100)
     );
     if (liquidTotal < health.emergencyTarget3Mo) {
       tips.push({
