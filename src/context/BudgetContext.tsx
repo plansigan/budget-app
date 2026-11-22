@@ -27,7 +27,11 @@ import {
   roundCurrency,
   sumBills,
 } from '../state/budgetMath';
-import { budgetReducer, canUndoEntry } from '../state/budgetReducer';
+import {
+  budgetReducer,
+  canUndoEntry,
+  isEditableEntry,
+} from '../state/budgetReducer';
 import {
   OnboardingParams,
   PersistedBudgetState,
@@ -128,6 +132,22 @@ interface BudgetContextValue {
   deleteTreat: (treatId: string) => void;
   setActiveTreat: (treatId: string) => void;
   undoEntry: (entryId: string) => void;
+  lastPaymentSourceId?: string;
+  editEntry: (
+    entryId: string,
+    updates: {
+      amount: number;
+      label: string;
+      category?: SpendCategoryKey;
+      icon?: string;
+    }
+  ) => void;
+  transferBetweenAccounts: (
+    fromSourceId: string,
+    toSourceId: string,
+    amount: number,
+    note?: string
+  ) => void;
   updateBudgetConfig: (income: number, bills: number, savings: number) => void;
   updateSalarySchedule: (
     frequency: 1 | 2,
@@ -1182,6 +1202,84 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
     [showToast]
   );
 
+  const transferBetweenAccounts = useCallback(
+    (
+      fromSourceId: string,
+      toSourceId: string,
+      amount: number,
+      note?: string
+    ) => {
+      const cleanAmount = roundCurrency(Math.max(1, amount));
+      if (!fromSourceId || !toSourceId || fromSourceId === toSourceId) return;
+      const current = stateRef.current;
+
+      const fromBank = current.banks.find((b) => b.id === fromSourceId);
+      const fromIsCash = fromSourceId === 'cash';
+      if (!fromIsCash && !fromBank) return;
+
+      const toBank = current.banks.find((b) => b.id === toSourceId);
+      const toCard = current.creditCards.find((c) => c.id === toSourceId);
+      const toIsCash = toSourceId === 'cash';
+      if (!toIsCash && !toBank && !toCard) return;
+
+      const fromLabel = fromIsCash ? 'Cash' : fromBank!.name;
+      const toLabel = toIsCash
+        ? 'Cash'
+        : toBank
+        ? toBank.name
+        : toCard!.name;
+
+      triggerSuccessHaptic();
+      dispatch({
+        type: 'TRANSFER_BETWEEN_ACCOUNTS',
+        fromSourceId,
+        toSourceId,
+        amount: cleanAmount,
+        note,
+        todayKey: getTodayKey(),
+      });
+      showToast(
+        toCard
+          ? `Paid ₱${cleanAmount.toLocaleString()} toward ${toLabel} from ${fromLabel}`
+          : `Transferred ₱${cleanAmount.toLocaleString()} (${fromLabel} → ${toLabel})`,
+        true
+      );
+    },
+    [showToast]
+  );
+
+  const editEntry = useCallback(
+    (
+      entryId: string,
+      updates: {
+        amount: number;
+        label: string;
+        category?: SpendCategoryKey;
+        icon?: string;
+      }
+    ) => {
+      const current = stateRef.current;
+      if (!isEditableEntry(current, entryId)) {
+        triggerLightHaptic();
+        showToast('This entry can no longer be edited.', false);
+        return;
+      }
+      const cleanAmount = roundCurrency(Math.max(1, updates.amount));
+      const trimmedLabel = updates.label.trim();
+      triggerSuccessHaptic();
+      dispatch({
+        type: 'EDIT_ENTRY',
+        entryId,
+        amount: cleanAmount,
+        label: trimmedLabel || 'Entry',
+        category: updates.category,
+        icon: updates.icon,
+      });
+      showToast('Updated transaction', false);
+    },
+    [showToast]
+  );
+
   const addBank = useCallback(
     (name: string, balance: number) => {
       const trimmed = name.trim();
@@ -1813,6 +1911,9 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
       deleteTreat,
       setActiveTreat,
       undoEntry,
+      lastPaymentSourceId: state.lastPaymentSourceId,
+      editEntry,
+      transferBetweenAccounts,
       updateBudgetConfig,
       updateSalarySchedule,
       updateBillAmount,
@@ -1892,6 +1993,8 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
       deleteTreat,
       setActiveTreat,
       undoEntry,
+      editEntry,
+      transferBetweenAccounts,
       updateBudgetConfig,
       updateSalarySchedule,
       updateBillAmount,

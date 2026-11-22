@@ -12,7 +12,8 @@ import {
   View,
 } from 'react-native';
 import { useBudget } from '../context/BudgetContext';
-import { TransactionType } from '../types/budget';
+import { isEditableEntryType } from '../state/budgetReducer';
+import { TransactionEntry, TransactionType } from '../types/budget';
 import { triggerLightHaptic } from '../utils/haptics';
 import { formatMonthKeyLabel } from '../utils/insightsEngine';
 import {
@@ -21,6 +22,7 @@ import {
 } from '../utils/transactionDisplay';
 import { ScalePressable } from './AnimatedPrimitives';
 import { AppIcon, IconBadge } from './AppIcon';
+import { EditTransactionModal } from './EditTransactionModal';
 
 type HistoryFilterKey =
   | 'all'
@@ -63,7 +65,11 @@ function matchesHistoryFilter(
         type === 'sinking_fund'
       );
     case 'wallet':
-      return type === 'wallet_deposit' || type === 'wallet_adjust';
+      return (
+        type === 'wallet_deposit' ||
+        type === 'wallet_adjust' ||
+        type === 'wallet_transfer'
+      );
   }
 }
 
@@ -82,16 +88,22 @@ export const ActivityHistoryModal: React.FC<ActivityHistoryModalProps> = ({
   initialMonthKey = null,
   onClose,
 }) => {
-  const { shade, privacyMode, entries, undoEntry } = useBudget();
+  const { shade, privacyMode, entries, treats, undoEntry } = useBudget();
   const cardScale = useRef(new Animated.Value(0.95)).current;
 
   const [query, setQuery] = useState('');
   const [filterKey, setFilterKey] = useState<HistoryFilterKey>('all');
   const [monthFilter, setMonthFilter] = useState<string | null>(initialMonthKey);
   const [visibleLimit, setVisibleLimit] = useState(PAGE_SIZE);
+  const [editingEntry, setEditingEntry] = useState<TransactionEntry | null>(
+    null
+  );
 
   useEffect(() => {
-    if (!visible) return;
+    if (!visible) {
+      setEditingEntry(null);
+      return;
+    }
     setMonthFilter(initialMonthKey || null);
     setVisibleLimit(PAGE_SIZE);
     cardScale.setValue(0.95);
@@ -124,6 +136,7 @@ export const ActivityHistoryModal: React.FC<ActivityHistoryModalProps> = ({
         const haystack = [
           entry.label,
           entry.paymentSourceLabel || '',
+          entry.toPaymentSourceLabel || '',
           entryDate,
           entry.category || '',
         ]
@@ -143,50 +156,52 @@ export const ActivityHistoryModal: React.FC<ActivityHistoryModalProps> = ({
   const hasMore = filteredEntries.length > visibleEntries.length;
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="fade"
-      onRequestClose={onClose}
-    >
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.backdrop}
+    <>
+      <Modal
+        visible={visible && editingEntry === null}
+        transparent
+        animationType="fade"
+        onRequestClose={onClose}
       >
-        <Pressable
-          style={StyleSheet.absoluteFill}
-          onPress={onClose}
-          accessibilityLabel="Dismiss activity history"
-        />
-        <Animated.View
-          style={[
-            styles.card,
-            {
-              backgroundColor: shade.card,
-              borderColor: shade.border,
-              transform: [{ scale: cardScale }],
-            },
-          ]}
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.backdrop}
         >
-          <View style={styles.headerRow}>
-            <View style={styles.titleRow}>
-              <IconBadge
-                name="list"
-                size={16}
-                color={shade.accent}
-                bg={shade.surface}
-                boxSize={36}
-              />
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.title, { color: shade.text }]}>
-                  Activity History
-                </Text>
-                <Text style={[styles.subtitle, { color: shade.muted }]}>
-                  {entries.length} total logged{' '}
-                  {entries.length === 1 ? 'entry' : 'entries'}
-                </Text>
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={onClose}
+            accessibilityLabel="Dismiss activity history"
+          />
+          <Animated.View
+            style={[
+              styles.card,
+              {
+                backgroundColor: shade.card,
+                borderColor: shade.border,
+                transform: [{ scale: cardScale }],
+              },
+            ]}
+          >
+            <View style={styles.headerRow}>
+              <View style={styles.titleRow}>
+                <IconBadge
+                  name="list"
+                  size={16}
+                  color={shade.accent}
+                  bg={shade.surface}
+                  boxSize={36}
+                />
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.title, { color: shade.text }]}>
+                    Activity History
+                  </Text>
+                  <Text style={[styles.subtitle, { color: shade.muted }]}>
+                    {entries.length} total logged{' '}
+                    {entries.length === 1 ? 'entry' : 'entries'}
+                    {entries.length > 0 ? ' • Tap a log to edit' : ''}
+                  </Text>
+                </View>
               </View>
-            </View>
 
             <ScalePressable
               onPress={() => {
@@ -366,6 +381,17 @@ export const ActivityHistoryModal: React.FC<ActivityHistoryModalProps> = ({
                 const { deltaText, deltaColor, isTreatHighlight } =
                   getTransactionPresentation(entry, shade, privacyMode);
                 const dateStr = formatEntryDateLocal(entry);
+                const editable =
+                  isEditableEntryType(entry) &&
+                  (entry.type !== 'treat_direct' ||
+                    !entry.treatId ||
+                    !treats.some((t) => t.id === entry.treatId && t.claimed));
+                const sourceMeta =
+                  entry.type === 'wallet_transfer' &&
+                  entry.paymentSourceLabel &&
+                  entry.toPaymentSourceLabel
+                    ? `${entry.paymentSourceLabel} → ${entry.toPaymentSourceLabel}`
+                    : entry.paymentSourceLabel || '';
                 return (
                   <View
                     key={entry.id}
@@ -379,21 +405,37 @@ export const ActivityHistoryModal: React.FC<ActivityHistoryModalProps> = ({
                       },
                     ]}
                   >
-                    <IconBadge
-                      name={entry.icon}
-                      size={13}
-                      color={deltaColor}
-                      bg={shade.card}
-                      boxSize={30}
-                    />
                     <View style={styles.rowContent}>
                       <View style={styles.rowTop}>
-                        <Text
-                          numberOfLines={1}
-                          style={[styles.rowLabel, { color: shade.text }]}
+                        <ScalePressable
+                          disabled={!editable}
+                          onPress={() => {
+                            if (!editable) return;
+                            triggerLightHaptic();
+                            setEditingEntry(entry);
+                          }}
+                          style={{
+                            flex: 1,
+                            minWidth: 0,
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            gap: 10,
+                          }}
                         >
-                          {entry.label}
-                        </Text>
+                          <IconBadge
+                            name={entry.icon}
+                            size={13}
+                            color={deltaColor}
+                            bg={shade.card}
+                            boxSize={30}
+                          />
+                          <Text
+                            numberOfLines={1}
+                            style={[styles.rowLabel, { color: shade.text }]}
+                          >
+                            {entry.label}
+                          </Text>
+                        </ScalePressable>
                         <ScalePressable
                           onPress={() => undoEntry(entry.id)}
                           accessibilityLabel={`Undo ${entry.label}`}
@@ -405,20 +447,26 @@ export const ActivityHistoryModal: React.FC<ActivityHistoryModalProps> = ({
                           </Text>
                         </ScalePressable>
                       </View>
-                      <View style={styles.rowBottom}>
+                      <ScalePressable
+                        disabled={!editable}
+                        onPress={() => {
+                          if (!editable) return;
+                          triggerLightHaptic();
+                          setEditingEntry(entry);
+                        }}
+                        style={styles.rowBottom}
+                      >
                         <Text
                           numberOfLines={1}
                           style={[styles.rowSub, { color: shade.muted }]}
                         >
                           {dateStr}
-                          {entry.paymentSourceLabel
-                            ? ` • ${entry.paymentSourceLabel}`
-                            : ''}
+                          {sourceMeta ? ` • ${sourceMeta}` : ''}
                         </Text>
                         <Text style={[styles.rowDelta, { color: deltaColor }]}>
                           {deltaText}
                         </Text>
-                      </View>
+                      </ScalePressable>
                     </View>
                   </View>
                 );
@@ -445,6 +493,12 @@ export const ActivityHistoryModal: React.FC<ActivityHistoryModalProps> = ({
         </Animated.View>
       </KeyboardAvoidingView>
     </Modal>
+
+      <EditTransactionModal
+        entry={editingEntry}
+        onClose={() => setEditingEntry(null)}
+      />
+    </>
   );
 };
 

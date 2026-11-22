@@ -14,7 +14,8 @@ export type TransactionType =
   | 'envelope_spend'
   | 'envelope_refill'
   | 'wallet_deposit'
-  | 'wallet_adjust';
+  | 'wallet_adjust'
+  | 'wallet_transfer';
 
 export type CardTier =
   | 'Matte Slate'
@@ -43,9 +44,13 @@ export interface TransactionEntry {
   category?: SpendCategoryKey;
   paymentSourceId?: string;
   paymentSourceLabel?: string;
+  toPaymentSourceId?: string;
+  toPaymentSourceLabel?: string;
   signedDelta?: number;
   /** Exact delta actually applied to the wallet account (after 0-clamping) for lossless Undo. */
   appliedWalletDelta?: number;
+  /** Exact delta actually applied to destination account (after 0-clamping) for lossless Undo. */
+  appliedToWalletDelta?: number;
   treatId?: string;
   installmentId?: string;
   sinkingFundId?: string;

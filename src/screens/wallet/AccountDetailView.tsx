@@ -1,17 +1,21 @@
 import React, { useState } from 'react';
 import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import {
+  AnimatedProgressBar,
   FadeSlideIn,
   PopValueText,
   ScalePressable,
 } from '../../components/AnimatedPrimitives';
-import {
-  AnimatedProgressBar,
-} from '../../components/AnimatedPrimitives';
 import { AppIcon, IconBadge, SPEND_CATEGORIES } from '../../components/AppIcon';
+import { EditTransactionModal } from '../../components/EditTransactionModal';
 import { FormModal } from '../../components/FormModal';
 import { useBudget } from '../../context/BudgetContext';
-import { SpendCategoryKey, getDaysUntilDayOfMonth } from '../../types/budget';
+import { isEditableEntryType } from '../../state/budgetReducer';
+import {
+  SpendCategoryKey,
+  TransactionEntry,
+  getDaysUntilDayOfMonth,
+} from '../../types/budget';
 import { triggerLightHaptic } from '../../utils/haptics';
 import {
   formatOrdinal,
@@ -31,12 +35,14 @@ export interface WalletConfirmRequest {
 interface AccountDetailViewProps {
   selectedAccountId: string;
   onBack: () => void;
+  onOpenTransfer: (fromId?: string | null, toId?: string | null) => void;
   onRequestConfirm: (req: WalletConfirmRequest) => void;
 }
 
 export const AccountDetailView: React.FC<AccountDetailViewProps> = ({
   selectedAccountId,
   onBack,
+  onOpenTransfer,
   onRequestConfirm,
 }) => {
   const {
@@ -48,6 +54,7 @@ export const AccountDetailView: React.FC<AccountDetailViewProps> = ({
     creditCards,
     entries,
     depositToWalletAccount,
+    transferBetweenAccounts,
     setAccountBalanceWithLog,
     logSpend,
     updateBank,
@@ -63,6 +70,10 @@ export const AccountDetailView: React.FC<AccountDetailViewProps> = ({
   const [actionCategory, setActionCategory] =
     useState<SpendCategoryKey>('food');
   const [actionIcon, setActionIcon] = useState<string>('shopping-bag');
+  const [payFromSourceId, setPayFromSourceId] = useState<string>('external');
+  const [editingEntry, setEditingEntry] = useState<TransactionEntry | null>(
+    null
+  );
 
   const [showEditModal, setShowEditModal] = useState(false);
   const [editName, setEditName] = useState('');
@@ -91,7 +102,9 @@ export const AccountDetailView: React.FC<AccountDetailViewProps> = ({
     : 'credit-card';
 
   const accountEntries = entries.filter(
-    (e) => e.paymentSourceId === selectedAccountId
+    (e) =>
+      e.paymentSourceId === selectedAccountId ||
+      e.toPaymentSourceId === selectedAccountId
   );
 
   const totalOut = accountEntries
@@ -99,11 +112,18 @@ export const AccountDetailView: React.FC<AccountDetailViewProps> = ({
       (e) =>
         e.type === 'spend' ||
         e.type === 'bill_paid' ||
-        e.type === 'envelope_spend'
+        e.type === 'envelope_spend' ||
+        (e.type === 'wallet_transfer' &&
+          e.paymentSourceId === selectedAccountId)
     )
     .reduce((acc, e) => acc + e.amount, 0);
   const totalIn = accountEntries
-    .filter((e) => e.type === 'wallet_deposit')
+    .filter(
+      (e) =>
+        e.type === 'wallet_deposit' ||
+        (e.type === 'wallet_transfer' &&
+          e.toPaymentSourceId === selectedAccountId)
+    )
     .reduce((acc, e) => acc + e.amount, 0);
 
   const numericActionAmt = parsePesoInput(actionAmountText);
@@ -114,6 +134,16 @@ export const AccountDetailView: React.FC<AccountDetailViewProps> = ({
     setActionNote('');
     setActionCategory('food');
     setActionIcon('shopping-bag');
+    if (mode === 'deposit' && selectedCard) {
+      const fundedBank = banks.find((b) => b.balance > 0);
+      if (fundedBank) {
+        setPayFromSourceId(fundedBank.id);
+      } else if (cashOnHand > 0) {
+        setPayFromSourceId('cash');
+      } else {
+        setPayFromSourceId('external');
+      }
+    }
     setActionMode(mode);
   };
 
@@ -126,11 +156,20 @@ export const AccountDetailView: React.FC<AccountDetailViewProps> = ({
       );
     } else if (actionMode === 'deposit') {
       if (numericActionAmt <= 0) return;
-      depositToWalletAccount(
-        selectedAccountId,
-        numericActionAmt,
-        actionNote.trim() || undefined
-      );
+      if (selectedCard && payFromSourceId !== 'external') {
+        transferBetweenAccounts(
+          payFromSourceId,
+          selectedCard.id,
+          numericActionAmt,
+          actionNote.trim() || undefined
+        );
+      } else {
+        depositToWalletAccount(
+          selectedAccountId,
+          numericActionAmt,
+          actionNote.trim() || undefined
+        );
+      }
     } else if (actionMode === 'spend') {
       if (numericActionAmt <= 0) return;
       const defaultCatLabel =
@@ -391,50 +430,124 @@ export const AccountDetailView: React.FC<AccountDetailViewProps> = ({
             </View>
           </View>
 
-          <View style={styles.actionTabsRow}>
-            <ScalePressable
-              onPress={() => openAccountActionModal('deposit')}
-              style={[
-                styles.actionTabBtn,
-                { backgroundColor: shade.card, borderColor: shade.border },
-              ]}
-            >
-              <AppIcon
-                name={selectedCard ? 'credit-card' : 'arrow-down-left'}
-                size={13}
-                color={shade.positive}
-              />
-              <Text style={[styles.actionTabText, { color: shade.positive }]}>
-                {selectedCard ? 'Pay Card' : 'Deposit'}
-              </Text>
-            </ScalePressable>
+          {!selectedCard && 1 + banks.length + creditCards.length >= 2 ? (
+            <View style={styles.actionGrid}>
+              <View style={styles.actionTabsRow}>
+                <ScalePressable
+                  onPress={() => openAccountActionModal('deposit')}
+                  style={[
+                    styles.actionTabBtn,
+                    { backgroundColor: shade.card, borderColor: shade.border },
+                  ]}
+                >
+                  <AppIcon
+                    name="arrow-down-left"
+                    size={14}
+                    color={shade.positive}
+                  />
+                  <Text
+                    style={[styles.actionTabText, { color: shade.positive }]}
+                  >
+                    Deposit
+                  </Text>
+                </ScalePressable>
 
-            <ScalePressable
-              onPress={() => openAccountActionModal('spend')}
-              style={[
-                styles.actionTabBtn,
-                { backgroundColor: shade.card, borderColor: shade.border },
-              ]}
-            >
-              <AppIcon name="arrow-up-right" size={13} color={shade.accent} />
-              <Text style={[styles.actionTabText, { color: shade.accent }]}>
-                Spend Here
-              </Text>
-            </ScalePressable>
+                <ScalePressable
+                  onPress={() => onOpenTransfer(selectedAccountId)}
+                  style={[
+                    styles.actionTabBtn,
+                    { backgroundColor: shade.card, borderColor: shade.border },
+                  ]}
+                >
+                  <AppIcon name="repeat" size={14} color={shade.positive} />
+                  <Text
+                    style={[styles.actionTabText, { color: shade.positive }]}
+                  >
+                    Transfer
+                  </Text>
+                </ScalePressable>
+              </View>
 
-            <ScalePressable
-              onPress={() => openAccountActionModal('adjust')}
-              style={[
-                styles.actionTabBtn,
-                { backgroundColor: shade.card, borderColor: shade.border },
-              ]}
-            >
-              <AppIcon name="edit-2" size={13} color={shade.dopamine} />
-              <Text style={[styles.actionTabText, { color: shade.dopamine }]}>
-                {selectedCard ? 'Set Used' : 'Set Balance'}
-              </Text>
-            </ScalePressable>
-          </View>
+              <View style={styles.actionTabsRow}>
+                <ScalePressable
+                  onPress={() => openAccountActionModal('spend')}
+                  style={[
+                    styles.actionTabBtn,
+                    { backgroundColor: shade.card, borderColor: shade.border },
+                  ]}
+                >
+                  <AppIcon
+                    name="arrow-up-right"
+                    size={14}
+                    color={shade.accent}
+                  />
+                  <Text style={[styles.actionTabText, { color: shade.accent }]}>
+                    Spend Here
+                  </Text>
+                </ScalePressable>
+
+                <ScalePressable
+                  onPress={() => openAccountActionModal('adjust')}
+                  style={[
+                    styles.actionTabBtn,
+                    { backgroundColor: shade.card, borderColor: shade.border },
+                  ]}
+                >
+                  <AppIcon name="edit-2" size={14} color={shade.dopamine} />
+                  <Text
+                    style={[styles.actionTabText, { color: shade.dopamine }]}
+                  >
+                    Set Balance
+                  </Text>
+                </ScalePressable>
+              </View>
+            </View>
+          ) : (
+            <View style={styles.actionTabsRow}>
+              <ScalePressable
+                onPress={() => openAccountActionModal('deposit')}
+                style={[
+                  styles.actionTabBtn,
+                  { backgroundColor: shade.card, borderColor: shade.border },
+                ]}
+              >
+                <AppIcon
+                  name={selectedCard ? 'credit-card' : 'arrow-down-left'}
+                  size={13}
+                  color={shade.positive}
+                />
+                <Text style={[styles.actionTabText, { color: shade.positive }]}>
+                  {selectedCard ? 'Pay Card' : 'Deposit'}
+                </Text>
+              </ScalePressable>
+
+              <ScalePressable
+                onPress={() => openAccountActionModal('spend')}
+                style={[
+                  styles.actionTabBtn,
+                  { backgroundColor: shade.card, borderColor: shade.border },
+                ]}
+              >
+                <AppIcon name="arrow-up-right" size={13} color={shade.accent} />
+                <Text style={[styles.actionTabText, { color: shade.accent }]}>
+                  Spend Here
+                </Text>
+              </ScalePressable>
+
+              <ScalePressable
+                onPress={() => openAccountActionModal('adjust')}
+                style={[
+                  styles.actionTabBtn,
+                  { backgroundColor: shade.card, borderColor: shade.border },
+                ]}
+              >
+                <AppIcon name="edit-2" size={13} color={shade.dopamine} />
+                <Text style={[styles.actionTabText, { color: shade.dopamine }]}>
+                  {selectedCard ? 'Set Used' : 'Set Balance'}
+                </Text>
+              </ScalePressable>
+            </View>
+          )}
 
           <View style={styles.section}>
             <Text style={[styles.sectionTitle, { color: shade.muted }]}>
@@ -465,25 +578,36 @@ export const AccountDetailView: React.FC<AccountDetailViewProps> = ({
                   const isAdjust = entry.type === 'wallet_adjust';
                   const isBillPaid = entry.type === 'bill_paid';
                   const isEnvelopeSpend = entry.type === 'envelope_spend';
+                  const isTransfer = entry.type === 'wallet_transfer';
+                  const isIncomingTransfer =
+                    isTransfer && entry.toPaymentSourceId === selectedAccountId;
                   const adjPositive = (entry.signedDelta || 0) >= 0;
+                  const editable = isEditableEntryType(entry);
 
-                  const deltaColor = isDeposit
-                    ? shade.positive
-                    : isAdjust
-                    ? adjPositive
+                  const deltaColor =
+                    isDeposit || isIncomingTransfer
                       ? shade.positive
-                      : shade.warning
-                    : shade.text;
+                      : isAdjust
+                      ? adjPositive
+                        ? shade.positive
+                        : shade.warning
+                      : shade.text;
 
                   const deltaString = privacyMode
                     ? '₱••••'
-                    : isDeposit
+                    : isDeposit || isIncomingTransfer
                     ? `+₱${entry.amount.toLocaleString()}`
                     : isAdjust
                     ? `${adjPositive ? '+' : '-'}₱${entry.amount.toLocaleString()}`
                     : `-₱${entry.amount.toLocaleString()}`;
 
-                  const typeLabel = isDeposit
+                  const typeLabel = isIncomingTransfer
+                    ? selectedCard
+                      ? `Paid from ${entry.paymentSourceLabel || 'Account'}`
+                      : `From ${entry.paymentSourceLabel || 'Account'}`
+                    : isTransfer
+                    ? `To ${entry.toPaymentSourceLabel || 'Account'}`
+                    : isDeposit
                     ? selectedCard
                       ? 'Card Payment'
                       : 'Added'
@@ -502,55 +626,66 @@ export const AccountDetailView: React.FC<AccountDetailViewProps> = ({
                         styles.logRow,
                         {
                           backgroundColor: shade.card,
-                          borderColor: isDeposit
-                            ? shade.positive
-                            : shade.border,
+                          borderColor:
+                            isDeposit || isIncomingTransfer
+                              ? shade.positive
+                              : shade.border,
                         },
                       ]}
                     >
-                      <View style={styles.logLeft}>
-                        <IconBadge
-                          name={entry.icon}
-                          size={14}
-                          color={deltaColor}
-                          bg={shade.surface}
-                          boxSize={32}
-                        />
-                        <View style={{ flex: 1 }}>
-                          <Text
-                            numberOfLines={1}
-                            style={[styles.logLabel, { color: shade.text }]}
-                          >
-                            {entry.label}
-                          </Text>
-                          <Text
-                            style={[styles.accountSub, { color: shade.muted }]}
-                          >
-                            {entry.dateKey || ''} • {typeLabel}
-                          </Text>
+                      <ScalePressable
+                        disabled={!editable}
+                        onPress={() => {
+                          if (!editable) return;
+                          triggerLightHaptic();
+                          setEditingEntry(entry);
+                        }}
+                        style={styles.logTapArea}
+                      >
+                        <View style={styles.logLeft}>
+                          <IconBadge
+                            name={entry.icon}
+                            size={14}
+                            color={deltaColor}
+                            bg={shade.surface}
+                            boxSize={32}
+                          />
+                          <View style={{ flex: 1, minWidth: 0 }}>
+                            <Text
+                              numberOfLines={1}
+                              style={[styles.logLabel, { color: shade.text }]}
+                            >
+                              {entry.label}
+                            </Text>
+                            <Text
+                              numberOfLines={1}
+                              style={[styles.accountSub, { color: shade.muted }]}
+                            >
+                              {entry.dateKey || ''} • {typeLabel}
+                            </Text>
+                          </View>
                         </View>
-                      </View>
 
-                      <View style={styles.logRight}>
                         <Text style={[styles.logDelta, { color: deltaColor }]}>
                           {deltaString}
                         </Text>
-                        <ScalePressable
-                          onPress={() => undoEntry(entry.id)}
-                          accessibilityLabel={`Undo ${entry.label}`}
-                          hitSlop={6}
-                          style={[
-                            styles.undoMini,
-                            { backgroundColor: shade.surface },
-                          ]}
+                      </ScalePressable>
+
+                      <ScalePressable
+                        onPress={() => undoEntry(entry.id)}
+                        accessibilityLabel={`Undo ${entry.label}`}
+                        hitSlop={6}
+                        style={[
+                          styles.undoMini,
+                          { backgroundColor: shade.surface },
+                        ]}
+                      >
+                        <Text
+                          style={[styles.undoMiniText, { color: shade.muted }]}
                         >
-                          <Text
-                            style={[styles.undoMiniText, { color: shade.muted }]}
-                          >
-                            Undo
-                          </Text>
-                        </ScalePressable>
-                      </View>
+                          Undo
+                        </Text>
+                      </ScalePressable>
                     </View>
                   );
                 })}
@@ -605,6 +740,137 @@ export const AccountDetailView: React.FC<AccountDetailViewProps> = ({
             style={[styles.amountInput, { color: shade.text }]}
           />
         </View>
+
+        {actionMode === 'deposit' && selectedCard && (
+          <View style={{ gap: 6 }}>
+            <Text style={[styles.catLabel, { color: shade.muted }]}>
+              PAY FROM ACCOUNT
+            </Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.horizontalScroll}
+              contentContainerStyle={styles.payFromScroll}
+            >
+              {banks.map((b) => {
+                const active = payFromSourceId === b.id;
+                return (
+                  <ScalePressable
+                    key={b.id}
+                    onPress={() => {
+                      triggerLightHaptic();
+                      setPayFromSourceId(b.id);
+                    }}
+                    style={[
+                      styles.payFromPill,
+                      {
+                        backgroundColor: active ? shade.positive : shade.surface,
+                      },
+                    ]}
+                  >
+                    <Text
+                      numberOfLines={1}
+                      style={[
+                        styles.payFromTitle,
+                        { color: active ? '#FFFFFF' : shade.text },
+                      ]}
+                    >
+                      {b.name}
+                    </Text>
+                    <Text
+                      style={[
+                        styles.payFromSub,
+                        { color: active ? '#FFFFFF' : shade.muted },
+                      ]}
+                    >
+                      {formatVisiblePeso(b.balance)}
+                    </Text>
+                  </ScalePressable>
+                );
+              })}
+
+              <ScalePressable
+                onPress={() => {
+                  triggerLightHaptic();
+                  setPayFromSourceId('cash');
+                }}
+                style={[
+                  styles.payFromPill,
+                  {
+                    backgroundColor:
+                      payFromSourceId === 'cash' ? shade.positive : shade.surface,
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.payFromTitle,
+                    {
+                      color:
+                        payFromSourceId === 'cash' ? '#FFFFFF' : shade.text,
+                    },
+                  ]}
+                >
+                  Cash
+                </Text>
+                <Text
+                  style={[
+                    styles.payFromSub,
+                    {
+                      color:
+                        payFromSourceId === 'cash' ? '#FFFFFF' : shade.muted,
+                    },
+                  ]}
+                >
+                  {formatVisiblePeso(cashOnHand)}
+                </Text>
+              </ScalePressable>
+
+              <ScalePressable
+                onPress={() => {
+                  triggerLightHaptic();
+                  setPayFromSourceId('external');
+                }}
+                style={[
+                  styles.payFromPill,
+                  {
+                    backgroundColor:
+                      payFromSourceId === 'external'
+                        ? shade.accent
+                        : shade.surface,
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.payFromTitle,
+                    {
+                      color:
+                        payFromSourceId === 'external'
+                          ? shade.accentText
+                          : shade.text,
+                    },
+                  ]}
+                >
+                  Track Only
+                </Text>
+                <Text
+                  style={[
+                    styles.payFromSub,
+                    {
+                      color:
+                        payFromSourceId === 'external'
+                          ? shade.accentText
+                          : shade.muted,
+                    },
+                  ]}
+                >
+                  External
+                </Text>
+              </ScalePressable>
+            </ScrollView>
+          </View>
+        )}
 
         {actionMode === 'spend' && (
           <View style={{ gap: 6 }}>
@@ -703,13 +969,22 @@ export const AccountDetailView: React.FC<AccountDetailViewProps> = ({
             ]}
           >
             {actionMode === 'deposit'
-              ? 'Confirm Deposit & Log'
+              ? selectedCard
+                ? payFromSourceId !== 'external'
+                  ? 'Confirm Card Payment'
+                  : 'Log Card Payment'
+                : 'Confirm Deposit & Log'
               : actionMode === 'spend'
               ? 'Spend & Log Transaction'
               : 'Save Balance'}
           </Text>
         </ScalePressable>
       </FormModal>
+
+      <EditTransactionModal
+        entry={editingEntry}
+        onClose={() => setEditingEntry(null)}
+      />
 
       <FormModal
         visible={showEditModal}
@@ -950,22 +1225,25 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '800',
   },
+  actionGrid: {
+    gap: 8,
+  },
   actionTabsRow: {
     flexDirection: 'row',
-    gap: 7,
+    gap: 8,
   },
   actionTabBtn: {
     flex: 1,
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    gap: 5,
+    gap: 6,
     borderRadius: 13,
     borderWidth: 1,
-    paddingVertical: 10,
+    paddingVertical: 11,
   },
   actionTabText: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '800',
   },
   section: {
@@ -989,7 +1267,15 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     borderWidth: 1,
     paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingVertical: 11,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  logTapArea: {
+    flex: 1,
+    minWidth: 0,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -1000,19 +1286,39 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
     flex: 1,
+    minWidth: 0,
   },
   logLabel: {
     fontSize: 13,
     fontWeight: '700',
   },
-  logRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
   logDelta: {
     fontSize: 13,
     fontWeight: '800',
+    flexShrink: 0,
+  },
+  horizontalScroll: {
+    width: '100%',
+    flexGrow: 0,
+    flexShrink: 0,
+  },
+  payFromScroll: {
+    gap: 8,
+  },
+  payFromPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+    minWidth: 92,
+  },
+  payFromTitle: {
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  payFromSub: {
+    fontSize: 10,
+    fontWeight: '600',
+    marginTop: 2,
   },
   undoMini: {
     paddingHorizontal: 7,

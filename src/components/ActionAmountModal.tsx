@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Modal,
@@ -45,6 +45,7 @@ export const ActionAmountModal: React.FC<ActionAmountModalProps> = ({
     envelopes,
     activeTreat,
     selectedDateKey,
+    lastPaymentSourceId,
     logSpend,
     spendFromEnvelope,
     fundActiveTreat,
@@ -62,6 +63,30 @@ export const ActionAmountModal: React.FC<ActionAmountModalProps> = ({
     null
   );
 
+  const sourceDefaultsRef = useRef({
+    lastPaymentSourceId,
+    banks,
+    creditCards,
+  });
+  sourceDefaultsRef.current = { lastPaymentSourceId, banks, creditCards };
+
+  const resolveSmartDefaultSource = () => {
+    const {
+      lastPaymentSourceId: savedSrc,
+      banks: bList,
+      creditCards: cList,
+    } = sourceDefaultsRef.current;
+    if (savedSrc === 'cash') return 'cash';
+    if (
+      savedSrc &&
+      (bList.some((b) => b.id === savedSrc) ||
+        cList.some((c) => c.id === savedSrc))
+    ) {
+      return savedSrc;
+    }
+    return 'cash';
+  };
+
   useEffect(() => {
     if (visible) {
       setAmountText('');
@@ -69,7 +94,7 @@ export const ActionAmountModal: React.FC<ActionAmountModalProps> = ({
       setSelectedCategory('food');
       setSelectedIcon('shopping-bag');
       setSelectedLabel('Food');
-      setPaymentSourceId('cash');
+      setPaymentSourceId(resolveSmartDefaultSource());
       setSelectedEnvelopeId(initialEnvelopeId ?? null);
     }
   }, [visible, mode, initialEnvelopeId]);
@@ -225,7 +250,7 @@ export const ActionAmountModal: React.FC<ActionAmountModalProps> = ({
                       triggerLightHaptic();
                       setSelectedEnvelopeId(null);
                       if (paymentSourceId === 'none') {
-                        setPaymentSourceId('cash');
+                        setPaymentSourceId(resolveSmartDefaultSource());
                       }
                     }}
                     style={[
@@ -684,6 +709,8 @@ const styles = StyleSheet.create({
   },
   horizontalScroll: {
     width: '100%',
+    flexGrow: 0,
+    flexShrink: 0,
   },
   envelopeHint: {
     fontSize: 11,

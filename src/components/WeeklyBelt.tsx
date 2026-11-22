@@ -1,10 +1,13 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { getTodayKey, useBudget } from '../context/BudgetContext';
+import { parseDateKeyLocal } from '../state/budgetMath';
+import { triggerLightHaptic } from '../utils/haptics';
 import { FadeSlideIn, ScalePressable } from './AnimatedPrimitives';
 import { AppIcon } from './AppIcon';
 
 const SHORT_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const JS_DAY_TO_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTH_NAMES = [
   'Jan',
   'Feb',
@@ -19,6 +22,7 @@ const MONTH_NAMES = [
   'Nov',
   'Dec',
 ];
+const MIN_WEEK_OFFSET = -8;
 
 interface WeekDayItem {
   dateKey: string;
@@ -29,21 +33,25 @@ interface WeekDayItem {
   isFuture: boolean;
 }
 
-function buildCurrentWeekDays(anchorDateKey: string): WeekDayItem[] {
-  const parts = anchorDateKey.split('-').map(Number);
-  const now = new Date();
-  const todayMidnight =
-    parts.length === 3 && parts.every((n) => Number.isFinite(n))
-      ? new Date(parts[0], parts[1] - 1, parts[2])
-      : new Date(now.getFullYear(), now.getMonth(), now.getDate());
+function formatDateKeyLabel(dateKey: string): string {
+  const dt = parseDateKeyLocal(dateKey);
+  const shortDay = JS_DAY_TO_SHORT[dt.getDay()] || 'Day';
+  return `${shortDay}, ${MONTH_NAMES[dt.getMonth()]} ${dt.getDate()}`;
+}
+
+function buildWeekWindow(
+  anchorDateKey: string,
+  weekOffset: number
+): { days: WeekDayItem[]; rangeLabel: string } {
+  const todayMidnight = parseDateKeyLocal(anchorDateKey);
   const todayKey = getTodayKey(todayMidnight);
   const dayOfWeek = todayMidnight.getDay(); // 0=Sun, 1=Mon
   const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
 
   const monday = new Date(todayMidnight);
-  monday.setDate(todayMidnight.getDate() + diffToMonday);
+  monday.setDate(todayMidnight.getDate() + diffToMonday + weekOffset * 7);
 
-  return SHORT_DAYS.map((shortDay, index) => {
+  const days = SHORT_DAYS.map((shortDay, index) => {
     const dt = new Date(monday);
     dt.setDate(monday.getDate() + index);
     const dateKey = getTodayKey(dt);
@@ -59,11 +67,22 @@ function buildCurrentWeekDays(anchorDateKey: string): WeekDayItem[] {
       isFuture,
     };
   });
+
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  const startMonth = MONTH_NAMES[monday.getMonth()];
+  const endMonth = MONTH_NAMES[sunday.getMonth()];
+  const rangeLabel =
+    startMonth === endMonth
+      ? `${startMonth} ${monday.getDate()} – ${sunday.getDate()}`
+      : `${startMonth} ${monday.getDate()} – ${endMonth} ${sunday.getDate()}`;
+
+  return { days, rangeLabel };
 }
 
 /**
- * Top Mon-Sun weekly belt showing today's day and letting the user click
- * any day to inspect performance and log forgotten expenses onto that day.
+ * Top Mon-Sun weekly belt showing today's day and letting the user step backward
+ * across recent weeks to inspect past performance or log forgotten expenses.
  */
 export const WeeklyBelt: React.FC = () => {
   const {
@@ -75,9 +94,28 @@ export const WeeklyBelt: React.FC = () => {
     formatVisiblePeso,
   } = useBudget();
 
-  const weekDays = useMemo(() => buildCurrentWeekDays(todayKey), [todayKey]);
-  const selectedDayMeta = weekDays.find((d) => d.dateKey === selectedDateKey);
+  const [weekOffset, setWeekOffset] = useState(0);
+
+  useEffect(() => {
+    setWeekOffset(0);
+  }, [todayKey]);
+
+  const { days: weekDays, rangeLabel } = useMemo(
+    () => buildWeekWindow(todayKey, weekOffset),
+    [todayKey, weekOffset]
+  );
+  const selectedDayLabel = useMemo(
+    () => formatDateKeyLabel(selectedDateKey),
+    [selectedDateKey]
+  );
   const selectedSummary = getDaySummary(selectedDateKey);
+
+  const weekHeaderLabel =
+    weekOffset === 0
+      ? `This Week • ${rangeLabel}`
+      : weekOffset === -1
+      ? `Last Week • ${rangeLabel}`
+      : rangeLabel;
 
   return (
     <View style={styles.container}>
@@ -87,6 +125,50 @@ export const WeeklyBelt: React.FC = () => {
           { backgroundColor: shade.card, borderColor: shade.border },
         ]}
       >
+        <View style={styles.weekNavRow}>
+          <ScalePressable
+            disabled={weekOffset <= MIN_WEEK_OFFSET}
+            onPress={() => {
+              triggerLightHaptic();
+              setWeekOffset((prev) => Math.max(MIN_WEEK_OFFSET, prev - 1));
+            }}
+            accessibilityLabel="Previous week"
+            hitSlop={6}
+            style={[
+              styles.weekArrowBtn,
+              {
+                backgroundColor: shade.surface,
+                opacity: weekOffset <= MIN_WEEK_OFFSET ? 0.35 : 1,
+              },
+            ]}
+          >
+            <AppIcon name="chevron-left" size={14} color={shade.text} />
+          </ScalePressable>
+
+          <Text style={[styles.weekHeaderTitle, { color: shade.muted }]}>
+            {weekHeaderLabel}
+          </Text>
+
+          <ScalePressable
+            disabled={weekOffset >= 0}
+            onPress={() => {
+              triggerLightHaptic();
+              setWeekOffset((prev) => Math.min(0, prev + 1));
+            }}
+            accessibilityLabel="Next week"
+            hitSlop={6}
+            style={[
+              styles.weekArrowBtn,
+              {
+                backgroundColor: shade.surface,
+                opacity: weekOffset >= 0 ? 0.35 : 1,
+              },
+            ]}
+          >
+            <AppIcon name="chevron-right" size={14} color={shade.text} />
+          </ScalePressable>
+        </View>
+
         <View style={styles.daysRow}>
           {weekDays.map((item) => {
             const isSelected = item.dateKey === selectedDateKey;
@@ -154,7 +236,7 @@ export const WeeklyBelt: React.FC = () => {
         </View>
       </View>
 
-      {selectedDateKey !== todayKey && selectedDayMeta && (
+      {selectedDateKey !== todayKey && (
         <FadeSlideIn triggerKey={selectedDateKey} distance={8}>
           <View
             style={[
@@ -166,7 +248,7 @@ export const WeeklyBelt: React.FC = () => {
               <View style={styles.pastTitleRow}>
                 <AppIcon name="calendar" size={12} color={shade.accent} />
                 <Text style={[styles.pastTitle, { color: shade.text }]}>
-                  Viewing {selectedDayMeta.fullLabel}
+                  Viewing {selectedDayLabel}
                 </Text>
               </View>
               <Text style={[styles.pastStats, { color: shade.muted }]}>
@@ -175,7 +257,10 @@ export const WeeklyBelt: React.FC = () => {
               </Text>
             </View>
             <ScalePressable
-              onPress={() => setSelectedDateKey(todayKey)}
+              onPress={() => {
+                setSelectedDateKey(todayKey);
+                setWeekOffset(0);
+              }}
               style={[styles.backTodayPill, { backgroundColor: shade.accent }]}
             >
               <Text
@@ -198,7 +283,28 @@ const styles = StyleSheet.create({
   beltCard: {
     borderRadius: 18,
     borderWidth: 1,
-    padding: 6,
+    paddingHorizontal: 8,
+    paddingTop: 8,
+    paddingBottom: 6,
+    gap: 6,
+  },
+  weekNavRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 2,
+  },
+  weekArrowBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  weekHeaderTitle: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.2,
   },
   daysRow: {
     flexDirection: 'row',

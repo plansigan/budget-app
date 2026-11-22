@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { ConfirmModal } from '../components/ConfirmModal';
+import { TransferModal } from '../components/TransferModal';
 import { useBudget } from '../context/BudgetContext';
 import { triggerLightHaptic } from '../utils/haptics';
 import {
@@ -22,6 +23,11 @@ export const WalletScreen: React.FC = () => {
   const [showAddBank, setShowAddBank] = useState(false);
   const [showAddCard, setShowAddCard] = useState(false);
   const [showAddInst, setShowAddInst] = useState(false);
+  const [transferModal, setTransferModal] = useState<{
+    open: boolean;
+    fromId?: string | null;
+    toId?: string | null;
+  }>({ open: false });
   const [pendingConfirm, setPendingConfirm] =
     useState<WalletConfirmRequest | null>(null);
 
@@ -40,12 +46,18 @@ export const WalletScreen: React.FC = () => {
     setSelectedAccountId(accountId);
   };
 
+  const openTransferModal = (fromId?: string | null, toId?: string | null) => {
+    triggerLightHaptic();
+    setTransferModal({ open: true, fromId: fromId ?? null, toId: toId ?? null });
+  };
+
   return (
     <View style={{ flex: 1 }}>
       {selectedAccountId !== null ? (
         <AccountDetailView
           selectedAccountId={selectedAccountId}
           onBack={() => setSelectedAccountId(null)}
+          onOpenTransfer={(fromId, toId) => openTransferModal(fromId, toId)}
           onRequestConfirm={setPendingConfirm}
         />
       ) : (
@@ -54,6 +66,7 @@ export const WalletScreen: React.FC = () => {
           onOpenAddBank={() => setShowAddBank(true)}
           onOpenAddCard={() => setShowAddCard(true)}
           onOpenAddInstallment={() => setShowAddInst(true)}
+          onOpenTransfer={() => openTransferModal()}
           onRequestConfirm={setPendingConfirm}
         />
       )}
@@ -65,6 +78,13 @@ export const WalletScreen: React.FC = () => {
         onCloseAddCard={() => setShowAddCard(false)}
         showAddInst={showAddInst}
         onCloseAddInst={() => setShowAddInst(false)}
+      />
+
+      <TransferModal
+        visible={transferModal.open}
+        initialFromId={transferModal.fromId}
+        initialToId={transferModal.toId}
+        onClose={() => setTransferModal({ open: false })}
       />
 
       <ConfirmModal

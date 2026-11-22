@@ -76,6 +76,7 @@ export interface PersistedBudgetState {
   monthlyArchives: MonthlyArchiveSnapshot[];
   unlockedMilestones: string[];
   lastBackupAt?: string;
+  lastPaymentSourceId?: string;
 }
 
 export interface OnboardingParams {

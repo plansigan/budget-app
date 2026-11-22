@@ -13,13 +13,16 @@ import {
   ScalePressable,
 } from '../components/AnimatedPrimitives';
 import { AppIcon, IconBadge } from '../components/AppIcon';
+import { EditTransactionModal } from '../components/EditTransactionModal';
 import { PayBillModal } from '../components/PayBillModal';
 import { PaydayCheckInModal } from '../components/PaydayCheckInModal';
 import { WeeklyBelt } from '../components/WeeklyBelt';
 import { useBudget } from '../context/BudgetContext';
 import { parseDateKeyLocal } from '../state/budgetMath';
+import { isEditableEntryType } from '../state/budgetReducer';
 import {
   BillItem,
+  TransactionEntry,
   getDaysUntilDayOfMonth,
   getExpectedPaycheckAmount,
   getNextPaydayLabel,
@@ -67,6 +70,9 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({ onOpenVault }) => {
   const [showPaydayModal, setShowPaydayModal] = useState(false);
   const [billToPay, setBillToPay] = useState<BillItem | null>(null);
   const [showAllActivity, setShowAllActivity] = useState(false);
+  const [editingEntry, setEditingEntry] = useState<TransactionEntry | null>(
+    null
+  );
 
   const openModal = (mode: ActionModalMode, envelopeId: string | null = null) => {
     triggerLightHaptic();
@@ -609,6 +615,21 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({ onOpenVault }) => {
                     shade,
                     privacyMode
                   );
+                  const editable =
+                    isEditableEntryType(entry) &&
+                    (entry.type !== 'treat_direct' ||
+                      !entry.treatId ||
+                      !treats.some((t) => t.id === entry.treatId && t.claimed));
+                  const sourceText =
+                    entry.type === 'wallet_transfer' &&
+                    entry.paymentSourceLabel &&
+                    entry.toPaymentSourceLabel
+                      ? `${entry.paymentSourceLabel} → ${entry.toPaymentSourceLabel}`
+                      : entry.paymentSourceLabel
+                      ? `via ${entry.paymentSourceLabel}`
+                      : isTodaySelected
+                      ? 'Today'
+                      : selectedDateKey;
 
                   return (
                     <View
@@ -618,21 +639,40 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({ onOpenVault }) => {
                         { backgroundColor: shade.surface },
                       ]}
                     >
-                      <IconBadge
-                        name={entry.icon}
-                        size={14}
-                        color={deltaColor}
-                        bg={shade.card}
-                        boxSize={34}
-                      />
                       <View style={styles.activityContent}>
                         <View style={styles.rowBetween}>
-                          <Text
-                            numberOfLines={1}
-                            style={[styles.rowTitle, { color: shade.text, flex: 1 }]}
+                          <ScalePressable
+                            disabled={!editable}
+                            onPress={() => {
+                              if (!editable) return;
+                              triggerLightHaptic();
+                              setEditingEntry(entry);
+                            }}
+                            style={{
+                              flex: 1,
+                              minWidth: 0,
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              gap: 10,
+                            }}
                           >
-                            {entry.label}
-                          </Text>
+                            <IconBadge
+                              name={entry.icon}
+                              size={14}
+                              color={deltaColor}
+                              bg={shade.card}
+                              boxSize={34}
+                            />
+                            <Text
+                              numberOfLines={1}
+                              style={[
+                                styles.rowTitle,
+                                { color: shade.text, flex: 1 },
+                              ]}
+                            >
+                              {entry.label}
+                            </Text>
+                          </ScalePressable>
                           <ScalePressable
                             onPress={() => undoEntry(entry.id)}
                             accessibilityLabel={`Undo ${entry.label}`}
@@ -649,21 +689,25 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({ onOpenVault }) => {
                             </Text>
                           </ScalePressable>
                         </View>
-                        <View style={styles.rowBottomWrap}>
+                        <ScalePressable
+                          disabled={!editable}
+                          onPress={() => {
+                            if (!editable) return;
+                            triggerLightHaptic();
+                            setEditingEntry(entry);
+                          }}
+                          style={styles.rowBottomWrap}
+                        >
                           <Text
                             numberOfLines={1}
                             style={[styles.rowSub, { color: shade.muted }]}
                           >
-                            {entry.paymentSourceLabel
-                              ? `via ${entry.paymentSourceLabel}`
-                              : isTodaySelected
-                              ? 'Today'
-                              : selectedDateKey}
+                            {sourceText}
                           </Text>
                           <Text style={[styles.rowDelta, { color: deltaColor }]}>
                             {deltaText}
                           </Text>
-                        </View>
+                        </ScalePressable>
                       </View>
                     </View>
                   );
@@ -697,6 +741,11 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({ onOpenVault }) => {
       <ActivityHistoryModal
         visible={showAllActivity}
         onClose={() => setShowAllActivity(false)}
+      />
+
+      <EditTransactionModal
+        entry={editingEntry}
+        onClose={() => setEditingEntry(null)}
       />
     </ScrollView>
   );

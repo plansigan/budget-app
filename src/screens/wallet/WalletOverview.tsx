@@ -20,6 +20,7 @@ interface WalletOverviewProps {
   onOpenAddBank: () => void;
   onOpenAddCard: () => void;
   onOpenAddInstallment: () => void;
+  onOpenTransfer: () => void;
   onRequestConfirm: (req: WalletConfirmRequest) => void;
 }
 
@@ -28,6 +29,7 @@ export const WalletOverview: React.FC<WalletOverviewProps> = ({
   onOpenAddBank,
   onOpenAddCard,
   onOpenAddInstallment,
+  onOpenTransfer,
   onRequestConfirm,
 }) => {
   const {
@@ -48,6 +50,9 @@ export const WalletOverview: React.FC<WalletOverviewProps> = ({
     for (const e of entries) {
       if (e.paymentSourceId) {
         map[e.paymentSourceId] = (map[e.paymentSourceId] || 0) + 1;
+      }
+      if (e.toPaymentSourceId && e.toPaymentSourceId !== e.paymentSourceId) {
+        map[e.toPaymentSourceId] = (map[e.toPaymentSourceId] || 0) + 1;
       }
     }
     return map;
@@ -170,18 +175,42 @@ export const WalletOverview: React.FC<WalletOverviewProps> = ({
                 <Text style={[styles.sectionTitle, { color: shade.muted }]}>
                   CASH & BANKS ({liquidAccounts.length})
                 </Text>
-                <ScalePressable
-                  onPress={() => {
-                    triggerLightHaptic();
-                    onOpenAddBank();
-                  }}
-                  style={[styles.addToggle, { backgroundColor: shade.surface }]}
-                >
-                  <AppIcon name="plus" size={12} color={shade.accent} />
-                  <Text style={[styles.addToggleText, { color: shade.accent }]}>
-                    Add Bank
-                  </Text>
-                </ScalePressable>
+                <View style={styles.rowRightCluster}>
+                  {1 + banks.length + creditCards.length >= 2 && (
+                    <ScalePressable
+                      onPress={() => {
+                        triggerLightHaptic();
+                        onOpenTransfer();
+                      }}
+                      style={[
+                        styles.addToggle,
+                        { backgroundColor: shade.surface },
+                      ]}
+                    >
+                      <AppIcon name="repeat" size={12} color={shade.positive} />
+                      <Text
+                        style={[
+                          styles.addToggleText,
+                          { color: shade.positive },
+                        ]}
+                      >
+                        Transfer
+                      </Text>
+                    </ScalePressable>
+                  )}
+                  <ScalePressable
+                    onPress={() => {
+                      triggerLightHaptic();
+                      onOpenAddBank();
+                    }}
+                    style={[styles.addToggle, { backgroundColor: shade.surface }]}
+                  >
+                    <AppIcon name="plus" size={12} color={shade.accent} />
+                    <Text style={[styles.addToggleText, { color: shade.accent }]}>
+                      Add Bank
+                    </Text>
+                  </ScalePressable>
+                </View>
               </View>
 
               <View

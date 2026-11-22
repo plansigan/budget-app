@@ -278,6 +278,11 @@ export function normalizePersistedState(
       !Number.isNaN(Date.parse(raw.lastBackupAt))
         ? raw.lastBackupAt
         : undefined,
+    lastPaymentSourceId:
+      typeof raw.lastPaymentSourceId === 'string' &&
+      raw.lastPaymentSourceId.trim().length > 0
+        ? raw.lastPaymentSourceId
+        : undefined,
   };
 }
 
