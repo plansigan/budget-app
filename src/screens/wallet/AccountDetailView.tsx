@@ -672,7 +672,15 @@ export const AccountDetailView: React.FC<AccountDetailViewProps> = ({
                       </ScalePressable>
 
                       <ScalePressable
-                        onPress={() => undoEntry(entry.id)}
+                        onPress={() => {
+                          triggerLightHaptic();
+                          onRequestConfirm({
+                            title: 'Delete & Undo Entry?',
+                            message: `Remove "${entry.label}" (${deltaString}) and reverse its balance changes?`,
+                            confirmLabel: 'Yes, Delete',
+                            onConfirm: () => undoEntry(entry.id),
+                          });
+                        }}
                         accessibilityLabel={`Undo ${entry.label}`}
                         hitSlop={6}
                         style={[

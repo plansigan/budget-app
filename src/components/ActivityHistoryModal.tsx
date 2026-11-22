@@ -23,6 +23,7 @@ import {
 import { useWebKeyboardInset } from '../utils/useWebKeyboardInset';
 import { ScalePressable } from './AnimatedPrimitives';
 import { AppIcon, IconBadge } from './AppIcon';
+import { ConfirmModal } from './ConfirmModal';
 import { EditTransactionModal } from './EditTransactionModal';
 
 type HistoryFilterKey =
@@ -99,10 +100,13 @@ export const ActivityHistoryModal: React.FC<ActivityHistoryModalProps> = ({
   const [editingEntry, setEditingEntry] = useState<TransactionEntry | null>(
     null
   );
+  const [pendingUndoEntry, setPendingUndoEntry] =
+    useState<TransactionEntry | null>(null);
 
   useEffect(() => {
     if (!visible) {
       setEditingEntry(null);
+      setPendingUndoEntry(null);
       return;
     }
     setMonthFilter(initialMonthKey || null);
@@ -156,7 +160,7 @@ export const ActivityHistoryModal: React.FC<ActivityHistoryModalProps> = ({
 
   const hasMore = filteredEntries.length > visibleEntries.length;
   const { keyboardInset, viewportHeight, offsetTop } = useWebKeyboardInset(
-    visible && editingEntry === null
+    visible && editingEntry === null && pendingUndoEntry === null
   );
   const webKeyboardBackdrop =
     Platform.OS === 'web' && keyboardInset > 0
@@ -173,7 +177,7 @@ export const ActivityHistoryModal: React.FC<ActivityHistoryModalProps> = ({
   return (
     <>
       <Modal
-        visible={visible && editingEntry === null}
+        visible={visible && editingEntry === null && pendingUndoEntry === null}
         transparent
         animationType="fade"
         onRequestClose={onClose}
@@ -453,7 +457,22 @@ export const ActivityHistoryModal: React.FC<ActivityHistoryModalProps> = ({
                           </Text>
                         </ScalePressable>
                         <ScalePressable
-                          onPress={() => undoEntry(entry.id)}
+                          onPress={() => {
+                            const linkedClaimed =
+                              (entry.type === 'treat_direct' ||
+                                entry.type === 'impulse_skipped' ||
+                                entry.type === 'midnight_split') &&
+                              Boolean(entry.treatId) &&
+                              treats.some(
+                                (t) => t.id === entry.treatId && t.claimed
+                              );
+                            if (linkedClaimed) {
+                              undoEntry(entry.id);
+                              return;
+                            }
+                            triggerLightHaptic();
+                            setPendingUndoEntry(entry);
+                          }}
                           accessibilityLabel={`Undo ${entry.label}`}
                           hitSlop={6}
                           style={[styles.undoBtn, { backgroundColor: shade.card }]}
@@ -513,6 +532,30 @@ export const ActivityHistoryModal: React.FC<ActivityHistoryModalProps> = ({
       <EditTransactionModal
         entry={editingEntry}
         onClose={() => setEditingEntry(null)}
+      />
+
+      <ConfirmModal
+        visible={pendingUndoEntry !== null}
+        title="Delete & Undo Entry?"
+        message={
+          pendingUndoEntry
+            ? `Remove "${pendingUndoEntry.label}" (${
+                getTransactionPresentation(pendingUndoEntry, shade, privacyMode)
+                  .deltaText
+              }) and reverse its balance changes?`
+            : ''
+        }
+        confirmLabel="Yes, Delete"
+        cancelLabel="Keep"
+        destructive
+        icon="rotate-ccw"
+        onCancel={() => setPendingUndoEntry(null)}
+        onConfirm={() => {
+          if (pendingUndoEntry) {
+            undoEntry(pendingUndoEntry.id);
+          }
+          setPendingUndoEntry(null);
+        }}
       />
     </>
   );
