@@ -13,6 +13,7 @@ import {
   ScalePressable,
 } from '../components/AnimatedPrimitives';
 import { AppIcon, IconBadge } from '../components/AppIcon';
+import { ConfirmModal } from '../components/ConfirmModal';
 import { EditTransactionModal } from '../components/EditTransactionModal';
 import { PayBillModal } from '../components/PayBillModal';
 import { PaydayCheckInModal } from '../components/PaydayCheckInModal';
@@ -78,6 +79,8 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
   const [editingEntry, setEditingEntry] = useState<TransactionEntry | null>(
     null
   );
+  const [pendingUndoEntry, setPendingUndoEntry] =
+    useState<TransactionEntry | null>(null);
 
   const openModal = (mode: ActionModalMode, envelopeId: string | null = null) => {
     triggerLightHaptic();
@@ -692,7 +695,22 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
                             </Text>
                           </ScalePressable>
                           <ScalePressable
-                            onPress={() => undoEntry(entry.id)}
+                            onPress={() => {
+                              const linkedClaimed =
+                                (entry.type === 'treat_direct' ||
+                                  entry.type === 'impulse_skipped' ||
+                                  entry.type === 'midnight_split') &&
+                                Boolean(entry.treatId) &&
+                                treats.some(
+                                  (t) => t.id === entry.treatId && t.claimed
+                                );
+                              if (linkedClaimed) {
+                                undoEntry(entry.id);
+                                return;
+                              }
+                              triggerLightHaptic();
+                              setPendingUndoEntry(entry);
+                            }}
                             accessibilityLabel={`Undo ${entry.label}`}
                             hitSlop={6}
                             style={[
@@ -764,6 +782,30 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
       <EditTransactionModal
         entry={editingEntry}
         onClose={() => setEditingEntry(null)}
+      />
+
+      <ConfirmModal
+        visible={pendingUndoEntry !== null}
+        title="Delete & Undo Entry?"
+        message={
+          pendingUndoEntry
+            ? `Remove "${pendingUndoEntry.label}" (${
+                getTransactionPresentation(pendingUndoEntry, shade, privacyMode)
+                  .deltaText
+              }) and reverse its balance changes?`
+            : ''
+        }
+        confirmLabel="Yes, Delete"
+        cancelLabel="Keep"
+        destructive
+        icon="rotate-ccw"
+        onCancel={() => setPendingUndoEntry(null)}
+        onConfirm={() => {
+          if (pendingUndoEntry) {
+            undoEntry(pendingUndoEntry.id);
+          }
+          setPendingUndoEntry(null);
+        }}
       />
     </ScrollView>
   );
