@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { computeDayMetricsFromEntries } from '../state/budgetMath';
+import {
+  computeDayMetricsFromEntries,
+  roundCurrency,
+} from '../state/budgetMath';
 import { budgetReducer } from '../state/budgetReducer';
 import { createNewUserState, PersistedBudgetState } from '../state/defaults';
 import {
@@ -86,7 +89,7 @@ describe('hardening & edge-case guarantees', () => {
     expect(res.nextState.monthlyArchives).toHaveLength(1);
     expect(res.nextState.monthlyArchives[0].monthKey).toBe('2026-12');
     expect(res.nextState.monthlyArchives[0].totalSaved).toBe(
-      Math.round(4200 + res.vaultAdded)
+      roundCurrency(4200 + res.vaultAdded)
     );
     expect(res.nextState.monthlyArchives[0].totalSpent).toBe(100);
   });

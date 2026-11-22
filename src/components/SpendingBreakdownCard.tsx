@@ -6,6 +6,7 @@ import {
   SpendingBreakdownScope,
   computeSpendingBreakdown,
 } from '../utils/insightsEngine';
+import { formatPesoDisplay } from '../utils/numberFormat';
 import {
   AnimatedProgressBar,
   FadeSlideIn,
@@ -50,8 +51,7 @@ export const SpendingBreakdownCard: React.FC<SpendingBreakdownCardProps> = ({
     [entries, isHistorical, range, monthKey, scope]
   );
 
-  const mask = (amt: number) =>
-    privacyMode ? '₱••••' : `₱${Math.round(amt).toLocaleString()}`;
+  const mask = (amt: number) => formatPesoDisplay(amt, privacyMode);
 
   const emptyLabel = isHistorical
     ? scope === 'daily'
@@ -73,7 +73,7 @@ export const SpendingBreakdownCard: React.FC<SpendingBreakdownCardProps> = ({
       ]}
     >
       <View style={styles.topRow}>
-        <View>
+        <View style={{ flex: 1, minWidth: 0 }}>
           <Text style={[styles.kicker, { color: shade.muted }]}>
             SPENDING BREAKDOWN
           </Text>
@@ -186,7 +186,10 @@ export const SpendingBreakdownCard: React.FC<SpendingBreakdownCardProps> = ({
                   <View style={styles.sliceHeader}>
                     <View style={styles.sliceLeft}>
                       <AppIcon name={slice.icon} size={13} color={barColor} />
-                      <Text style={[styles.sliceLabel, { color: shade.text }]}>
+                      <Text
+                        numberOfLines={1}
+                        style={[styles.sliceLabel, { color: shade.text }]}
+                      >
                         {slice.label}
                       </Text>
                     </View>
@@ -313,17 +316,22 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    gap: 8,
   },
   sliceLeft: {
+    flex: 1,
+    minWidth: 0,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
   },
   sliceLabel: {
+    flex: 1,
     fontSize: 12,
     fontWeight: '700',
   },
   sliceAmt: {
+    flexShrink: 0,
     fontSize: 12,
     fontWeight: '800',
     fontVariant: ['tabular-nums'],

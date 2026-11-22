@@ -96,7 +96,7 @@ export const GoalsSection: React.FC<GoalsSectionProps> = ({
           {treats.map((item) => {
             const itemPct = Math.min(
               100,
-              Math.round((item.funded / Math.max(1, item.target)) * 100)
+              Math.round((item.funded / Math.max(0.01, item.target)) * 100)
             );
             const isActive = activeTreat?.id === item.id && !item.claimed;
             const isReady = item.funded >= item.target && !item.claimed;
@@ -151,7 +151,15 @@ export const GoalsSection: React.FC<GoalsSectionProps> = ({
                           </View>
                         )}
                       </View>
-                      <Text style={[styles.goalSub, { color: shade.muted }]}>
+                      <Text
+                        style={[
+                          styles.goalSub,
+                          {
+                            color: shade.muted,
+                            fontVariant: ['tabular-nums'],
+                          },
+                        ]}
+                      >
                         {formatVisiblePeso(item.funded)} /{' '}
                         {formatVisiblePeso(item.target)}
                         {!isActive && !item.claimed
@@ -192,11 +200,21 @@ export const GoalsSection: React.FC<GoalsSectionProps> = ({
                 />
 
                 {isActive && (
-                  <View style={styles.rowBetween}>
-                    <Text style={[styles.goalFootnote, { color: shade.muted }]}>
+                  <View style={[styles.rowBetween, { flexWrap: 'wrap', gap: 6 }]}>
+                    <Text
+                      style={[
+                        styles.goalFootnote,
+                        { color: shade.muted, fontVariant: ['tabular-nums'] },
+                      ]}
+                    >
                       Direct: {formatVisiblePeso(item.fromImpulses)}
                     </Text>
-                    <Text style={[styles.goalFootnote, { color: shade.muted }]}>
+                    <Text
+                      style={[
+                        styles.goalFootnote,
+                        { color: shade.muted, fontVariant: ['tabular-nums'] },
+                      ]}
+                    >
                       End Day Split: {formatVisiblePeso(item.fromRollovers)}
                     </Text>
                   </View>
@@ -420,6 +438,7 @@ const styles = StyleSheet.create({
   goalSub: {
     fontSize: 12,
     fontWeight: '600',
+    fontVariant: ['tabular-nums'],
   },
   statusPill: {
     paddingHorizontal: 8,
@@ -433,6 +452,7 @@ const styles = StyleSheet.create({
   goalFootnote: {
     fontSize: 12,
     fontWeight: '600',
+    fontVariant: ['tabular-nums'],
   },
   iconDelBtn: {
     width: 34,
@@ -458,6 +478,7 @@ const styles = StyleSheet.create({
   },
   fundFooter: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 10,

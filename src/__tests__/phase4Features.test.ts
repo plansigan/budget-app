@@ -70,8 +70,8 @@ describe('Phase 4 features', () => {
       };
 
       const pub = buildWrapUpFromArchive(snapshot, false);
-      expect(pub.shareText).toContain('Saved: ₱6,200');
-      expect(pub.shareText).toContain('Spent: ₱12,450');
+      expect(pub.shareText).toContain('Saved: ₱6,200.00');
+      expect(pub.shareText).toContain('Spent: ₱12,450.00');
 
       const priv = buildWrapUpFromArchive(snapshot, true);
       expect(priv.shareText).not.toContain('6,200');

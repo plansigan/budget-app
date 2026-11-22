@@ -7,6 +7,7 @@ import {
   TransactionEntry,
   TreatVaultItem,
 } from '../types/budget';
+import { formatPeso } from './numberFormat';
 import {
   formatEntryDateLocal,
   formatLocalDateKey,
@@ -257,7 +258,7 @@ export function computeSpendingBreakdown(
     }
   }
 
-  const safeTotal = Math.max(1, totalSpent);
+  const safeTotal = Math.max(0.01, totalSpent);
   const slices = Array.from(bucketMap.values())
     .sort((a, b) => b.amount - a.amount)
     .map((s) => ({
@@ -332,14 +333,14 @@ export function computeSinkingFundPace(
 ): SinkingFundPace {
   const target = Math.max(0, fund.target);
   const saved = Math.max(0, fund.saved);
-  const remaining = Math.max(0, target - saved);
+  const remaining = Math.max(0, Math.round((target - saved) * 100) / 100);
   const pct =
     target > 0
-      ? Math.min(100, Math.round((saved / Math.max(1, target)) * 100))
+      ? Math.min(100, Math.round((saved / Math.max(0.01, target)) * 100))
       : 0;
   const safeMonths = Math.max(1, Math.round(fund.monthsToGoal || 1));
   const monthlyNeeded =
-    remaining > 0 ? Math.ceil(remaining / safeMonths) : 0;
+    remaining > 0 ? Math.ceil((remaining / safeMonths) * 100) / 100 : 0;
 
   return {
     remaining,
@@ -414,17 +415,18 @@ export function computeMonthlyWrapUp(params: {
   const sinkingDepositedThisMonth = monthEntries
     .filter((e) => e.type === 'sinking_fund')
     .reduce((sum, e) => sum + Math.max(0, e.amount), 0);
-  const totalSaved = Math.round(
-    Math.max(0, params.monthlySaved) + sinkingDepositedThisMonth
-  );
-  const safeIncome = Math.max(1, params.settings.monthlyIncome);
+  const totalSaved =
+    Math.round(
+      (Math.max(0, params.monthlySaved) + sinkingDepositedThisMonth) * 100
+    ) / 100;
+  const safeIncome = Math.max(0.01, params.settings.monthlyIncome);
   const savingsRatePct =
     params.settings.monthlyIncome > 0
       ? Math.round((totalSaved / safeIncome) * 100)
       : 0;
   const goalPct =
     params.settings.monthlySavingsGoal > 0
-      ? totalSaved / Math.max(1, params.settings.monthlySavingsGoal)
+      ? totalSaved / Math.max(0.01, params.settings.monthlySavingsGoal)
       : 0;
 
   let grade: MonthlyWrapUpReport['grade'] = 'C';
@@ -458,8 +460,8 @@ export function computeMonthlyWrapUp(params: {
       ].join('\n')
     : [
         `My ${monthName} Velvet Budget Wrap-Up (Grade: ${grade})`,
-        `Saved: ₱${totalSaved.toLocaleString()} (${savingsRatePct}% of income)`,
-        `Spent: ₱${Math.round(breakdown.totalSpent).toLocaleString()}`,
+        `Saved: ${formatPeso(totalSaved)} (${savingsRatePct}% of income)`,
+        `Spent: ${formatPeso(breakdown.totalSpent)}`,
         `Streak: ${params.streakDays} days • Score: ${params.disciplineScore}`,
         `Top category: ${topCategoryLabel}`,
       ].join('\n');
@@ -514,8 +516,8 @@ export function buildWrapUpFromArchive(
       ].join('\n')
     : [
         `My ${monthName} Velvet Budget Wrap-Up (Grade: ${snapshot.grade})`,
-        `Saved: ₱${Math.round(snapshot.totalSaved).toLocaleString()} (${snapshot.savingsRatePct}% of income)`,
-        `Spent: ₱${Math.round(snapshot.totalSpent).toLocaleString()}`,
+        `Saved: ${formatPeso(snapshot.totalSaved)} (${snapshot.savingsRatePct}% of income)`,
+        `Spent: ${formatPeso(snapshot.totalSpent)}`,
         `Streak: ${snapshot.streakDays} days • Score: ${snapshot.disciplineScore}`,
         `Top category: ${snapshot.topCategoryLabel}`,
       ].join('\n');

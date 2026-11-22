@@ -209,7 +209,8 @@ export const VaultModals: React.FC<VaultModalsProps> = ({
               setNewTargetText(formatPesoInput(t));
               if (treatFormError) setTreatFormError(null);
             }}
-            keyboardType="numeric"
+            keyboardType="decimal-pad"
+            inputMode="decimal"
             placeholder="Exact price"
             placeholderTextColor={shade.muted}
             style={[styles.amountInput, { color: shade.text }]}
@@ -347,7 +348,8 @@ export const VaultModals: React.FC<VaultModalsProps> = ({
                 setFundTargetText(formatPesoInput(t));
                 if (fundFormError) setFundFormError(null);
               }}
-              keyboardType="numeric"
+              keyboardType="decimal-pad"
+              inputMode="decimal"
               placeholder="Target ₱"
               placeholderTextColor={shade.muted}
               style={[styles.amountInput, { color: shade.text }]}
@@ -436,7 +438,8 @@ export const VaultModals: React.FC<VaultModalsProps> = ({
               setDepositAmtText(formatPesoInput(t));
               if (depositFormError) setDepositFormError(null);
             }}
-            keyboardType="numeric"
+            keyboardType="decimal-pad"
+            inputMode="decimal"
             placeholder="0"
             placeholderTextColor={shade.muted}
             autoFocus

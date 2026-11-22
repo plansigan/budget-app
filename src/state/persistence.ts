@@ -40,7 +40,7 @@ export function normalizePersistedState(
               ? b.name.trim()
               : 'Monthly Bill',
           icon: typeof b.icon === 'string' && b.icon ? b.icon : 'tag',
-          amount: Math.round(safeNum(b.amount, 0, 0)),
+          amount: roundCurrency(safeNum(b.amount, 0, 0)),
           dueDay:
             typeof b.dueDay === 'number' && Number.isFinite(b.dueDay)
               ? Math.round(safeNum(b.dueDay, 1, 1, 31))
@@ -58,18 +58,20 @@ export function normalizePersistedState(
   ) as Partial<BudgetSettings>;
 
   const normalizedSettings: BudgetSettings = {
-    monthlyIncome: safeNum(
-      rawSettings.monthlyIncome,
-      base.settings.monthlyIncome,
-      0
+    monthlyIncome: roundCurrency(
+      safeNum(rawSettings.monthlyIncome, base.settings.monthlyIncome, 0)
     ),
     fixedBills: hasBillItemsArray
       ? sumBills(normalizedBills)
-      : safeNum(rawSettings.fixedBills, sumBills(normalizedBills), 0),
-    monthlySavingsGoal: safeNum(
-      rawSettings.monthlySavingsGoal,
-      base.settings.monthlySavingsGoal,
-      0
+      : roundCurrency(
+          safeNum(rawSettings.fixedBills, sumBills(normalizedBills), 0)
+        ),
+    monthlySavingsGoal: roundCurrency(
+      safeNum(
+        rawSettings.monthlySavingsGoal,
+        base.settings.monthlySavingsGoal,
+        0
+      )
     ),
     salaryFrequency: rawSettings.salaryFrequency === 1 ? 1 : 2,
     payday1: Math.round(safeNum(rawSettings.payday1, 15, 1, 31)),
@@ -100,7 +102,7 @@ export function normalizePersistedState(
             typeof c.name === 'string' && c.name.trim()
               ? c.name.trim()
               : 'Credit Card',
-          limit: roundCurrency(safeNum(c.limit, 1, 1)),
+          limit: roundCurrency(safeNum(c.limit, 1, 0.01)),
           used: roundCurrency(safeNum(c.used, 0, 0)),
           cutoffDay: Math.round(safeNum(c.cutoffDay, 15, 1, 31)),
         }))
@@ -151,7 +153,7 @@ export function normalizePersistedState(
               ? f.name.trim()
               : 'Savings Bucket',
           icon: typeof f.icon === 'string' && f.icon ? f.icon : 'shield',
-          target: roundCurrency(safeNum(f.target, 1, 1)),
+          target: roundCurrency(safeNum(f.target, 1, 0.01)),
           saved: roundCurrency(safeNum(f.saved, 0, 0)),
           monthsToGoal: Math.round(safeNum(f.monthsToGoal, 6, 1, 120)),
         }))
@@ -167,7 +169,7 @@ export function normalizePersistedState(
               ? t.name.trim()
               : 'Treat',
           icon: typeof t.icon === 'string' && t.icon ? t.icon : 'gift',
-          target: roundCurrency(safeNum(t.target, 1, 1)),
+          target: roundCurrency(safeNum(t.target, 1, 0.01)),
           funded: roundCurrency(safeNum(t.funded, 0, 0)),
           fromImpulses: roundCurrency(safeNum(t.fromImpulses, 0, 0)),
           fromRollovers: roundCurrency(safeNum(t.fromRollovers, 0, 0)),

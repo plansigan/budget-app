@@ -19,7 +19,9 @@ import {
 import { triggerLightHaptic } from '../../utils/haptics';
 import {
   formatOrdinal,
+  formatPeso,
   formatPesoInput,
+  formatPesoNumber,
   parsePesoInput,
 } from '../../utils/numberFormat';
 
@@ -198,7 +200,7 @@ export const AccountDetailView: React.FC<AccountDetailViewProps> = ({
       setEditCutoffText('');
     } else if (selectedCard) {
       setEditName(selectedCard.name);
-      setEditLimitText(formatPesoInput(String(Math.round(selectedCard.limit))));
+      setEditLimitText(formatPesoNumber(selectedCard.limit));
       setEditCutoffText(String(selectedCard.cutoffDay));
     }
     setShowEditModal(true);
@@ -250,7 +252,9 @@ export const AccountDetailView: React.FC<AccountDetailViewProps> = ({
   const cardPct = selectedCard
     ? Math.min(
         100,
-        Math.round((selectedCard.used / Math.max(1, selectedCard.limit)) * 100)
+        Math.round(
+          (selectedCard.used / Math.max(0.01, selectedCard.limit)) * 100
+        )
       )
     : 0;
   const cardDaysLeft = selectedCard
@@ -368,20 +372,34 @@ export const AccountDetailView: React.FC<AccountDetailViewProps> = ({
 
             {selectedCard ? (
               <View style={{ gap: 8 }}>
-                <PopValueText valueTrigger={selectedCard.used}>
-                  <Text style={[styles.bigTotal, { color: shade.text }]}>
-                    {formatVisiblePeso(selectedCard.used)}{' '}
+                <View style={{ gap: 2 }}>
+                  <PopValueText valueTrigger={selectedCard.used}>
                     <Text
-                      style={{
-                        fontSize: 14,
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.78}
+                      style={[
+                        styles.bigTotal,
+                        { fontSize: 30, color: shade.text },
+                      ]}
+                    >
+                      {formatVisiblePeso(selectedCard.used)}
+                    </Text>
+                  </PopValueText>
+                  <Text
+                    style={[
+                      styles.accountSub,
+                      {
+                        fontSize: 13,
                         color: shade.muted,
                         fontWeight: '600',
-                      }}
-                    >
-                      / {formatVisiblePeso(selectedCard.limit)} limit
-                    </Text>
+                        fontVariant: ['tabular-nums'],
+                      },
+                    ]}
+                  >
+                    of {formatVisiblePeso(selectedCard.limit)} credit limit
                   </Text>
-                </PopValueText>
+                </View>
                 <AnimatedProgressBar
                   percentage={cardPct}
                   trackColor={shade.surface}
@@ -391,7 +409,11 @@ export const AccountDetailView: React.FC<AccountDetailViewProps> = ({
                 <Text
                   style={[
                     styles.accountSub,
-                    { color: shade.positive, fontWeight: '700' },
+                    {
+                      color: shade.positive,
+                      fontWeight: '700',
+                      fontVariant: ['tabular-nums'],
+                    },
                   ]}
                 >
                   Available Credit: {formatVisiblePeso(cardAvail)}
@@ -403,7 +425,12 @@ export const AccountDetailView: React.FC<AccountDetailViewProps> = ({
                   CURRENT BALANCE
                 </Text>
                 <PopValueText valueTrigger={currentBalance}>
-                  <Text style={[styles.bigTotal, { color: shade.text }]}>
+                  <Text
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.78}
+                    style={[styles.bigTotal, { color: shade.text }]}
+                  >
                     {formatVisiblePeso(currentBalance)}
                   </Text>
                 </PopValueText>
@@ -415,16 +442,26 @@ export const AccountDetailView: React.FC<AccountDetailViewProps> = ({
                 <Text style={[styles.inOutLabel, { color: shade.muted }]}>
                   Spent
                 </Text>
-                <Text style={[styles.inOutVal, { color: shade.text }]}>
-                  {privacyMode ? '₱••••' : `-₱${totalOut.toLocaleString()}`}
+                <Text
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.78}
+                  style={[styles.inOutVal, { color: shade.text }]}
+                >
+                  {privacyMode ? '₱••••' : `-${formatPeso(totalOut)}`}
                 </Text>
               </View>
               <View style={[styles.inOutBox, { backgroundColor: shade.bg }]}>
                 <Text style={[styles.inOutLabel, { color: shade.muted }]}>
                   {selectedCard ? 'Card Payments' : 'Added'}
                 </Text>
-                <Text style={[styles.inOutVal, { color: shade.positive }]}>
-                  {privacyMode ? '₱••••' : `+₱${totalIn.toLocaleString()}`}
+                <Text
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.78}
+                  style={[styles.inOutVal, { color: shade.positive }]}
+                >
+                  {privacyMode ? '₱••••' : `+${formatPeso(totalIn)}`}
                 </Text>
               </View>
             </View>
@@ -596,10 +633,10 @@ export const AccountDetailView: React.FC<AccountDetailViewProps> = ({
                   const deltaString = privacyMode
                     ? '₱••••'
                     : isDeposit || isIncomingTransfer
-                    ? `+₱${entry.amount.toLocaleString()}`
+                    ? `+${formatPeso(entry.amount)}`
                     : isAdjust
-                    ? `${adjPositive ? '+' : '-'}₱${entry.amount.toLocaleString()}`
-                    : `-₱${entry.amount.toLocaleString()}`;
+                    ? `${adjPositive ? '+' : '-'}${formatPeso(entry.amount)}`
+                    : `-${formatPeso(entry.amount)}`;
 
                   const typeLabel = isIncomingTransfer
                     ? selectedCard
@@ -741,7 +778,8 @@ export const AccountDetailView: React.FC<AccountDetailViewProps> = ({
           <TextInput
             value={actionAmountText}
             onChangeText={(t) => setActionAmountText(formatPesoInput(t))}
-            keyboardType="numeric"
+            keyboardType="decimal-pad"
+            inputMode="decimal"
             placeholder="Enter exact amount"
             placeholderTextColor={shade.muted}
             autoFocus
@@ -1054,7 +1092,8 @@ export const AccountDetailView: React.FC<AccountDetailViewProps> = ({
                     setEditLimitText(formatPesoInput(t));
                     if (editError) setEditError(null);
                   }}
-                  keyboardType="numeric"
+                  keyboardType="decimal-pad"
+                  inputMode="decimal"
                   placeholder="Limit"
                   placeholderTextColor={shade.muted}
                   style={[styles.amountInput, { color: shade.text }]}
@@ -1211,6 +1250,7 @@ const styles = StyleSheet.create({
     fontSize: 32,
     fontWeight: '800',
     letterSpacing: -0.6,
+    fontVariant: ['tabular-nums'],
   },
   accountSub: {
     fontSize: 11,
@@ -1232,6 +1272,7 @@ const styles = StyleSheet.create({
   inOutVal: {
     fontSize: 14,
     fontWeight: '800',
+    fontVariant: ['tabular-nums'],
   },
   actionGrid: {
     gap: 8,

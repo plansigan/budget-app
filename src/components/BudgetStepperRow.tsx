@@ -1,7 +1,11 @@
-import React, { useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Animated, StyleSheet, Text, TextInput, View } from 'react-native';
 import { ThemeShade } from '../theme/palette';
-import { formatPesoNumber, parsePesoInput } from '../utils/numberFormat';
+import {
+  formatPesoInput,
+  formatPesoNumber,
+  parsePesoInput,
+} from '../utils/numberFormat';
 
 interface BudgetStepperRowProps {
   label: string;
@@ -22,8 +26,18 @@ export const BudgetStepperRow: React.FC<BudgetStepperRowProps> = ({
   onChange,
 }) => {
   const focusScale = useRef(new Animated.Value(1)).current;
+  const [isFocused, setIsFocused] = useState(false);
+  const [draftText, setDraftText] = useState(() => formatPesoNumber(value));
+
+  useEffect(() => {
+    if (!isFocused) {
+      setDraftText(formatPesoNumber(value));
+    }
+  }, [value, isFocused]);
 
   const handleFocus = () => {
+    setIsFocused(true);
+    setDraftText(formatPesoNumber(value));
     Animated.spring(focusScale, {
       toValue: 1.015,
       speed: 32,
@@ -33,6 +47,10 @@ export const BudgetStepperRow: React.FC<BudgetStepperRowProps> = ({
   };
 
   const handleBlur = () => {
+    setIsFocused(false);
+    const parsed = Math.max(0, parsePesoInput(draftText));
+    onChange(parsed);
+    setDraftText(formatPesoNumber(parsed));
     Animated.spring(focusScale, {
       toValue: 1,
       speed: 28,
@@ -42,7 +60,9 @@ export const BudgetStepperRow: React.FC<BudgetStepperRowProps> = ({
   };
 
   const handleTextChange = (text: string) => {
-    onChange(Math.max(0, parsePesoInput(text)));
+    const formatted = formatPesoInput(text);
+    setDraftText(formatted);
+    onChange(Math.max(0, parsePesoInput(formatted)));
   };
 
   return (
@@ -69,11 +89,12 @@ export const BudgetStepperRow: React.FC<BudgetStepperRowProps> = ({
       >
         <Text style={[styles.pesoPrefix, { color: shade.accent }]}>₱</Text>
         <TextInput
-          value={formatPesoNumber(value)}
+          value={isFocused ? draftText : formatPesoNumber(value)}
           onChangeText={handleTextChange}
           onFocus={handleFocus}
           onBlur={handleBlur}
-          keyboardType="numeric"
+          keyboardType="decimal-pad"
+          inputMode="decimal"
           placeholder="0"
           placeholderTextColor={shade.muted}
           selectTextOnFocus

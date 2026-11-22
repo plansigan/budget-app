@@ -327,19 +327,21 @@ export function budgetReducer(
       };
 
     case 'BOOST_SAVINGS_GOAL': {
-      const cleanDelta = Math.max(0, Math.round(action.delta));
+      const cleanDelta = roundCurrency(Math.max(0, action.delta));
       if (cleanDelta <= 0) return state;
       return {
         ...state,
         settings: {
           ...state.settings,
-          monthlySavingsGoal: state.settings.monthlySavingsGoal + cleanDelta,
+          monthlySavingsGoal: roundCurrency(
+            state.settings.monthlySavingsGoal + cleanDelta
+          ),
         },
       };
     }
 
     case 'LOG_SPEND': {
-      const cleanAmount = roundCurrency(Math.max(1, action.amount));
+      const cleanAmount = roundCurrency(Math.max(0.01, action.amount));
       const todayKey = action.todayKey || getTodayKey();
       const targetDateKey = action.dateKey;
       const paymentSourceId = action.paymentSourceId || 'cash';
@@ -408,7 +410,7 @@ export function budgetReducer(
     }
 
     case 'FUND_ACTIVE_TREAT': {
-      const cleanAmount = roundCurrency(Math.max(1, action.amount));
+      const cleanAmount = roundCurrency(Math.max(0.01, action.amount));
       const todayKey = action.todayKey || getTodayKey();
       const targetDateKey = action.dateKey;
       const activeUnclaimed =
@@ -457,7 +459,7 @@ export function budgetReducer(
     }
 
     case 'SAVE_TO_JAR': {
-      const cleanAmount = roundCurrency(Math.max(1, action.amount));
+      const cleanAmount = roundCurrency(Math.max(0.01, action.amount));
       const todayKey = action.todayKey || getTodayKey();
       const targetDateKey = action.dateKey;
       const baseDaily = computeBaseDailyAllowance(
@@ -992,9 +994,9 @@ export function budgetReducer(
         ...state,
         settings: {
           ...state.settings,
-          monthlyIncome: Math.max(0, action.income),
-          fixedBills: Math.max(0, action.bills),
-          monthlySavingsGoal: Math.max(0, action.savings),
+          monthlyIncome: roundCurrency(Math.max(0, action.income)),
+          fixedBills: roundCurrency(Math.max(0, action.bills)),
+          monthlySavingsGoal: roundCurrency(Math.max(0, action.savings)),
         },
       };
 
@@ -1010,7 +1012,7 @@ export function budgetReducer(
       };
 
     case 'UPDATE_BILL_AMOUNT': {
-      const cleanAmount = Math.max(0, Math.round(action.amount));
+      const cleanAmount = roundCurrency(Math.max(0, action.amount));
       const nextBills = state.billItems.map((b) =>
         b.id === action.billId ? { ...b, amount: cleanAmount } : b
       );
@@ -1023,7 +1025,7 @@ export function budgetReducer(
 
     case 'UPDATE_BILL_ITEM': {
       const trimmed = action.name.trim();
-      const cleanAmount = Math.max(0, Math.round(action.amount));
+      const cleanAmount = roundCurrency(Math.max(0, action.amount));
       if (!trimmed) return state;
       const cleanDue =
         typeof action.dueDay === 'number' && Number.isFinite(action.dueDay)
@@ -1049,7 +1051,7 @@ export function budgetReducer(
 
     case 'ADD_BILL_ITEM': {
       const trimmed = action.name.trim();
-      const cleanAmount = Math.max(0, Math.round(action.amount));
+      const cleanAmount = roundCurrency(Math.max(0, action.amount));
       if (!trimmed || cleanAmount <= 0) return state;
       const newBill: BillItem = {
         id: makeUid('bill'),
@@ -1165,7 +1167,7 @@ export function budgetReducer(
     }
 
     case 'DEPOSIT_TO_WALLET': {
-      const cleanAmount = roundCurrency(Math.max(1, action.amount));
+      const cleanAmount = roundCurrency(Math.max(0.01, action.amount));
       const isCash = action.sourceId === 'cash';
       const matchedBank = state.banks.find((b) => b.id === action.sourceId);
       const matchedCard = state.creditCards.find(
@@ -1310,7 +1312,7 @@ export function budgetReducer(
       const newCard: CreditCardAccount = {
         id: makeUid('cc'),
         name: trimmed,
-        limit: Math.max(1, roundCurrency(action.limit)),
+        limit: Math.max(0.01, roundCurrency(action.limit)),
         used: Math.max(0, roundCurrency(action.used)),
         cutoffDay: Math.max(1, Math.min(31, Math.round(action.cutoffDay))),
       };
@@ -1327,7 +1329,7 @@ export function budgetReducer(
             ? {
                 ...c,
                 name: trimmed,
-                limit: Math.max(1, roundCurrency(action.limit)),
+                limit: Math.max(0.01, roundCurrency(action.limit)),
                 cutoffDay: Math.max(
                   1,
                   Math.min(31, Math.round(action.cutoffDay))
@@ -1352,12 +1354,12 @@ export function budgetReducer(
       const nextBills = params.billItems ? params.billItems : state.billItems;
       const totalBills = params.billItems
         ? sumBills(params.billItems)
-        : Math.max(0, params.bills);
+        : roundCurrency(Math.max(0, params.bills));
 
       const nextSettings: BudgetSettings = {
-        monthlyIncome: Math.max(0, params.income),
+        monthlyIncome: roundCurrency(Math.max(0, params.income)),
         fixedBills: totalBills,
-        monthlySavingsGoal: Math.max(0, params.savings),
+        monthlySavingsGoal: roundCurrency(Math.max(0, params.savings)),
         salaryFrequency: params.salaryFrequency,
         payday1: Math.max(1, Math.min(31, Math.round(params.payday1))),
         payday2: Math.max(1, Math.min(31, Math.round(params.payday2))),
@@ -1458,7 +1460,7 @@ export function budgetReducer(
       return { ...state, themeMode: action.mode };
 
     case 'LOG_PAYDAY_CHECKIN': {
-      const cleanAmount = roundCurrency(Math.max(1, action.amount));
+      const cleanAmount = roundCurrency(Math.max(0.01, action.amount));
       const cleanSavings = roundCurrency(Math.max(0, action.savingsAllocation));
       const targetDateKey = action.todayKey || getTodayKey();
       const matchedBank = state.banks.find((b) => b.id === action.sourceId);
@@ -1595,7 +1597,7 @@ export function budgetReducer(
       );
       if (!env) return state;
 
-      const cleanAmount = roundCurrency(Math.max(1, action.amount));
+      const cleanAmount = roundCurrency(Math.max(0.01, action.amount));
       const todayKey = action.todayKey || getTodayKey();
       const targetDateKey = action.dateKey;
       const isToday = targetDateKey === todayKey;
@@ -1811,7 +1813,7 @@ export function budgetReducer(
     }
 
     case 'DEPOSIT_TO_SINKING_FUND': {
-      const cleanAmt = roundCurrency(Math.max(1, action.amount));
+      const cleanAmt = roundCurrency(Math.max(0.01, action.amount));
       const target = state.sinkingFunds.find((f) => f.id === action.id);
       if (!target) return state;
 
@@ -1859,7 +1861,7 @@ export function budgetReducer(
       return normalizePersistedState(action.data);
 
     case 'TRANSFER_BETWEEN_ACCOUNTS': {
-      const cleanAmount = roundCurrency(Math.max(1, action.amount));
+      const cleanAmount = roundCurrency(Math.max(0.01, action.amount));
       const { fromSourceId, toSourceId } = action;
       if (!fromSourceId || !toSourceId || fromSourceId === toSourceId) {
         return state;
@@ -1950,7 +1952,7 @@ export function budgetReducer(
       const target = state.entries.find((e) => e.id === action.entryId);
       if (!target) return state;
 
-      const cleanAmount = roundCurrency(Math.max(1, action.amount));
+      const cleanAmount = roundCurrency(Math.max(0.01, action.amount));
       const cleanLabel = action.label.trim() || target.label;
 
       let nextCash = state.cashOnHand;

@@ -244,7 +244,7 @@ export const WeeklyBelt: React.FC = () => {
               { backgroundColor: shade.surface, borderColor: shade.accent },
             ]}
           >
-            <View style={{ flex: 1 }}>
+            <View style={{ flex: 1, minWidth: 0 }}>
               <View style={styles.pastTitleRow}>
                 <AppIcon name="calendar" size={12} color={shade.accent} />
                 <Text style={[styles.pastTitle, { color: shade.text }]}>
@@ -353,6 +353,8 @@ const styles = StyleSheet.create({
   pastStats: {
     fontSize: 11,
     fontWeight: '600',
+    lineHeight: 16,
+    fontVariant: ['tabular-nums'],
   },
   backTodayPill: {
     paddingHorizontal: 11,

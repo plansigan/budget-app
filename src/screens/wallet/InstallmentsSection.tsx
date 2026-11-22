@@ -13,7 +13,11 @@ import {
   computeInstallmentSummary,
   getInstallmentPayoffLabel,
 } from '../../utils/insightsEngine';
-import { formatPesoInput, parsePesoInput } from '../../utils/numberFormat';
+import {
+  formatPesoInput,
+  formatPesoNumber,
+  parsePesoInput,
+} from '../../utils/numberFormat';
 import { WalletConfirmRequest } from './AccountDetailView';
 
 const PROVIDER_CHIPS = ['BDO 0%', 'BPI', 'SPayLater', 'Atome', 'Other'];
@@ -51,7 +55,7 @@ export const InstallmentsSection: React.FC<InstallmentsSectionProps> = ({
     setEditingInst(item);
     setEditName(item.name);
     setEditProvider(item.provider);
-    setEditMonthlyText(formatPesoInput(String(Math.round(item.monthlyAmount))));
+    setEditMonthlyText(formatPesoNumber(item.monthlyAmount));
     setEditTotalText(String(item.totalMonths));
     setEditPaidText(String(item.paidMonths));
     setEditInBudget(item.includeInBudget);
@@ -200,16 +204,25 @@ export const InstallmentsSection: React.FC<InstallmentsSectionProps> = ({
                   </View>
                 </View>
 
-                <View style={styles.rowBetween}>
+                <View style={[styles.rowBetween, { flexWrap: 'wrap', gap: 6 }]}>
                   <Text
                     style={[
                       styles.accountSub,
-                      { color: shade.text, fontWeight: '700' },
+                      {
+                        color: shade.text,
+                        fontWeight: '700',
+                        fontVariant: ['tabular-nums'],
+                      },
                     ]}
                   >
                     {formatVisiblePeso(item.monthlyAmount)} / mo
                   </Text>
-                  <Text style={[styles.accountSub, { color: shade.muted }]}>
+                  <Text
+                    style={[
+                      styles.accountSub,
+                      { color: shade.muted, fontVariant: ['tabular-nums'] },
+                    ]}
+                  >
                     {formatVisiblePeso(remBalance)} left
                   </Text>
                 </View>
@@ -390,7 +403,8 @@ export const InstallmentsSection: React.FC<InstallmentsSectionProps> = ({
               setEditMonthlyText(formatPesoInput(t));
               if (editError) setEditError(null);
             }}
-            keyboardType="numeric"
+            keyboardType="decimal-pad"
+            inputMode="decimal"
             placeholder="Monthly payment"
             placeholderTextColor={shade.muted}
             style={[styles.modalAmountInput, { color: shade.text }]}

@@ -1,5 +1,6 @@
 import { ThemeShade } from '../theme/palette';
 import { TransactionEntry } from '../types/budget';
+import { formatPeso } from './numberFormat';
 
 export interface TransactionPresentation {
   deltaText: string;
@@ -57,7 +58,7 @@ export function getTransactionPresentation(
     case 'spend': {
       const amt = Math.abs(entry.amount);
       return {
-        deltaText: maskIfNeeded(`-₱${amt.toLocaleString()}`),
+        deltaText: maskIfNeeded(`-${formatPeso(amt)}`),
         deltaColor: shade.text,
         csvSignedAmount: -amt,
         isTreatHighlight: false,
@@ -68,7 +69,7 @@ export function getTransactionPresentation(
     case 'bill_paid': {
       const amt = Math.abs(entry.amount);
       return {
-        deltaText: maskIfNeeded(`-₱${amt.toLocaleString()}`),
+        deltaText: maskIfNeeded(`-${formatPeso(amt)}`),
         deltaColor: shade.text,
         csvSignedAmount: -amt,
         isTreatHighlight: false,
@@ -78,7 +79,7 @@ export function getTransactionPresentation(
     case 'envelope_spend': {
       const amt = Math.abs(entry.amount);
       return {
-        deltaText: maskIfNeeded(`-₱${amt.toLocaleString()}`),
+        deltaText: maskIfNeeded(`-${formatPeso(amt)}`),
         deltaColor: shade.dopamine,
         csvSignedAmount: -amt,
         isTreatHighlight: true,
@@ -88,7 +89,7 @@ export function getTransactionPresentation(
     case 'envelope_refill': {
       const amt = Math.abs(entry.amount);
       return {
-        deltaText: maskIfNeeded(`+₱${amt.toLocaleString()} Env`),
+        deltaText: maskIfNeeded(`+${formatPeso(amt)} Env`),
         deltaColor: shade.positive,
         csvSignedAmount: 0,
         isTreatHighlight: false,
@@ -98,7 +99,7 @@ export function getTransactionPresentation(
     case 'save_direct': {
       const amt = Math.abs(entry.amount);
       return {
-        deltaText: maskIfNeeded(`+₱${amt.toLocaleString()} Saved`),
+        deltaText: maskIfNeeded(`+${formatPeso(amt)} Saved`),
         deltaColor: shade.positive,
         csvSignedAmount: amt,
         isTreatHighlight: false,
@@ -109,7 +110,7 @@ export function getTransactionPresentation(
     case 'impulse_skipped': {
       const amt = Math.abs(entry.amount);
       return {
-        deltaText: maskIfNeeded(`+₱${amt.toLocaleString()} Treat`),
+        deltaText: maskIfNeeded(`+${formatPeso(amt)} Treat`),
         deltaColor: shade.dopamine,
         csvSignedAmount: amt,
         isTreatHighlight: true,
@@ -119,7 +120,7 @@ export function getTransactionPresentation(
     case 'sinking_fund': {
       const amt = Math.abs(entry.amount);
       return {
-        deltaText: maskIfNeeded(`+₱${amt.toLocaleString()} Fund`),
+        deltaText: maskIfNeeded(`+${formatPeso(amt)} Fund`),
         deltaColor: shade.positive,
         csvSignedAmount: amt,
         isTreatHighlight: false,
@@ -133,9 +134,7 @@ export function getTransactionPresentation(
         /payment/i.test(entry.label || '');
       return {
         deltaText: maskIfNeeded(
-          isCardPayment
-            ? `Paid ₱${amt.toLocaleString()}`
-            : `+₱${amt.toLocaleString()}`
+          isCardPayment ? `Paid ${formatPeso(amt)}` : `+${formatPeso(amt)}`
         ),
         deltaColor: shade.positive,
         csvSignedAmount: amt,
@@ -152,7 +151,7 @@ export function getTransactionPresentation(
       const isPositive = delta >= 0;
       return {
         deltaText: maskIfNeeded(
-          `${isPositive ? '+' : '-'}₱${absDelta.toLocaleString()}`
+          `${isPositive ? '+' : '-'}${formatPeso(absDelta)}`
         ),
         deltaColor: isPositive ? shade.positive : shade.warning,
         csvSignedAmount: delta,
@@ -163,7 +162,7 @@ export function getTransactionPresentation(
     case 'wallet_transfer': {
       const amt = Math.abs(entry.amount);
       return {
-        deltaText: maskIfNeeded(`₱${amt.toLocaleString()}`),
+        deltaText: maskIfNeeded(formatPeso(amt)),
         deltaColor: shade.accent,
         csvSignedAmount: 0,
         isTreatHighlight: false,
@@ -177,16 +176,16 @@ export function getTransactionPresentation(
       const parts: string[] = [];
 
       if (savingsAmt > 0) {
-        parts.push(`+₱${savingsAmt.toLocaleString()} Sav`);
+        parts.push(`+${formatPeso(savingsAmt)} Sav`);
       }
       if (treatAmt > 0) {
-        parts.push(`+₱${treatAmt.toLocaleString()} Treat`);
+        parts.push(`+${formatPeso(treatAmt)} Treat`);
       }
       if (rolloverAmt > 0) {
-        parts.push(`+₱${rolloverAmt.toLocaleString()} Roll`);
+        parts.push(`+${formatPeso(rolloverAmt)} Roll`);
       }
 
-      const visible = parts.length > 0 ? parts.join(' / ') : '+₱0';
+      const visible = parts.length > 0 ? parts.join(' / ') : `+${formatPeso(0)}`;
       return {
         deltaText: maskIfNeeded(visible),
         deltaColor: savingsAmt > 0 ? shade.positive : shade.dopamine,

@@ -15,6 +15,7 @@ import {
   buildWrapUpFromArchive,
   computeMonthlyWrapUp,
 } from '../utils/insightsEngine';
+import { formatPesoDisplay } from '../utils/numberFormat';
 import { ScalePressable } from './AnimatedPrimitives';
 import { AppIcon } from './AppIcon';
 
@@ -85,8 +86,7 @@ export const MonthlyWrapUpModal: React.FC<MonthlyWrapUpModalProps> = ({
     ]
   );
 
-  const mask = (amt: number) =>
-    privacyMode ? '₱••••' : `₱${Math.round(amt).toLocaleString()}`;
+  const mask = (amt: number) => formatPesoDisplay(amt, privacyMode);
 
   const handleShare = async () => {
     triggerSuccessHaptic();
@@ -170,7 +170,12 @@ export const MonthlyWrapUpModal: React.FC<MonthlyWrapUpModalProps> = ({
                 <Text style={[styles.statLabel, { color: shade.heroMuted }]}>
                   TOTAL SAVED
                 </Text>
-                <Text style={[styles.statVal, { color: '#4ADE80' }]}>
+                <Text
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.78}
+                  style={[styles.statVal, { color: '#4ADE80' }]}
+                >
                   {mask(report.totalSaved)}
                 </Text>
               </View>
@@ -181,7 +186,12 @@ export const MonthlyWrapUpModal: React.FC<MonthlyWrapUpModalProps> = ({
                 <Text style={[styles.statLabel, { color: shade.heroMuted }]}>
                   TOTAL SPENT
                 </Text>
-                <Text style={[styles.statVal, { color: shade.heroText }]}>
+                <Text
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.78}
+                  style={[styles.statVal, { color: shade.heroText }]}
+                >
                   {mask(report.totalSpent)}
                 </Text>
               </View>
@@ -351,7 +361,7 @@ const styles = StyleSheet.create({
     gap: 5,
   },
   statVal: {
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: '800',
     fontVariant: ['tabular-nums'],
   },

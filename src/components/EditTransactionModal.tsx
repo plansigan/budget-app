@@ -93,7 +93,8 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
         <TextInput
           value={amountText}
           onChangeText={(t) => setAmountText(formatPesoInput(t))}
-          keyboardType="numeric"
+          keyboardType="decimal-pad"
+          inputMode="decimal"
           placeholder="Enter exact amount"
           placeholderTextColor={shade.muted}
           autoFocus

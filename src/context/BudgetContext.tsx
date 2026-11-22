@@ -68,6 +68,7 @@ import {
   triggerLightHaptic,
   triggerSuccessHaptic,
 } from '../utils/haptics';
+import { formatPeso, formatPesoDisplay } from '../utils/numberFormat';
 import {
   MilestoneDefinition,
   detectNextUnlockedMilestone,
@@ -655,12 +656,12 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const boostSavingsGoal = useCallback(
     (delta: number) => {
-      const cleanDelta = Math.max(0, Math.round(delta));
+      const cleanDelta = roundCurrency(Math.max(0, delta));
       if (cleanDelta <= 0) return;
       triggerSuccessHaptic();
       dispatch({ type: 'BOOST_SAVINGS_GOAL', delta: cleanDelta });
       showToast(
-        `Monthly savings goal raised by +₱${cleanDelta.toLocaleString()}!`,
+        `Monthly savings goal raised by +${formatPeso(cleanDelta)}!`,
         true
       );
     },
@@ -675,7 +676,7 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
       paymentSourceId: string = 'cash',
       category?: SpendCategoryKey
     ) => {
-      const cleanAmount = roundCurrency(Math.max(1, amount));
+      const cleanAmount = roundCurrency(Math.max(0.01, amount));
       const targetDateKey = selectedDateKeyRef.current;
       const current = stateRef.current;
 
@@ -703,7 +704,7 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
 
       const cleanLabel = label.trim() || 'Expense';
       showToast(
-        `Logged ${cleanLabel}: -₱${cleanAmount.toLocaleString()} (${sourceLabel})`,
+        `Logged ${cleanLabel}: -${formatPeso(cleanAmount)} (${sourceLabel})`,
         false
       );
     },
@@ -712,7 +713,7 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const fundActiveTreat = useCallback(
     (amount: number) => {
-      const cleanAmount = roundCurrency(Math.max(1, amount));
+      const cleanAmount = roundCurrency(Math.max(0.01, amount));
       const targetDateKey = selectedDateKeyRef.current;
       const current = stateRef.current;
       const activeUnclaimed =
@@ -770,17 +771,17 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
 
       if (exceededSafe) {
         showToast(
-          `Added ₱${actualAmount.toLocaleString()} to ${activeUnclaimed.name} (exceeded daily safe-to-spend).`,
+          `Added ${formatPeso(actualAmount)} to ${activeUnclaimed.name} (exceeded daily safe-to-spend).`,
           false
         );
       } else if (actualAmount < cleanAmount) {
         showToast(
-          `Funded ₱${actualAmount.toLocaleString()} to finish ${activeUnclaimed.name}!`,
+          `Funded ${formatPeso(actualAmount)} to finish ${activeUnclaimed.name}!`,
           true
         );
       } else {
         showToast(
-          `Added ₱${actualAmount.toLocaleString()} to ${activeUnclaimed.name}!`,
+          `Added ${formatPeso(actualAmount)} to ${activeUnclaimed.name}!`,
           true
         );
       }
@@ -790,7 +791,7 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const saveToJar = useCallback(
     (amount: number) => {
-      const cleanAmount = roundCurrency(Math.max(1, amount));
+      const cleanAmount = roundCurrency(Math.max(0.01, amount));
       const targetDateKey = selectedDateKeyRef.current;
       const current = stateRef.current;
       const today = getTodayKey();
@@ -831,7 +832,7 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
         todayKey: today,
       });
       showToast(
-        `Saved ₱${take.toLocaleString()} into your Savings Jar!`,
+        `Saved ${formatPeso(take)} into your Savings Jar!`,
         true
       );
     },
@@ -887,12 +888,12 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
 
     if (activeUnclaimed) {
       showToast(
-        `Day ended! +₱${toSavings.toLocaleString()} Savings & +₱${toTreat.toLocaleString()} Treat`,
+        `Day ended! +${formatPeso(toSavings)} Savings & +${formatPeso(toTreat)} Treat`,
         true
       );
     } else {
       showToast(
-        `Day ended! +₱${toSavings.toLocaleString()} added to Savings Jar`,
+        `Day ended! +${formatPeso(toSavings)} added to Savings Jar`,
         true
       );
     }
@@ -941,7 +942,7 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
     dispatch({ type: 'APPLY_ROLLOVER', newDateKey: today });
 
     showToast(
-      `🌙 50/50 Split: +₱${result.vaultAdded.toLocaleString()} & +₱${result.rolloverNext.toLocaleString()} rollover!`,
+      `🌙 50/50 Split: +${formatPeso(result.vaultAdded)} & +${formatPeso(result.rolloverNext)} rollover!`,
       true
     );
   }, [showToast]);
@@ -973,7 +974,7 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
       triggerSuccessHaptic();
       dispatch({ type: 'ADD_TREAT', name: trimmed, icon, target: cleanTarget });
       showToast(
-        `Locked "${trimmed}" (₱${cleanTarget.toLocaleString()}) as active treat`,
+        `Locked "${trimmed}" (${formatPeso(cleanTarget)}) as active treat`,
         true
       );
     },
@@ -990,7 +991,7 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
 
       if (refundToSavings > 0) {
         showToast(
-          `🗑️ Treat deleted. +₱${refundToSavings.toLocaleString()} moved to Savings Jar!`,
+          `🗑️ Treat deleted. +${formatPeso(refundToSavings)} moved to Savings Jar!`,
           true
         );
       } else {
@@ -1052,7 +1053,7 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
       dueDay?: number
     ) => {
       const trimmed = name.trim();
-      const cleanAmount = Math.max(0, Math.round(amount));
+      const cleanAmount = roundCurrency(Math.max(0, amount));
       if (!trimmed || cleanAmount <= 0) return;
 
       triggerSuccessHaptic();
@@ -1072,7 +1073,7 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
   const addBillItem = useCallback(
     (name: string, icon: string, amount: number, dueDay?: number) => {
       const trimmed = name.trim();
-      const cleanAmount = Math.max(0, Math.round(amount));
+      const cleanAmount = roundCurrency(Math.max(0, amount));
       if (!trimmed || cleanAmount <= 0) return;
 
       triggerSuccessHaptic();
@@ -1084,7 +1085,7 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
         dueDay,
       });
       showToast(
-        `Added bill: ${trimmed} (₱${cleanAmount.toLocaleString()})`,
+        `Added bill: ${trimmed} (${formatPeso(cleanAmount)})`,
         false
       );
     },
@@ -1122,7 +1123,7 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
         todayKey: today,
       });
       showToast(
-        `Paid ${bill.name} (₱${paidAmt.toLocaleString()})`,
+        `Paid ${bill.name} (${formatPeso(paidAmt)})`,
         true
       );
     },
@@ -1136,7 +1137,7 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const depositToWalletAccount = useCallback(
     (sourceId: string, amount: number, note?: string) => {
-      const cleanAmount = roundCurrency(Math.max(1, amount));
+      const cleanAmount = roundCurrency(Math.max(0.01, amount));
       const current = stateRef.current;
       const isCash = sourceId === 'cash';
       const matchedBank = current.banks.find((b) => b.id === sourceId);
@@ -1159,8 +1160,8 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
       });
       showToast(
         matchedCard
-          ? `Paid ₱${cleanAmount.toLocaleString()} toward ${sourceLabel}`
-          : `Added ₱${cleanAmount.toLocaleString()} to ${sourceLabel}`,
+          ? `Paid ${formatPeso(cleanAmount)} toward ${sourceLabel}`
+          : `Added ${formatPeso(cleanAmount)} to ${sourceLabel}`,
         true
       );
     },
@@ -1209,7 +1210,7 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
       amount: number,
       note?: string
     ) => {
-      const cleanAmount = roundCurrency(Math.max(1, amount));
+      const cleanAmount = roundCurrency(Math.max(0.01, amount));
       if (!fromSourceId || !toSourceId || fromSourceId === toSourceId) return;
       const current = stateRef.current;
 
@@ -1240,8 +1241,8 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
       });
       showToast(
         toCard
-          ? `Paid ₱${cleanAmount.toLocaleString()} toward ${toLabel} from ${fromLabel}`
-          : `Transferred ₱${cleanAmount.toLocaleString()} (${fromLabel} → ${toLabel})`,
+          ? `Paid ${formatPeso(cleanAmount)} toward ${toLabel} from ${fromLabel}`
+          : `Transferred ${formatPeso(cleanAmount)} (${fromLabel} → ${toLabel})`,
         true
       );
     },
@@ -1264,7 +1265,7 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
         showToast('This entry can no longer be edited.', false);
         return;
       }
-      const cleanAmount = roundCurrency(Math.max(1, updates.amount));
+      const cleanAmount = roundCurrency(Math.max(0.01, updates.amount));
       const trimmedLabel = updates.label.trim();
       triggerSuccessHaptic();
       dispatch({
@@ -1435,7 +1436,7 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
       note?: string,
       refillEnvelopeIds?: string[]
     ) => {
-      const cleanAmount = roundCurrency(Math.max(1, amount));
+      const cleanAmount = roundCurrency(Math.max(0.01, amount));
       const cleanSavings = roundCurrency(Math.max(0, savingsAllocation));
       const current = stateRef.current;
       const matchedBank = current.banks.find((b) => b.id === sourceId);
@@ -1462,8 +1463,8 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
       } else {
         showToast(
           cleanSavings > 0
-            ? `Payday logged to ${sourceLabel} & +₱${cleanSavings.toLocaleString()} saved!`
-            : `Logged ₱${cleanAmount.toLocaleString()} paycheck to ${sourceLabel}!`,
+            ? `Payday logged to ${sourceLabel} & +${formatPeso(cleanSavings)} saved!`
+            : `Logged ${formatPeso(cleanAmount)} paycheck to ${sourceLabel}!`,
           true
         );
       }
@@ -1500,7 +1501,7 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
         rolloverMode,
       });
       showToast(
-        `Added ${trimmed} allowance (₱${cleanAmt.toLocaleString()})`,
+        `Added ${trimmed} allowance (${formatPeso(cleanAmt)})`,
         true
       );
     },
@@ -1563,7 +1564,7 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
       const env = (current.envelopes || []).find((e) => e.id === envelopeId);
       if (!env) return;
 
-      const cleanAmount = roundCurrency(Math.max(1, amount));
+      const cleanAmount = roundCurrency(Math.max(0.01, amount));
       const targetDateKey = selectedDateKeyRef.current;
 
       let sourceLabel = '';
@@ -1591,7 +1592,7 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
         todayKey: getTodayKey(),
       });
       showToast(
-        `${env.name}: -₱${cleanAmount.toLocaleString()}${sourceLabel}`,
+        `${env.name}: -${formatPeso(cleanAmount)}${sourceLabel}`,
         false
       );
     },
@@ -1612,8 +1613,8 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
       });
       showToast(
         env.rolloverMode === 'rollover'
-          ? `Added +₱${env.amountPerCycle.toLocaleString()} to ${env.name}`
-          : `Reset ${env.name} to ₱${env.amountPerCycle.toLocaleString()}`,
+          ? `Added +${formatPeso(env.amountPerCycle)} to ${env.name}`
+          : `Reset ${env.name} to ${formatPeso(env.amountPerCycle)}`,
         true
       );
     },
@@ -1621,16 +1622,8 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
   );
 
   const formatVisiblePeso = useCallback(
-    (amount: number, decimals: number = 0): string => {
-      if (state.privacyMode) return '₱••••';
-      if (decimals > 0) {
-        return `₱${amount.toLocaleString(undefined, {
-          minimumFractionDigits: decimals,
-          maximumFractionDigits: decimals,
-        })}`;
-      }
-      return `₱${Math.round(amount).toLocaleString()}`;
-    },
+    (amount: number, decimals: number = 2): string =>
+      formatPesoDisplay(amount, state.privacyMode, decimals),
     [state.privacyMode]
   );
 
@@ -1736,7 +1729,7 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const depositToSinkingFund = useCallback(
     (id: string, amount: number) => {
-      const cleanAmt = roundCurrency(Math.max(1, amount));
+      const cleanAmt = roundCurrency(Math.max(0.01, amount));
       const target = stateRef.current.sinkingFunds.find((f) => f.id === id);
       if (!target) return;
 
@@ -1753,7 +1746,7 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
       showToast(
         hitGoal
           ? `${target.name} goal reached!`
-          : `Added ₱${cleanAmt.toLocaleString()} to ${target.name}`,
+          : `Added ${formatPeso(cleanAmt)} to ${target.name}`,
         hitGoal
       );
     },
@@ -1771,7 +1764,7 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
 
       if (refund > 0) {
         showToast(
-          `Removed ${target.name}. +₱${refund.toLocaleString()} moved to Savings Jar`,
+          `Removed ${target.name}. +${formatPeso(refund)} moved to Savings Jar`,
           true
         );
       } else {
