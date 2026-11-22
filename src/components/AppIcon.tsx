@@ -8,6 +8,7 @@ export type AppIconName = React.ComponentProps<typeof Feather>['name'];
 const VALID_FEATHER_SET = new Set<AppIconName>([
   'activity',
   'arrow-down-left',
+  'arrow-right',
   'arrow-up-right',
   'award',
   'bar-chart-2',
@@ -47,6 +48,8 @@ const VALID_FEATHER_SET = new Set<AppIconName>([
   'package',
   'pie-chart',
   'plus',
+  'refresh-cw',
+  'repeat',
   'rotate-ccw',
   'scissors',
   'shield',

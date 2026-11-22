@@ -39,7 +39,12 @@ export function buildTransactionsCsv(entries: TransactionEntry[]): string {
   const header = 'Date,Type,Label,Source,Amount_PHP';
   const rows = entries.map((e) => {
     const date = formatEntryDateLocal(e);
-    const source = e.paymentSourceLabel || '';
+    const source =
+      e.type === 'wallet_transfer' &&
+      e.paymentSourceLabel &&
+      e.toPaymentSourceLabel
+        ? `${e.paymentSourceLabel} -> ${e.toPaymentSourceLabel}`
+        : e.paymentSourceLabel || '';
     const signedAmt = getTransactionPresentation(
       e,
       VELVET_SHADE,

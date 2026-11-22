@@ -2,7 +2,10 @@ import React, { useMemo, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useBudget } from '../context/BudgetContext';
 import { triggerLightHaptic } from '../utils/haptics';
-import { computeSpendingBreakdown } from '../utils/insightsEngine';
+import {
+  SpendingBreakdownScope,
+  computeSpendingBreakdown,
+} from '../utils/insightsEngine';
 import {
   AnimatedProgressBar,
   FadeSlideIn,
@@ -10,14 +13,20 @@ import {
 } from './AnimatedPrimitives';
 import { AppIcon } from './AppIcon';
 
+const SCOPE_OPTIONS: Array<{ key: SpendingBreakdownScope; label: string }> = [
+  { key: 'all', label: 'All' },
+  { key: 'daily', label: 'Daily' },
+  { key: 'envelopes', label: 'Envelopes' },
+];
+
 interface SpendingBreakdownCardProps {
   monthKey?: string;
   monthLabel?: string;
 }
 
 /**
- * Clean minimalist category spending breakdown card with This Week / This Month toggle
- * (or locked historical month view when `monthKey` is provided).
+ * Clean minimalist category spending breakdown card with This Week / This Month
+ * and All / Daily / Envelopes toggles (or locked historical month view when `monthKey` is provided).
  */
 export const SpendingBreakdownCard: React.FC<SpendingBreakdownCardProps> = ({
   monthKey,
@@ -25,6 +34,7 @@ export const SpendingBreakdownCard: React.FC<SpendingBreakdownCardProps> = ({
 }) => {
   const { shade, entries, privacyMode } = useBudget();
   const [range, setRange] = useState<'week' | 'month'>('month');
+  const [scope, setScope] = useState<SpendingBreakdownScope>('all');
 
   const isHistorical = Boolean(monthKey);
 
@@ -34,13 +44,26 @@ export const SpendingBreakdownCard: React.FC<SpendingBreakdownCardProps> = ({
         entries,
         isHistorical ? 'month' : range,
         undefined,
-        monthKey
+        monthKey,
+        scope
       ),
-    [entries, isHistorical, range, monthKey]
+    [entries, isHistorical, range, monthKey, scope]
   );
 
   const mask = (amt: number) =>
     privacyMode ? '₱••••' : `₱${Math.round(amt).toLocaleString()}`;
+
+  const emptyLabel = isHistorical
+    ? scope === 'daily'
+      ? 'No daily budget spends logged for this archived month.'
+      : scope === 'envelopes'
+      ? 'No envelope spends logged for this archived month.'
+      : 'No itemized spend logs stored for this archived month—see full totals in the Monthly Report Card above.'
+    : scope === 'daily'
+    ? `No daily budget spends logged this ${range === 'week' ? 'week' : 'month'} yet.`
+    : scope === 'envelopes'
+    ? `No envelope spends logged this ${range === 'week' ? 'week' : 'month'} yet.`
+    : `No spends logged this ${range === 'week' ? 'week' : 'month'} yet.`;
 
   return (
     <View
@@ -114,13 +137,39 @@ export const SpendingBreakdownCard: React.FC<SpendingBreakdownCardProps> = ({
         )}
       </View>
 
-      <FadeSlideIn triggerKey={monthKey || range} distance={8}>
+      <View style={[styles.scopeWrap, { backgroundColor: shade.surface }]}>
+        {SCOPE_OPTIONS.map((opt) => {
+          const active = scope === opt.key;
+          return (
+            <ScalePressable
+              key={opt.key}
+              onPress={() => {
+                triggerLightHaptic();
+                setScope(opt.key);
+              }}
+              style={[
+                styles.scopeBtn,
+                active && { backgroundColor: shade.card },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.scopeText,
+                  { color: active ? shade.text : shade.muted },
+                ]}
+              >
+                {opt.label}
+              </Text>
+            </ScalePressable>
+          );
+        })}
+      </View>
+
+      <FadeSlideIn triggerKey={`${monthKey || range}-${scope}`} distance={8}>
         {breakdown.slices.length === 0 ? (
           <View style={[styles.emptyBox, { backgroundColor: shade.surface }]}>
             <Text style={[styles.emptyText, { color: shade.muted }]}>
-              {isHistorical
-                ? 'No itemized spend logs stored for this archived month—see full totals in the Monthly Report Card above.'
-                : `No spends logged this ${range === 'week' ? 'week' : 'month'} yet.`}
+              {emptyLabel}
             </Text>
           </View>
         ) : (
@@ -223,6 +272,22 @@ const styles = StyleSheet.create({
   segText: {
     fontSize: 11,
     fontWeight: '700',
+  },
+  scopeWrap: {
+    flexDirection: 'row',
+    borderRadius: 12,
+    padding: 3,
+    gap: 3,
+  },
+  scopeBtn: {
+    flex: 1,
+    paddingVertical: 7,
+    borderRadius: 9,
+    alignItems: 'center',
+  },
+  scopeText: {
+    fontSize: 12,
+    fontWeight: '800',
   },
   historyPill: {
     paddingHorizontal: 11,

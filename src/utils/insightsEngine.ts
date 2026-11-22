@@ -187,6 +187,8 @@ export function classifySpendCategory(entry: TransactionEntry): {
   return CATEGORY_META.other;
 }
 
+export type SpendingBreakdownScope = 'all' | 'daily' | 'envelopes';
+
 /**
  * Computes spending categories sorted highest to lowest for the current Mon-Sun week or calendar month.
  */
@@ -194,7 +196,8 @@ export function computeSpendingBreakdown(
   entries: TransactionEntry[],
   range: 'week' | 'month',
   now: Date = new Date(),
-  monthKey?: string
+  monthKey?: string,
+  scope: SpendingBreakdownScope = 'all'
 ): SpendingBreakdownResult {
   const todayMidnight = new Date(
     now.getFullYear(),
@@ -217,7 +220,13 @@ export function computeSpendingBreakdown(
       : `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
   const filtered = entries.filter((e) => {
-    if (e.type !== 'spend' && e.type !== 'envelope_spend') return false;
+    if (scope === 'daily') {
+      if (e.type !== 'spend') return false;
+    } else if (scope === 'envelopes') {
+      if (e.type !== 'envelope_spend') return false;
+    } else if (e.type !== 'spend' && e.type !== 'envelope_spend') {
+      return false;
+    }
     const key = getEntryDateKey(e);
     if (range === 'week') {
       return key >= mondayKey && key <= sundayKey;

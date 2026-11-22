@@ -79,6 +79,7 @@ const AppShell: React.FC = () => {
     treats,
   } = useBudget();
   const [activeTab, setActiveTab] = useState<TabKey>('today');
+  const [pwaUpdateReady, setPwaUpdateReady] = useState(false);
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
 
@@ -114,11 +115,62 @@ const AppShell: React.FC = () => {
     ) {
       return;
     }
-    navigator.serviceWorker
-      .register('./sw.js', { updateViaCache: 'none' })
+
+    let active = true;
+    const sw = navigator.serviceWorker;
+    const hadController = Boolean(sw.controller);
+    let trackedReg: ServiceWorkerRegistration | null = null;
+    let trackedInstalling: ServiceWorker | null = null;
+
+    const handleControllerChange = () => {
+      if (active && hadController) {
+        setPwaUpdateReady(true);
+      }
+    };
+
+    const handleInstallingState = () => {
+      if (!active || !trackedInstalling) return;
+      if (trackedInstalling.state === 'installed' && sw.controller) {
+        setPwaUpdateReady(true);
+      }
+    };
+
+    const handleUpdateFound = () => {
+      if (!trackedReg) return;
+      if (trackedInstalling) {
+        trackedInstalling.removeEventListener('statechange', handleInstallingState);
+      }
+      trackedInstalling = trackedReg.installing;
+      if (trackedInstalling) {
+        trackedInstalling.addEventListener('statechange', handleInstallingState);
+      }
+    };
+
+    sw.addEventListener('controllerchange', handleControllerChange);
+
+    sw.register('./sw.js', { updateViaCache: 'none' })
+      .then((reg) => {
+        if (!active) return;
+        trackedReg = reg;
+        if (reg.waiting && hadController) {
+          setPwaUpdateReady(true);
+        }
+        reg.addEventListener('updatefound', handleUpdateFound);
+      })
       .catch(() => {
         // Ignore service worker registration errors silently
       });
+
+    return () => {
+      active = false;
+      sw.removeEventListener('controllerchange', handleControllerChange);
+      if (trackedReg) {
+        trackedReg.removeEventListener('updatefound', handleUpdateFound);
+      }
+      if (trackedInstalling) {
+        trackedInstalling.removeEventListener('statechange', handleInstallingState);
+      }
+    };
   }, []);
 
   const isDesktopWeb = Platform.OS === 'web' && width > 500;
@@ -199,6 +251,49 @@ const AppShell: React.FC = () => {
           </View>
         </View>
       </View>
+
+      {pwaUpdateReady && (
+        <View
+          style={[
+            styles.updateBanner,
+            {
+              backgroundColor: shade.card,
+              borderBottomColor: shade.border,
+            },
+          ]}
+        >
+          <View style={styles.updateLeft}>
+            <AppIcon name="refresh-cw" size={13} color={shade.positive} />
+            <Text style={[styles.updateText, { color: shade.text }]}>
+              New Velvet update ready
+            </Text>
+          </View>
+          <View style={styles.updateActions}>
+            <ScalePressable
+              onPress={() => {
+                triggerLightHaptic();
+                if (typeof window !== 'undefined') {
+                  window.location.reload();
+                }
+              }}
+              style={[styles.updateRefreshBtn, { backgroundColor: shade.positive }]}
+            >
+              <Text style={styles.updateRefreshText}>Refresh</Text>
+            </ScalePressable>
+            <ScalePressable
+              onPress={() => {
+                triggerLightHaptic();
+                setPwaUpdateReady(false);
+              }}
+              accessibilityLabel="Dismiss update notification"
+              hitSlop={6}
+              style={[styles.updateDismissBtn, { backgroundColor: shade.surface }]}
+            >
+              <AppIcon name="x" size={13} color={shade.muted} />
+            </ScalePressable>
+          </View>
+        </View>
+      )}
 
       {/* Main Content + Floating Toast Overlay (zero layout shift) */}
       <View style={styles.contentWrap}>
@@ -447,6 +542,48 @@ const styles = StyleSheet.create({
   statusText: {
     fontSize: 12,
     fontWeight: '800',
+  },
+  updateBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+    borderBottomWidth: 1,
+    gap: 10,
+  },
+  updateLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flex: 1,
+    minWidth: 0,
+  },
+  updateText: {
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  updateActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  updateRefreshBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 9,
+  },
+  updateRefreshText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  updateDismissBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   contentWrap: {
     flex: 1,

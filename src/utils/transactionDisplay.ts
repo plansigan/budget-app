@@ -160,6 +160,16 @@ export function getTransactionPresentation(
       };
     }
 
+    case 'wallet_transfer': {
+      const amt = Math.abs(entry.amount);
+      return {
+        deltaText: maskIfNeeded(`₱${amt.toLocaleString()}`),
+        deltaColor: shade.accent,
+        csvSignedAmount: 0,
+        isTreatHighlight: false,
+      };
+    }
+
     case 'midnight_split': {
       const savingsAmt = Math.max(0, entry.savingsDelta ?? 0);
       const treatAmt = Math.max(0, entry.amount);

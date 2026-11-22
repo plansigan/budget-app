@@ -232,7 +232,46 @@ export type BudgetAction =
     }
   | { type: 'DELETE_SINKING_FUND'; id: string }
   | { type: 'MARK_BACKUP_EXPORTED'; exportedAt: string }
-  | { type: 'RESTORE_BACKUP'; data: Partial<PersistedBudgetState> };
+  | { type: 'RESTORE_BACKUP'; data: Partial<PersistedBudgetState> }
+  | {
+      type: 'TRANSFER_BETWEEN_ACCOUNTS';
+      fromSourceId: string;
+      toSourceId: string;
+      amount: number;
+      note?: string;
+      todayKey?: string;
+    }
+  | {
+      type: 'EDIT_ENTRY';
+      entryId: string;
+      amount: number;
+      label: string;
+      category?: SpendCategoryKey;
+      icon?: string;
+    };
+
+export function isEditableEntryType(entry: TransactionEntry): boolean {
+  return (
+    entry.type === 'spend' ||
+    entry.type === 'envelope_spend' ||
+    entry.type === 'bill_paid' ||
+    entry.type === 'wallet_deposit' ||
+    entry.type === 'save_direct' ||
+    entry.type === 'treat_direct'
+  );
+}
+
+export function isEditableEntry(
+  state: PersistedBudgetState,
+  entryId: string
+): boolean {
+  const target = state.entries.find((e) => e.id === entryId);
+  if (!target || !isEditableEntryType(target)) return false;
+  if (target.type === 'treat_direct') {
+    return canUndoEntry(state, entryId).ok;
+  }
+  return true;
+}
 
 export function canUndoEntry(
   state: PersistedBudgetState,
@@ -361,6 +400,7 @@ export function budgetReducer(
         cashOnHand: nextCash,
         banks: nextBanks,
         creditCards: nextCards,
+        lastPaymentSourceId: paymentSourceId,
         checkedInToday: isToday ? true : state.checkedInToday,
         streakDays: state.streakDays + bonusStreak,
         entries: [entry, ...state.entries],
@@ -890,6 +930,42 @@ export function budgetReducer(
               lastRefillKey: freshTarget.previousEnvelopeRefillKey,
             };
           });
+        }
+      } else if (freshTarget.type === 'wallet_transfer') {
+        const fromId = freshTarget.paymentSourceId;
+        const fromRestore =
+          typeof freshTarget.appliedWalletDelta === 'number'
+            ? freshTarget.appliedWalletDelta
+            : freshTarget.amount;
+        if (fromId === 'cash') {
+          nextCash = roundCurrency(nextCash + fromRestore);
+        } else if (fromId && nextBanks.some((b) => b.id === fromId)) {
+          nextBanks = nextBanks.map((b) =>
+            b.id === fromId
+              ? { ...b, balance: roundCurrency(b.balance + fromRestore) }
+              : b
+          );
+        }
+
+        const toId = freshTarget.toPaymentSourceId;
+        const toReverse =
+          typeof freshTarget.appliedToWalletDelta === 'number'
+            ? freshTarget.appliedToWalletDelta
+            : freshTarget.amount;
+        if (toId === 'cash') {
+          nextCash = Math.max(0, roundCurrency(nextCash - toReverse));
+        } else if (toId && nextBanks.some((b) => b.id === toId)) {
+          nextBanks = nextBanks.map((b) =>
+            b.id === toId
+              ? { ...b, balance: Math.max(0, roundCurrency(b.balance - toReverse)) }
+              : b
+          );
+        } else if (toId && nextCards.some((c) => c.id === toId)) {
+          nextCards = nextCards.map((c) =>
+            c.id === toId
+              ? { ...c, used: roundCurrency(c.used + toReverse) }
+              : c
+          );
         }
       }
 
@@ -1581,6 +1657,9 @@ export function budgetReducer(
         cashOnHand: nextCash,
         banks: nextBanks,
         creditCards: nextCards,
+        ...(effectiveSourceId
+          ? { lastPaymentSourceId: effectiveSourceId }
+          : {}),
         envelopes: (state.envelopes || []).map((item) =>
           item.id === env.id ? { ...item, balance: nextEnvBalance } : item
         ),
@@ -1778,5 +1857,252 @@ export function budgetReducer(
 
     case 'RESTORE_BACKUP':
       return normalizePersistedState(action.data);
+
+    case 'TRANSFER_BETWEEN_ACCOUNTS': {
+      const cleanAmount = roundCurrency(Math.max(1, action.amount));
+      const { fromSourceId, toSourceId } = action;
+      if (!fromSourceId || !toSourceId || fromSourceId === toSourceId) {
+        return state;
+      }
+
+      const fromIsCash = fromSourceId === 'cash';
+      const fromBank = state.banks.find((b) => b.id === fromSourceId);
+      if (!fromIsCash && !fromBank) return state;
+
+      const toIsCash = toSourceId === 'cash';
+      const toBank = state.banks.find((b) => b.id === toSourceId);
+      const toCard = state.creditCards.find((c) => c.id === toSourceId);
+      if (!toIsCash && !toBank && !toCard) return state;
+
+      const fromLabel = fromIsCash ? 'Cash' : fromBank!.name;
+      const toLabel = toIsCash
+        ? 'Cash'
+        : toBank
+        ? toBank.name
+        : toCard!.name;
+
+      let nextCash = state.cashOnHand;
+      let nextBanks = state.banks;
+      let nextCards = state.creditCards;
+      let appliedWalletDelta = cleanAmount;
+
+      if (fromIsCash) {
+        nextCash = Math.max(0, roundCurrency(nextCash - cleanAmount));
+        appliedWalletDelta = roundCurrency(state.cashOnHand - nextCash);
+      } else {
+        nextBanks = nextBanks.map((b) => {
+          if (b.id !== fromSourceId) return b;
+          const nextBal = Math.max(0, roundCurrency(b.balance - cleanAmount));
+          appliedWalletDelta = roundCurrency(b.balance - nextBal);
+          return { ...b, balance: nextBal };
+        });
+      }
+
+      let appliedToWalletDelta = cleanAmount;
+      if (toIsCash) {
+        nextCash = roundCurrency(nextCash + cleanAmount);
+      } else if (toBank) {
+        nextBanks = nextBanks.map((b) =>
+          b.id === toSourceId
+            ? { ...b, balance: roundCurrency(b.balance + cleanAmount) }
+            : b
+        );
+      } else if (toCard) {
+        nextCards = nextCards.map((c) => {
+          if (c.id !== toSourceId) return c;
+          const nextUsed = Math.max(0, roundCurrency(c.used - cleanAmount));
+          appliedToWalletDelta = roundCurrency(c.used - nextUsed);
+          return { ...c, used: nextUsed };
+        });
+      }
+
+      const defaultLabel = toCard
+        ? `Paid ${toLabel} from ${fromLabel}`
+        : `Transfer: ${fromLabel} → ${toLabel}`;
+
+      const entry: TransactionEntry = {
+        id: makeUid('xfer'),
+        type: 'wallet_transfer',
+        amount: cleanAmount,
+        label: action.note?.trim() || defaultLabel,
+        icon: toCard ? 'credit-card' : 'repeat',
+        timestamp: new Date().toISOString(),
+        dateKey: action.todayKey || getTodayKey(),
+        paymentSourceId: fromSourceId,
+        paymentSourceLabel: fromLabel,
+        toPaymentSourceId: toSourceId,
+        toPaymentSourceLabel: toLabel,
+        appliedWalletDelta,
+        appliedToWalletDelta,
+      };
+
+      return {
+        ...state,
+        cashOnHand: nextCash,
+        banks: nextBanks,
+        creditCards: nextCards,
+        entries: [entry, ...state.entries],
+      };
+    }
+
+    case 'EDIT_ENTRY': {
+      if (!isEditableEntry(state, action.entryId)) return state;
+      const target = state.entries.find((e) => e.id === action.entryId);
+      if (!target) return state;
+
+      const cleanAmount = roundCurrency(Math.max(1, action.amount));
+      const cleanLabel = action.label.trim() || target.label;
+
+      let nextCash = state.cashOnHand;
+      let nextBanks = state.banks;
+      let nextCards = state.creditCards;
+      let nextEnvelopes = state.envelopes || [];
+      let nextSaved = state.monthlySaved;
+      let nextTreats = state.treats;
+
+      let nextAppliedWalletDelta = target.appliedWalletDelta;
+      let nextSignedDelta = target.signedDelta;
+      let nextPreviousEnvelopeBalance = target.previousEnvelopeBalance;
+
+      if (
+        target.type === 'spend' ||
+        target.type === 'bill_paid' ||
+        target.type === 'envelope_spend'
+      ) {
+        const src = target.paymentSourceId;
+        if (src) {
+          const oldApplied =
+            typeof target.appliedWalletDelta === 'number'
+              ? target.appliedWalletDelta
+              : target.amount;
+          if (src === 'cash') {
+            const restored = roundCurrency(nextCash + oldApplied);
+            nextCash = Math.max(0, roundCurrency(restored - cleanAmount));
+            nextAppliedWalletDelta = roundCurrency(restored - nextCash);
+          } else if (nextBanks.some((b) => b.id === src)) {
+            nextBanks = nextBanks.map((b) => {
+              if (b.id !== src) return b;
+              const restored = roundCurrency(b.balance + oldApplied);
+              const nextBal = Math.max(0, roundCurrency(restored - cleanAmount));
+              nextAppliedWalletDelta = roundCurrency(restored - nextBal);
+              return { ...b, balance: nextBal };
+            });
+          } else if (nextCards.some((c) => c.id === src)) {
+            nextCards = nextCards.map((c) => {
+              if (c.id !== src) return c;
+              const restored = Math.max(0, roundCurrency(c.used - oldApplied));
+              const nextUsed = roundCurrency(restored + cleanAmount);
+              nextAppliedWalletDelta = cleanAmount;
+              return { ...c, used: nextUsed };
+            });
+          }
+        }
+
+        if (target.type === 'envelope_spend' && target.envelopeId) {
+          nextEnvelopes = nextEnvelopes.map((env) => {
+            if (env.id !== target.envelopeId) return env;
+            const appliedEnv =
+              typeof target.previousEnvelopeBalance === 'number'
+                ? Math.min(target.amount, target.previousEnvelopeBalance)
+                : target.amount;
+            const restoredEnv = roundCurrency(env.balance + appliedEnv);
+            const nextEnvBal = Math.max(
+              0,
+              roundCurrency(restoredEnv - cleanAmount)
+            );
+            nextPreviousEnvelopeBalance = restoredEnv;
+            return { ...env, balance: nextEnvBal };
+          });
+        }
+      } else if (target.type === 'wallet_deposit') {
+        const src = target.paymentSourceId;
+        const oldApplied =
+          typeof target.appliedWalletDelta === 'number'
+            ? target.appliedWalletDelta
+            : target.amount;
+        if (src === 'cash') {
+          const restored = Math.max(0, roundCurrency(nextCash - oldApplied));
+          nextCash = roundCurrency(restored + cleanAmount);
+          nextAppliedWalletDelta = cleanAmount;
+        } else if (src && nextBanks.some((b) => b.id === src)) {
+          nextBanks = nextBanks.map((b) => {
+            if (b.id !== src) return b;
+            const restored = Math.max(0, roundCurrency(b.balance - oldApplied));
+            nextAppliedWalletDelta = cleanAmount;
+            return { ...b, balance: roundCurrency(restored + cleanAmount) };
+          });
+        } else if (src && nextCards.some((c) => c.id === src)) {
+          nextCards = nextCards.map((c) => {
+            if (c.id !== src) return c;
+            const restored = roundCurrency(c.used + oldApplied);
+            const nextUsed = Math.max(0, roundCurrency(restored - cleanAmount));
+            nextAppliedWalletDelta = roundCurrency(restored - nextUsed);
+            return { ...c, used: nextUsed };
+          });
+        }
+        nextSignedDelta = cleanAmount;
+      } else if (target.type === 'save_direct') {
+        const delta = roundCurrency(cleanAmount - target.amount);
+        nextSaved = Math.max(0, roundCurrency(state.monthlySaved + delta));
+      } else if (target.type === 'treat_direct') {
+        const delta = roundCurrency(cleanAmount - target.amount);
+        if (
+          target.treatId &&
+          state.treats.some((t) => t.id === target.treatId)
+        ) {
+          nextTreats = state.treats.map((t) =>
+            t.id === target.treatId && !t.claimed
+              ? {
+                  ...t,
+                  funded: Math.max(0, roundCurrency(t.funded + delta)),
+                  fromImpulses: Math.max(
+                    0,
+                    roundCurrency(t.fromImpulses + delta)
+                  ),
+                }
+              : t
+          );
+        } else {
+          nextSaved = Math.max(0, roundCurrency(nextSaved + delta));
+        }
+      }
+
+      const canUpdateCat =
+        target.type === 'spend' || target.type === 'envelope_spend';
+
+      const updatedEntry: TransactionEntry = {
+        ...target,
+        amount: cleanAmount,
+        label: cleanLabel,
+        ...(canUpdateCat && action.category !== undefined
+          ? { category: action.category }
+          : {}),
+        ...(canUpdateCat && action.icon !== undefined
+          ? { icon: action.icon }
+          : {}),
+        ...(nextAppliedWalletDelta !== undefined
+          ? { appliedWalletDelta: nextAppliedWalletDelta }
+          : {}),
+        ...(nextSignedDelta !== undefined
+          ? { signedDelta: nextSignedDelta }
+          : {}),
+        ...(nextPreviousEnvelopeBalance !== undefined
+          ? { previousEnvelopeBalance: nextPreviousEnvelopeBalance }
+          : {}),
+      };
+
+      return {
+        ...state,
+        cashOnHand: nextCash,
+        banks: nextBanks,
+        creditCards: nextCards,
+        envelopes: nextEnvelopes,
+        monthlySaved: nextSaved,
+        treats: nextTreats,
+        entries: state.entries.map((e) =>
+          e.id === action.entryId ? updatedEntry : e
+        ),
+      };
+    }
   }
 }
