@@ -18,6 +18,7 @@ const VALID_FEATHER_SET = new Set<AppIconName>([
   'calendar',
   'camera',
   'check',
+  'chevron-down',
   'chevron-left',
   'chevron-right',
   'circle',

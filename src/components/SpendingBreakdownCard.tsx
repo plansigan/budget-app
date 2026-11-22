@@ -16,7 +16,7 @@ import { AppIcon } from './AppIcon';
 const SCOPE_OPTIONS: Array<{ key: SpendingBreakdownScope; label: string }> = [
   { key: 'all', label: 'All' },
   { key: 'daily', label: 'Daily' },
-  { key: 'envelopes', label: 'Envelopes' },
+  { key: 'envelopes', label: 'Allowances' },
 ];
 
 interface SpendingBreakdownCardProps {
@@ -26,7 +26,7 @@ interface SpendingBreakdownCardProps {
 
 /**
  * Clean minimalist category spending breakdown card with This Week / This Month
- * and All / Daily / Envelopes toggles (or locked historical month view when `monthKey` is provided).
+ * and All / Daily / Allowances toggles (or locked historical month view when `monthKey` is provided).
  */
 export const SpendingBreakdownCard: React.FC<SpendingBreakdownCardProps> = ({
   monthKey,
@@ -57,12 +57,12 @@ export const SpendingBreakdownCard: React.FC<SpendingBreakdownCardProps> = ({
     ? scope === 'daily'
       ? 'No daily budget spends logged for this archived month.'
       : scope === 'envelopes'
-      ? 'No envelope spends logged for this archived month.'
+      ? 'No allowance spends logged for this archived month.'
       : 'No itemized spend logs stored for this archived month—see full totals in the Monthly Report Card above.'
     : scope === 'daily'
     ? `No daily budget spends logged this ${range === 'week' ? 'week' : 'month'} yet.`
     : scope === 'envelopes'
-    ? `No envelope spends logged this ${range === 'week' ? 'week' : 'month'} yet.`
+    ? `No allowance spends logged this ${range === 'week' ? 'week' : 'month'} yet.`
     : `No spends logged this ${range === 'week' ? 'week' : 'month'} yet.`;
 
   return (

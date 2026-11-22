@@ -14,6 +14,7 @@ import { useBudget } from '../context/BudgetContext';
 import { SpendCategoryKey } from '../types/budget';
 import { triggerLightHaptic } from '../utils/haptics';
 import { formatPesoInput, parsePesoInput } from '../utils/numberFormat';
+import { useWebKeyboardInset } from '../utils/useWebKeyboardInset';
 import { FadeSlideIn, ScalePressable } from './AnimatedPrimitives';
 import { AppIcon, SPEND_CATEGORIES } from './AppIcon';
 
@@ -155,6 +156,20 @@ export const ActionAmountModal: React.FC<ActionAmountModalProps> = ({
     onClose();
   };
 
+  const { keyboardInset, viewportHeight, offsetTop } =
+    useWebKeyboardInset(visible);
+  const webKeyboardBackdrop =
+    Platform.OS === 'web' && keyboardInset > 0
+      ? {
+          paddingBottom: keyboardInset + 8,
+          paddingTop: Math.max(12, offsetTop + 8),
+        }
+      : undefined;
+  const webKeyboardCard =
+    Platform.OS === 'web' && keyboardInset > 0 && viewportHeight > 0
+      ? { maxHeight: Math.max(240, viewportHeight - 24) }
+      : undefined;
+
   return (
     <Modal
       visible={visible}
@@ -170,7 +185,7 @@ export const ActionAmountModal: React.FC<ActionAmountModalProps> = ({
             ? 'height'
             : undefined
         }
-        style={styles.backdrop}
+        style={[styles.backdrop, webKeyboardBackdrop]}
       >
         <Pressable
           style={StyleSheet.absoluteFill}
@@ -183,6 +198,7 @@ export const ActionAmountModal: React.FC<ActionAmountModalProps> = ({
           style={[
             styles.card,
             { backgroundColor: shade.card, borderColor: accentColor },
+            webKeyboardCard,
           ]}
         >
           <View style={styles.headerRow}>
@@ -352,7 +368,7 @@ export const ActionAmountModal: React.FC<ActionAmountModalProps> = ({
                   >
                     {numericAmount > activeEnvelope.balance
                       ? `Exceeds ${activeEnvelope.name} balance by ₱${(numericAmount - activeEnvelope.balance).toLocaleString()} (still won't touch daily Safe-to-Spend).`
-                      : `Guilt-free envelope • won't reduce today's Safe-to-Spend`}
+                      : `Guilt-free allowance • won't reduce today's Safe-to-Spend`}
                   </Text>
                 )}
               </View>
@@ -479,7 +495,7 @@ export const ActionAmountModal: React.FC<ActionAmountModalProps> = ({
                           },
                         ]}
                       >
-                        Envelope only
+                        Allowance only
                       </Text>
                     </ScalePressable>
                   )}

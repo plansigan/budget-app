@@ -267,7 +267,7 @@ export const PaydayCheckInModal: React.FC<PaydayCheckInModalProps> = ({
         >
           <View style={styles.envSectionHeader}>
             <Text style={[styles.toggleTitle, { color: shade.text }]}>
-              Refill Cutoff Envelopes
+              Refill Cutoff Allowances
             </Text>
             <Text style={[styles.toggleSub, { color: shade.muted }]}>
               Reset or roll over unused balance

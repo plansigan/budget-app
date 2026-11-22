@@ -34,13 +34,18 @@ import { getTransactionPresentation } from '../utils/transactionDisplay';
 interface TodayScreenProps {
   onOpenVault: () => void;
   onOpenBudgetSetup?: () => void;
+  onOpenAllowances?: () => void;
 }
 
 /**
  * Calm, spacious Today screen focused on daily safe-to-spend, quick-spend
- * envelopes, tappable Savings/Treats buckets, and recent activity.
+ * allowances, tappable Savings/Treats buckets, and recent activity.
  */
-export const TodayScreen: React.FC<TodayScreenProps> = ({ onOpenVault }) => {
+export const TodayScreen: React.FC<TodayScreenProps> = ({
+  onOpenVault,
+  onOpenBudgetSetup,
+  onOpenAllowances,
+}) => {
   const {
     shade,
     privacyMode,
@@ -278,17 +283,30 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({ onOpenVault }) => {
           </FadeSlideIn>
         )}
 
-        {/* Spacious Horizontal Quick-Spend Envelopes Strip */}
+        {/* Spacious Horizontal Quick-Spend Allowances Strip */}
         {envelopes.length > 0 && (
           <FadeSlideIn delay={75} distance={12}>
             <View style={styles.sectionBlock}>
               <View style={styles.rowBetween}>
                 <Text style={[styles.sectionKicker, { color: shade.muted }]}>
-                  SPENDING ENVELOPES
+                  ALLOWANCES
                 </Text>
-                <Text style={[styles.sectionSubHint, { color: shade.muted }]}>
-                  Tap to spend
-                </Text>
+                <ScalePressable
+                  onPress={() => {
+                    triggerLightHaptic();
+                    (onOpenAllowances || onOpenBudgetSetup)?.();
+                  }}
+                  hitSlop={6}
+                >
+                  <Text
+                    style={[
+                      styles.sectionSubHint,
+                      { color: shade.dopamine, fontWeight: '800' },
+                    ]}
+                  >
+                    Manage ›
+                  </Text>
+                </ScalePressable>
               </View>
 
               <ScrollView

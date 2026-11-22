@@ -80,6 +80,7 @@ const AppShell: React.FC = () => {
   } = useBudget();
   const [activeTab, setActiveTab] = useState<TabKey>('today');
   const [pwaUpdateReady, setPwaUpdateReady] = useState(false);
+  const [focusAllowancesKey, setFocusAllowancesKey] = useState(0);
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
 
@@ -309,11 +310,17 @@ const AppShell: React.FC = () => {
             <TodayScreen
               onOpenVault={() => switchTab('vault')}
               onOpenBudgetSetup={() => switchTab('setup')}
+              onOpenAllowances={() => {
+                setFocusAllowancesKey((k) => k + 1);
+                switchTab('setup');
+              }}
             />
           )}
           {activeTab === 'wallet' && <WalletScreen />}
           {activeTab === 'vault' && <TreatVaultScreen />}
-          {activeTab === 'setup' && <SetupAndStyleScreen />}
+          {activeTab === 'setup' && (
+            <SetupAndStyleScreen focusAllowancesKey={focusAllowancesKey} />
+          )}
         </FadeSlideIn>
       </View>
 

@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { useBudget } from '../context/BudgetContext';
 import { triggerLightHaptic } from '../utils/haptics';
+import { useWebKeyboardInset } from '../utils/useWebKeyboardInset';
 import { ScalePressable } from './AnimatedPrimitives';
 import { AppIcon, IconBadge } from './AppIcon';
 
@@ -39,6 +40,8 @@ export const FormModal: React.FC<FormModalProps> = ({
 }) => {
   const { shade } = useBudget();
   const cardScale = useRef(new Animated.Value(0.94)).current;
+  const { keyboardInset, viewportHeight, offsetTop } =
+    useWebKeyboardInset(visible);
 
   useEffect(() => {
     if (!visible) return;
@@ -52,6 +55,17 @@ export const FormModal: React.FC<FormModalProps> = ({
   }, [visible, cardScale]);
 
   const effectiveAccent = accentColor || shade.accent;
+  const webKeyboardBackdrop =
+    Platform.OS === 'web' && keyboardInset > 0
+      ? {
+          paddingBottom: keyboardInset + 8,
+          paddingTop: Math.max(12, offsetTop + 8),
+        }
+      : undefined;
+  const webKeyboardCard =
+    Platform.OS === 'web' && keyboardInset > 0 && viewportHeight > 0
+      ? { maxHeight: Math.max(240, viewportHeight - 24) }
+      : undefined;
 
   return (
     <Modal
@@ -62,7 +76,7 @@ export const FormModal: React.FC<FormModalProps> = ({
     >
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.backdrop}
+        style={[styles.backdrop, webKeyboardBackdrop]}
       >
         <Pressable
           style={StyleSheet.absoluteFill}
@@ -77,6 +91,7 @@ export const FormModal: React.FC<FormModalProps> = ({
               borderColor: shade.border,
               transform: [{ scale: cardScale }],
             },
+            webKeyboardCard,
           ]}
         >
           <View style={styles.headerRow}>

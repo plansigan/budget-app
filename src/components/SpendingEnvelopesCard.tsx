@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { StyleSheet, Text, TextInput, View } from 'react-native';
 import { getMonthlyEnvelopeAllocation } from '../state/budgetMath';
 import { ThemeShade } from '../theme/palette';
@@ -39,6 +39,7 @@ interface SpendingEnvelopesCardProps {
   onRefillEnvelope: (id: string) => void;
   collapsible?: boolean;
   defaultExpanded?: boolean;
+  focusSignal?: number;
 }
 
 const ENVELOPE_PRESETS: Array<{
@@ -93,8 +94,15 @@ export const SpendingEnvelopesCard: React.FC<SpendingEnvelopesCardProps> = ({
   onRefillEnvelope,
   collapsible = false,
   defaultExpanded = true,
+  focusSignal = 0,
 }) => {
   const [expanded, setExpanded] = useState(collapsible ? defaultExpanded : true);
+
+  useEffect(() => {
+    if (focusSignal > 0) {
+      setExpanded(true);
+    }
+  }, [focusSignal]);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingEnvelope, setEditingEnvelope] =
     useState<SpendingEnvelopeItem | null>(null);
@@ -151,7 +159,7 @@ export const SpendingEnvelopesCard: React.FC<SpendingEnvelopesCardProps> = ({
 
   const handleSaveModal = () => {
     if (!formName.trim()) {
-      setFormError('Please enter an envelope name.');
+      setFormError('Please enter an allowance name.');
       return;
     }
     if (parsedCycleAmt <= 0) {
@@ -198,12 +206,12 @@ export const SpendingEnvelopesCard: React.FC<SpendingEnvelopesCardProps> = ({
           style={{ flex: 1 }}
         >
           <Text style={[styles.title, { color: shade.text }]}>
-            Spending envelopes ({envelopes.length})
+            Allowances ({envelopes.length})
           </Text>
           <Text style={[styles.subtitle, { color: shade.muted }]}>
             {collapsible
-              ? `${mask(totalMonthly)}/mo budgeted guilt-free`
-              : 'Budgeted upfront & guilt-free to spend'}
+              ? `${mask(totalMonthly)}/mo set aside upfront`
+              : "Set-aside money that won't touch your daily budget"}
           </Text>
         </ScalePressable>
 
@@ -251,8 +259,7 @@ export const SpendingEnvelopesCard: React.FC<SpendingEnvelopesCardProps> = ({
         {envelopes.length === 0 ? (
           <View style={[styles.emptyRow, { backgroundColor: shade.bg }]}>
             <Text style={[styles.emptyText, { color: shade.muted }]}>
-              No spending envelopes yet (e.g., Date Fund every cutoff). Tap a
-              starter below or + Custom Envelope.
+              No allowances yet (e.g., Date Night or Coffee). Tap + Add above.
             </Text>
           </View>
         ) : (
@@ -346,7 +353,7 @@ export const SpendingEnvelopesCard: React.FC<SpendingEnvelopesCardProps> = ({
                       { backgroundColor: shade.card, borderColor: shade.border },
                     ]}
                   >
-                    <AppIcon name="x" size={12} color={shade.muted} />
+                    <AppIcon name="trash-2" size={12} color={shade.warning} />
                   </ScalePressable>
                 </View>
               </View>
@@ -360,7 +367,7 @@ export const SpendingEnvelopesCard: React.FC<SpendingEnvelopesCardProps> = ({
         <View style={styles.presetSection}>
           <View style={styles.headerRow}>
             <Text style={[styles.presetLabel, { color: shade.muted }]}>
-              QUICK ADD ENVELOPE
+              QUICK ADD ALLOWANCE
             </Text>
             <ScalePressable
               onPress={openCreateModal}
@@ -368,7 +375,7 @@ export const SpendingEnvelopesCard: React.FC<SpendingEnvelopesCardProps> = ({
             >
               <AppIcon name="plus" size={12} color={shade.dopamine} />
               <Text style={[styles.customToggleText, { color: shade.dopamine }]}>
-                Custom Envelope
+                Custom Allowance
               </Text>
             </ScalePressable>
           </View>
@@ -400,8 +407,8 @@ export const SpendingEnvelopesCard: React.FC<SpendingEnvelopesCardProps> = ({
 
       <FormModal
         visible={modalVisible}
-        title={editingEnvelope ? 'Edit Spending Envelope' : 'New Spending Envelope'}
-        subtitle="Carved out upfront so spending feels guilt-free"
+        title={editingEnvelope ? 'Edit Allowance' : 'New Allowance'}
+        subtitle="Set aside upfront so spending won't touch your daily budget"
         icon={formIcon}
         accentColor={shade.dopamine}
         onClose={() => {
@@ -474,7 +481,7 @@ export const SpendingEnvelopesCard: React.FC<SpendingEnvelopesCardProps> = ({
             setFormName(t);
             if (formError) setFormError(null);
           }}
-          placeholder="Envelope name (e.g., Date Fund, Fun Fund)"
+          placeholder="Allowance name (e.g., Date Night, Coffee)"
           placeholderTextColor={shade.muted}
           style={[
             styles.nameInput,
@@ -682,14 +689,14 @@ export const SpendingEnvelopesCard: React.FC<SpendingEnvelopesCardProps> = ({
               { color: isFormValid ? '#FFFFFF' : shade.muted },
             ]}
           >
-            {editingEnvelope ? 'Save Envelope Changes' : 'Add Spending Envelope'}
+            {editingEnvelope ? 'Save Allowance' : 'Add Allowance'}
           </Text>
         </ScalePressable>
       </FormModal>
 
       <ConfirmModal
         visible={pendingDelete !== null}
-        title="Remove Spending Envelope?"
+        title="Remove Allowance?"
         message={
           pendingDelete
             ? `Remove "${pendingDelete.name}"? Its monthly set-aside will return to your daily budget.`

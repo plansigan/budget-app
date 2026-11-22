@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Platform,
   ScrollView,
@@ -46,11 +46,17 @@ const SNAPSHOT_REASON_LABEL: Record<AutoBackupSnapshot['reason'], string> = {
   manual: 'Manual save',
 };
 
+interface SetupAndStyleScreenProps {
+  focusAllowancesKey?: number;
+}
+
 /**
  * Clean 2-segment Budget screen separating Plan (income, schedule, bills,
- * envelopes, savings) from Settings (appearance, auto-snapshots, tools).
+ * allowances, savings) from Settings (appearance, auto-snapshots, tools).
  */
-export const SetupAndStyleScreen: React.FC = () => {
+export const SetupAndStyleScreen: React.FC<SetupAndStyleScreenProps> = ({
+  focusAllowancesKey = 0,
+}) => {
   const {
     shade,
     privacyMode,
@@ -93,6 +99,12 @@ export const SetupAndStyleScreen: React.FC = () => {
 
   const [subTab, setSubTab] = useState<'plan' | 'settings'>('plan');
   const [billToPay, setBillToPay] = useState<BillItem | null>(null);
+
+  useEffect(() => {
+    if (focusAllowancesKey > 0) {
+      setSubTab('plan');
+    }
+  }, [focusAllowancesKey]);
 
   const [showRestoreBox, setShowRestoreBox] = useState(false);
   const [restoreText, setRestoreText] = useState('');
@@ -354,6 +366,7 @@ export const SetupAndStyleScreen: React.FC = () => {
             privacyMode={privacyMode}
             collapsible
             defaultExpanded={false}
+            focusSignal={focusAllowancesKey}
             onAddEnvelope={addEnvelope}
             onUpdateEnvelope={updateEnvelope}
             onDeleteEnvelope={deleteEnvelope}
@@ -836,7 +849,7 @@ export const SetupAndStyleScreen: React.FC = () => {
               {restorePreview.summary.entriesCount} logs •{' '}
               {restorePreview.summary.banksCount +
                 restorePreview.summary.creditCardsCount}{' '}
-              accounts • {restorePreview.summary.envelopesCount} envelopes
+              accounts • {restorePreview.summary.envelopesCount} allowances
             </Text>
           </View>
         )}

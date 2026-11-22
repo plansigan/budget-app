@@ -1456,7 +1456,7 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
       const refilledCount = (refillEnvelopeIds || []).length;
       if (refilledCount > 0) {
         showToast(
-          `Payday logged to ${sourceLabel} & refilled ${refilledCount} envelope${refilledCount > 1 ? 's' : ''}!`,
+          `Payday logged to ${sourceLabel} & refilled ${refilledCount} allowance${refilledCount > 1 ? 's' : ''}!`,
           true
         );
       } else {
@@ -1500,7 +1500,7 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
         rolloverMode,
       });
       showToast(
-        `Added ${trimmed} envelope (₱${cleanAmt.toLocaleString()})`,
+        `Added ${trimmed} allowance (₱${cleanAmt.toLocaleString()})`,
         true
       );
     },
