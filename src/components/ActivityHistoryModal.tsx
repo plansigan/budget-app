@@ -20,6 +20,7 @@ import {
   formatEntryDateLocal,
   getTransactionPresentation,
 } from '../utils/transactionDisplay';
+import { useWebKeyboardInset } from '../utils/useWebKeyboardInset';
 import { ScalePressable } from './AnimatedPrimitives';
 import { AppIcon, IconBadge } from './AppIcon';
 import { EditTransactionModal } from './EditTransactionModal';
@@ -35,7 +36,7 @@ type HistoryFilterKey =
 const HISTORY_FILTERS: Array<{ key: HistoryFilterKey; label: string }> = [
   { key: 'all', label: 'All' },
   { key: 'spend', label: 'Spends' },
-  { key: 'envelopes', label: 'Envelopes' },
+  { key: 'envelopes', label: 'Allowances' },
   { key: 'bills', label: 'Bills' },
   { key: 'savings', label: 'Savings' },
   { key: 'wallet', label: 'Wallet' },
@@ -154,6 +155,20 @@ export const ActivityHistoryModal: React.FC<ActivityHistoryModalProps> = ({
   );
 
   const hasMore = filteredEntries.length > visibleEntries.length;
+  const { keyboardInset, viewportHeight, offsetTop } = useWebKeyboardInset(
+    visible && editingEntry === null
+  );
+  const webKeyboardBackdrop =
+    Platform.OS === 'web' && keyboardInset > 0
+      ? {
+          paddingBottom: keyboardInset + 8,
+          paddingTop: Math.max(12, offsetTop + 8),
+        }
+      : undefined;
+  const webKeyboardCard =
+    Platform.OS === 'web' && keyboardInset > 0 && viewportHeight > 0
+      ? { maxHeight: Math.max(240, viewportHeight - 24) }
+      : undefined;
 
   return (
     <>
@@ -165,7 +180,7 @@ export const ActivityHistoryModal: React.FC<ActivityHistoryModalProps> = ({
       >
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={styles.backdrop}
+          style={[styles.backdrop, webKeyboardBackdrop]}
         >
           <Pressable
             style={StyleSheet.absoluteFill}
@@ -180,6 +195,7 @@ export const ActivityHistoryModal: React.FC<ActivityHistoryModalProps> = ({
                 borderColor: shade.border,
                 transform: [{ scale: cardScale }],
               },
+              webKeyboardCard,
             ]}
           >
             <View style={styles.headerRow}>

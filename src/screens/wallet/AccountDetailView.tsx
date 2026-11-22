@@ -616,7 +616,7 @@ export const AccountDetailView: React.FC<AccountDetailViewProps> = ({
                     : isBillPaid
                     ? 'Bill Paid'
                     : isEnvelopeSpend
-                    ? 'Envelope Spend'
+                    ? 'Allowance Spend'
                     : 'Spent';
 
                   return (
