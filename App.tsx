@@ -76,9 +76,7 @@ const AppShell: React.FC = () => {
     togglePrivacyMode,
     shade,
     streakDays,
-    bufferShields,
     treats,
-    openTutorial,
   } = useBudget();
   const [activeTab, setActiveTab] = useState<TabKey>('today');
   const { width } = useWindowDimensions();
@@ -158,13 +156,18 @@ const AppShell: React.FC = () => {
           },
         ]}
       >
-        <View>
+        <View style={styles.brandRow}>
           <Text style={[styles.brandTitle, { color: shade.text }]}>
             velvet
           </Text>
-          <Text style={[styles.brandSub, { color: shade.muted }]}>
-            Simple Budget • PHP (₱)
-          </Text>
+          <View
+            style={[
+              styles.currencyPill,
+              { backgroundColor: shade.surface, borderColor: shade.border },
+            ]}
+          >
+            <Text style={[styles.currencyText, { color: shade.muted }]}>₱</Text>
+          </View>
         </View>
 
         <View style={styles.headerPills}>
@@ -179,47 +182,19 @@ const AppShell: React.FC = () => {
           >
             <AppIcon
               name={privacyMode ? 'eye-off' : 'eye'}
-              size={14}
+              size={15}
               color={shade.text}
             />
           </ScalePressable>
-          <ScalePressable
-            onPress={() => {
-              setActiveTab('today');
-              openTutorial();
-            }}
-            accessibilityLabel="Open App Guide"
-            hitSlop={4}
-            style={[
-              styles.statusPill,
-              { backgroundColor: shade.surface, borderColor: shade.border },
-            ]}
-          >
-            <AppIcon name="help-circle" size={13} color={shade.dopamine} />
-            <Text style={[styles.statusText, { color: shade.dopamine }]}>
-              Guide
-            </Text>
-          </ScalePressable>
           <View
             style={[
               styles.statusPill,
               { backgroundColor: shade.surface, borderColor: shade.border },
             ]}
           >
-            <AppIcon name="zap" size={13} color={shade.text} />
+            <AppIcon name="zap" size={14} color={shade.positive} />
             <Text style={[styles.statusText, { color: shade.text }]}>
               {streakDays}d
-            </Text>
-          </View>
-          <View
-            style={[
-              styles.statusPill,
-              { backgroundColor: shade.surface, borderColor: shade.border },
-            ]}
-          >
-            <AppIcon name="shield" size={13} color={shade.positive} />
-            <Text style={[styles.statusText, { color: shade.positive }]}>
-              {bufferShields}
             </Text>
           </View>
         </View>
@@ -332,7 +307,7 @@ const AppShell: React.FC = () => {
               { color: activeTab === 'vault' ? shade.dopamine : shade.muted },
             ]}
           >
-            Goals ({treats.length}/3)
+            Goals
           </Text>
         </ScalePressable>
 
@@ -427,37 +402,51 @@ const styles = StyleSheet.create({
   header: {
     paddingHorizontal: 18,
     paddingTop: 12,
-    paddingBottom: 12,
+    paddingBottom: 13,
     borderBottomWidth: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
+  brandRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   brandTitle: {
-    fontSize: 20,
+    fontSize: 21,
     fontWeight: '800',
     letterSpacing: -0.4,
   },
-  brandSub: {
+  currencyPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  currencyText: {
     fontSize: 11,
-    fontWeight: '600',
+    fontWeight: '800',
   },
   headerPills: {
     flexDirection: 'row',
+    alignItems: 'center',
     gap: 8,
   },
   statusPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 9,
-    paddingVertical: 5,
+    justifyContent: 'center',
+    gap: 5,
+    minHeight: 34,
+    paddingHorizontal: 11,
+    paddingVertical: 6,
     borderRadius: 999,
     borderWidth: 1,
   },
   statusText: {
-    fontSize: 11,
-    fontWeight: '700',
+    fontSize: 12,
+    fontWeight: '800',
   },
   contentWrap: {
     flex: 1,

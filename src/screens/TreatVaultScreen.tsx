@@ -88,7 +88,7 @@ export const TreatVaultScreen: React.FC = () => {
                 { color: subTab === 'insights' ? shade.text : shade.muted },
               ]}
             >
-              Insights & Wrap-Up
+              Insights & Coach
             </Text>
           </View>
         </ScalePressable>
@@ -148,8 +148,8 @@ export const TreatVaultScreen: React.FC = () => {
 
 const styles = StyleSheet.create({
   scrollContent: {
-    paddingBottom: 36,
-    gap: 10,
+    paddingBottom: 40,
+    gap: 14,
   },
   inlineRow: {
     flexDirection: 'row',
@@ -158,20 +158,20 @@ const styles = StyleSheet.create({
   },
   subTabBar: {
     flexDirection: 'row',
-    borderRadius: 14,
+    borderRadius: 15,
     borderWidth: 1,
     padding: 4,
     gap: 4,
-    marginBottom: 4,
+    marginBottom: 2,
   },
   subTabBtn: {
     flex: 1,
-    paddingVertical: 9,
-    borderRadius: 10,
+    paddingVertical: 10,
+    borderRadius: 11,
     alignItems: 'center',
   },
   subTabText: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '800',
   },
 });

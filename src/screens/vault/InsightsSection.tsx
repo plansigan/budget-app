@@ -7,27 +7,27 @@ import {
   ScalePressable,
 } from '../../components/AnimatedPrimitives';
 import { AppIcon, IconBadge } from '../../components/AppIcon';
+import { SavingsCoachCard } from '../../components/SavingsCoachCard';
 import { SpendingBreakdownCard } from '../../components/SpendingBreakdownCard';
 import { useBudget } from '../../context/BudgetContext';
 import { MonthlyArchiveSnapshot } from '../../types/budget';
 import { triggerLightHaptic } from '../../utils/haptics';
 import { formatMonthKeyLabel } from '../../utils/insightsEngine';
 import { ALL_MILESTONES, computeBudgetHealth } from '../../utils/savingsCoach';
-import {
-  formatEntryDateLocal,
-  getTransactionPresentation,
-} from '../../utils/transactionDisplay';
 
 interface InsightsSectionProps {
   onOpenWrap: (archive?: MonthlyArchiveSnapshot | null) => void;
 }
 
+/**
+ * Decluttered Insights tab: Wrap-Up, Spending Breakdown, Savings Coach,
+ * collapsible Milestones & Score, and clean Activity History launcher.
+ */
 export const InsightsSection: React.FC<InsightsSectionProps> = ({
   onOpenWrap,
 }) => {
   const {
     shade,
-    privacyMode,
     formatVisiblePeso,
     settings,
     cashOnHand,
@@ -36,11 +36,13 @@ export const InsightsSection: React.FC<InsightsSectionProps> = ({
     monthlyArchives,
     entries,
     unlockedMilestones,
-    undoEntry,
+    disciplineScore,
+    cardTier,
   } = useBudget();
 
   const [selectedMonthKey, setSelectedMonthKey] = useState<string | null>(null);
   const [showAllActivity, setShowAllActivity] = useState(false);
+  const [showMilestones, setShowMilestones] = useState(false);
 
   const sortedArchives = useMemo(
     () =>
@@ -56,15 +58,6 @@ export const InsightsSection: React.FC<InsightsSectionProps> = ({
   );
 
   const lastArchive = sortedArchives[0] || null;
-
-  const displayedEntries = useMemo(() => {
-    if (selectedArchive) {
-      return entries.filter((e) =>
-        formatEntryDateLocal(e).startsWith(selectedArchive.monthKey)
-      );
-    }
-    return entries.slice(0, 20);
-  }, [entries, selectedArchive]);
 
   const health = computeBudgetHealth(settings);
   const liquidTotal =
@@ -89,7 +82,7 @@ export const InsightsSection: React.FC<InsightsSectionProps> = ({
   }, []);
 
   return (
-    <FadeSlideIn triggerKey="insights-tab" distance={10} style={{ gap: 10 }}>
+    <FadeSlideIn triggerKey="insights-tab" distance={10} style={styles.sectionGap}>
       {sortedArchives.length > 0 && (
         <ScrollView
           horizontal
@@ -251,271 +244,201 @@ export const InsightsSection: React.FC<InsightsSectionProps> = ({
         }
       />
 
-      <Text
-        style={[
-          styles.sectionTitle,
-          { color: shade.muted, marginTop: 6, marginBottom: 2 },
-        ]}
-      >
-        SAVING HEALTH & MILESTONES ({unlockedMilestones.length}/
-        {ALL_MILESTONES.length})
-      </Text>
+      {/* Personalized Coach Card moved cleanly out of TodayScreen */}
+      <SavingsCoachCard />
 
+      {/* Collapsible Milestones, Score & Health Card */}
       <View
         style={[
-          styles.healthCard,
+          styles.accordionCard,
           { backgroundColor: shade.card, borderColor: shade.border },
         ]}
       >
-        <View style={styles.rowBetween}>
-          <Text style={[styles.healthTitle, { color: shade.text }]}>
-            Your Monthly Split
-          </Text>
-          <Text style={[styles.microSub, { color: shade.muted }]}>
-            Goal: 50% bills / 20% save
-          </Text>
-        </View>
-
-        <View style={[styles.splitBar, { backgroundColor: shade.surface }]}>
-          <View
-            style={[
-              styles.splitSeg,
-              {
-                width: `${health.billsPct}%`,
-                backgroundColor: shade.muted,
-              },
-            ]}
-          />
-          <View
-            style={[
-              styles.splitSeg,
-              {
-                width: `${health.savingsPct}%`,
-                backgroundColor: shade.positive,
-              },
-            ]}
-          />
-          <View
-            style={[
-              styles.splitSeg,
-              {
-                width: `${health.dailyPct}%`,
-                backgroundColor: shade.dopamine,
-              },
-            ]}
-          />
-        </View>
-
-        <View style={styles.splitLegendRow}>
-          <Text style={[styles.legendItem, { color: shade.muted }]}>
-            Bills {health.billsPct}%
-          </Text>
-          <Text style={[styles.legendItem, { color: shade.positive }]}>
-            Save {health.savingsPct}%
-          </Text>
-          <Text style={[styles.legendItem, { color: shade.dopamine }]}>
-            Daily {health.dailyPct}%
-          </Text>
-        </View>
-
-        <View style={[styles.efDivider, { backgroundColor: shade.border }]} />
-
-        <View style={styles.rowBetween}>
-          <View style={styles.inlineRow}>
-            <AppIcon name="shield" size={14} color={shade.positive} />
-            <Text style={[styles.healthTitle, { color: shade.text }]}>
-              3-Month Safety Fund
+        <ScalePressable
+          onPress={() => {
+            triggerLightHaptic();
+            setShowMilestones((v) => !v);
+          }}
+          style={styles.accordionHeader}
+        >
+          <View style={{ flex: 1, gap: 3 }}>
+            <Text style={[styles.accordionTitle, { color: shade.text }]}>
+              Milestones & Score ({disciplineScore})
+            </Text>
+            <Text style={[styles.accordionSub, { color: shade.muted }]}>
+              {cardTier} • {unlockedMilestones.length} of {ALL_MILESTONES.length} badges earned
             </Text>
           </View>
-          <Text style={[styles.treatRowMeta, { color: shade.positive }]}>
-            {emergencyPct}%
-          </Text>
-        </View>
-        <Text style={[styles.microSub, { color: shade.muted }]}>
-          {formatVisiblePeso(liquidTotal)} Cash & Banks /{' '}
-          {formatVisiblePeso(health.emergencyTarget3Mo)} target
-        </Text>
-        <AnimatedProgressBar
-          percentage={emergencyPct}
-          trackColor={shade.surface}
-          fillColor={shade.positive}
-          height={7}
-        />
-      </View>
+          <AppIcon
+            name={showMilestones ? 'chevron-down' : 'chevron-right'}
+            size={18}
+            color={shade.muted}
+          />
+        </ScalePressable>
 
-      <View style={styles.milestoneGrid}>
-        {milestoneRows.map((row, rowIdx) => (
-          <View key={`ms-row-${rowIdx}`} style={styles.milestoneRow}>
-            {row.map((m) => {
-              const earned = unlockedMilestones.includes(m.id);
-              return (
-                <View
-                  key={m.id}
-                  style={[
-                    styles.milestoneCard,
-                    {
-                      backgroundColor: earned ? shade.card : shade.surface,
-                      borderColor: earned ? shade.positive : shade.border,
-                      opacity: earned ? 1 : 0.72,
-                    },
-                  ]}
-                >
-                  <View style={styles.rowBetween}>
-                    <IconBadge
-                      name={m.icon}
-                      size={15}
-                      color={earned ? shade.positive : shade.muted}
-                      bg={earned ? shade.positiveSoft : shade.card}
-                      boxSize={30}
-                    />
-                    <Text
-                      style={[
-                        styles.milestoneState,
-                        { color: earned ? shade.positive : shade.muted },
-                      ]}
-                    >
-                      {earned ? 'Earned' : 'Locked'}
-                    </Text>
-                  </View>
-                  <Text
-                    numberOfLines={1}
-                    style={[styles.milestoneBadge, { color: shade.text }]}
-                  >
-                    {m.badge}
-                  </Text>
-                  <Text
-                    numberOfLines={2}
-                    style={[styles.milestoneHint, { color: shade.muted }]}
-                  >
-                    {earned ? m.title : m.unlockHint}
-                  </Text>
-                </View>
-              );
-            })}
-            {row.length === 1 && <View style={{ flex: 1 }} />}
-          </View>
-        ))}
-      </View>
-
-      <View
-        style={[
-          styles.rowBetween,
-          { marginTop: 8, marginBottom: 2 },
-        ]}
-      >
-        <Text style={[styles.sectionTitle, { color: shade.muted }]}>
-          {selectedArchive
-            ? `${formatMonthKeyLabel(selectedArchive.monthKey).toUpperCase()} ACTIVITY`
-            : 'RECENT ACTIVITY'}
-        </Text>
-        <View style={styles.inlineRow}>
-          {entries.length > 0 && (
-            <ScalePressable
-              onPress={() => {
-                triggerLightHaptic();
-                setShowAllActivity(true);
-              }}
-              style={[
-                styles.backToNowChip,
-                { backgroundColor: shade.card, borderWidth: 1, borderColor: shade.border },
-              ]}
-            >
-              <Text style={[styles.backToNowText, { color: shade.text }]}>
-                Search / All ({entries.length})
-              </Text>
-            </ScalePressable>
-          )}
-          {selectedArchive && (
-            <ScalePressable
-              onPress={() => {
-                triggerLightHaptic();
-                setSelectedMonthKey(null);
-              }}
-              style={[styles.backToNowChip, { backgroundColor: shade.surface }]}
-            >
-              <Text style={[styles.backToNowText, { color: shade.accent }]}>
-                Back to This Month ›
-              </Text>
-            </ScalePressable>
-          )}
-        </View>
-      </View>
-
-      <View style={styles.listGap}>
-        {displayedEntries.length === 0 ? (
+        {showMilestones && (
           <View
-            style={[
-              styles.emptyBox,
-              { backgroundColor: shade.card, borderColor: shade.border },
-            ]}
+            style={[styles.accordionBody, { borderTopColor: shade.border }]}
           >
-            <Text style={{ color: shade.muted, fontSize: 12 }}>
-              {selectedArchive
-                ? 'No individual activity logs saved for this archived month.'
-                : 'No entries yet. Tap Spend! or + Save to Jar on Today.'}
-            </Text>
-          </View>
-        ) : (
-          displayedEntries.map((entry) => {
-            const { deltaText, deltaColor, isTreatHighlight } =
-              getTransactionPresentation(entry, shade, privacyMode);
-            return (
+            <View style={styles.rowBetween}>
+              <Text style={[styles.healthTitle, { color: shade.text }]}>
+                Monthly Split
+              </Text>
+              <Text style={[styles.microSub, { color: shade.muted }]}>
+                Goal: 50% bills / 20% save
+              </Text>
+            </View>
+
+            <View style={[styles.splitBar, { backgroundColor: shade.surface }]}>
               <View
-                key={entry.id}
                 style={[
-                  styles.feedRow,
+                  styles.splitSeg,
                   {
-                    backgroundColor: shade.card,
-                    borderColor: isTreatHighlight
-                      ? shade.dopamine
-                      : shade.border,
+                    width: `${health.billsPct}%`,
+                    backgroundColor: shade.muted,
                   },
                 ]}
-              >
-                <View style={styles.feedLeft}>
-                  <IconBadge
-                    name={entry.icon}
-                    size={14}
-                    color={deltaColor}
-                    bg={shade.surface}
-                    boxSize={32}
-                  />
-                  <View style={{ flex: 1 }}>
-                    <Text
-                      numberOfLines={1}
-                      style={[styles.feedTitle, { color: shade.text }]}
-                    >
-                      {entry.label}
-                    </Text>
-                    <Text style={[styles.microSub, { color: shade.muted }]}>
-                      {entry.dateKey || ''}
-                      {entry.paymentSourceLabel
-                        ? ` • ${entry.paymentSourceLabel}`
-                        : ''}
-                    </Text>
-                  </View>
-                </View>
+              />
+              <View
+                style={[
+                  styles.splitSeg,
+                  {
+                    width: `${health.savingsPct}%`,
+                    backgroundColor: shade.positive,
+                  },
+                ]}
+              />
+              <View
+                style={[
+                  styles.splitSeg,
+                  {
+                    width: `${health.dailyPct}%`,
+                    backgroundColor: shade.dopamine,
+                  },
+                ]}
+              />
+            </View>
 
-                <View style={styles.feedRight}>
-                  <Text style={[styles.feedDelta, { color: deltaColor }]}>
-                    {deltaText}
-                  </Text>
-                  <ScalePressable
-                    onPress={() => undoEntry(entry.id)}
-                    accessibilityLabel={`Undo ${entry.label}`}
-                    hitSlop={6}
-                    style={[styles.undoBtn, { backgroundColor: shade.surface }]}
-                  >
-                    <Text style={[styles.undoText, { color: shade.muted }]}>
-                      Undo
-                    </Text>
-                  </ScalePressable>
-                </View>
+            <View style={styles.splitLegendRow}>
+              <Text style={[styles.legendItem, { color: shade.muted }]}>
+                Bills {health.billsPct}%
+              </Text>
+              <Text style={[styles.legendItem, { color: shade.positive }]}>
+                Save {health.savingsPct}%
+              </Text>
+              <Text style={[styles.legendItem, { color: shade.dopamine }]}>
+                Daily {health.dailyPct}%
+              </Text>
+            </View>
+
+            <View style={[styles.efDivider, { backgroundColor: shade.border }]} />
+
+            <View style={styles.rowBetween}>
+              <View style={styles.inlineRow}>
+                <AppIcon name="shield" size={14} color={shade.positive} />
+                <Text style={[styles.healthTitle, { color: shade.text }]}>
+                  3-Month Safety Fund
+                </Text>
               </View>
-            );
-          })
+              <Text style={[styles.treatRowMeta, { color: shade.positive }]}>
+                {emergencyPct}%
+              </Text>
+            </View>
+            <Text style={[styles.microSub, { color: shade.muted }]}>
+              {formatVisiblePeso(liquidTotal)} Cash & Banks /{' '}
+              {formatVisiblePeso(health.emergencyTarget3Mo)} target
+            </Text>
+            <AnimatedProgressBar
+              percentage={emergencyPct}
+              trackColor={shade.surface}
+              fillColor={shade.positive}
+              height={7}
+            />
+
+            <View style={[styles.milestoneGrid, { marginTop: 6 }]}>
+              {milestoneRows.map((row, rowIdx) => (
+                <View key={`ms-row-${rowIdx}`} style={styles.milestoneRow}>
+                  {row.map((m) => {
+                    const earned = unlockedMilestones.includes(m.id);
+                    return (
+                      <View
+                        key={m.id}
+                        style={[
+                          styles.milestoneCard,
+                          {
+                            backgroundColor: shade.surface,
+                            borderColor: earned
+                              ? shade.positive
+                              : shade.border,
+                            opacity: earned ? 1 : 0.72,
+                          },
+                        ]}
+                      >
+                        <View style={styles.rowBetween}>
+                          <IconBadge
+                            name={m.icon}
+                            size={15}
+                            color={earned ? shade.positive : shade.muted}
+                            bg={earned ? shade.positiveSoft : shade.card}
+                            boxSize={30}
+                          />
+                          <Text
+                            style={[
+                              styles.milestoneState,
+                              { color: earned ? shade.positive : shade.muted },
+                            ]}
+                          >
+                            {earned ? 'Earned' : 'Locked'}
+                          </Text>
+                        </View>
+                        <Text
+                          numberOfLines={1}
+                          style={[styles.milestoneBadge, { color: shade.text }]}
+                        >
+                          {m.badge}
+                        </Text>
+                        <Text
+                          numberOfLines={2}
+                          style={[styles.milestoneHint, { color: shade.muted }]}
+                        >
+                          {earned ? m.title : m.unlockHint}
+                        </Text>
+                      </View>
+                    );
+                  })}
+                  {row.length === 1 && <View style={{ flex: 1 }} />}
+                </View>
+              ))}
+            </View>
+          </View>
         )}
       </View>
+
+      {/* Single Spacious Activity History Launcher */}
+      <ScalePressable
+        onPress={() => {
+          triggerLightHaptic();
+          setShowAllActivity(true);
+        }}
+        style={[
+          styles.historyCard,
+          { backgroundColor: shade.card, borderColor: shade.border },
+        ]}
+      >
+        <View style={{ flex: 1, gap: 3 }}>
+          <Text style={[styles.accordionTitle, { color: shade.text }]}>
+            Activity History
+          </Text>
+          <Text style={[styles.accordionSub, { color: shade.muted }]}>
+            Search & filter all {entries.length}{' '}
+            {entries.length === 1 ? 'logged entry' : 'logged entries'}
+            {selectedArchive
+              ? ` • filtered to ${formatMonthKeyLabel(selectedArchive.monthKey)}`
+              : ''}
+          </Text>
+        </View>
+        <AppIcon name="chevron-right" size={18} color={shade.muted} />
+      </ScalePressable>
 
       <ActivityHistoryModal
         visible={showAllActivity}
@@ -527,6 +450,9 @@ export const InsightsSection: React.FC<InsightsSectionProps> = ({
 };
 
 const styles = StyleSheet.create({
+  sectionGap: {
+    gap: 14,
+  },
   inlineRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -544,38 +470,56 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
   },
   wrapTriggerCard: {
-    borderRadius: 20,
+    borderRadius: 22,
     borderWidth: 1,
-    padding: 16,
+    padding: 18,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
   },
   wrapTriggerTitle: {
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: '800',
   },
   microSub: {
-    fontSize: 11,
+    fontSize: 12,
   },
-  sectionTitle: {
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 0.9,
-  },
-  healthCard: {
+  accordionCard: {
     borderRadius: 20,
     borderWidth: 1,
-    padding: 15,
-    gap: 9,
-    shadowColor: '#111318',
-    shadowOpacity: 0.04,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 2,
+    overflow: 'hidden',
+  },
+  accordionHeader: {
+    padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  accordionTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  accordionSub: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  accordionBody: {
+    borderTopWidth: 1,
+    padding: 16,
+    gap: 10,
+  },
+  historyCard: {
+    borderRadius: 20,
+    borderWidth: 1,
+    padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
   },
   healthTitle: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '800',
   },
   splitBar: {
@@ -600,7 +544,7 @@ const styles = StyleSheet.create({
     marginVertical: 2,
   },
   treatRowMeta: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
   },
   milestoneGrid: {
@@ -627,71 +571,24 @@ const styles = StyleSheet.create({
   },
   milestoneHint: {
     fontSize: 11,
-    lineHeight: 15,
-  },
-  listGap: {
-    gap: 8,
-  },
-  emptyBox: {
-    borderRadius: 16,
-    borderWidth: 1,
-    padding: 16,
-    alignItems: 'center',
-  },
-  feedRow: {
-    borderRadius: 16,
-    borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-  feedLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    flex: 1,
-  },
-  feedTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  feedRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  feedDelta: {
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  undoBtn: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-  },
-  undoText: {
-    fontSize: 10,
-    fontWeight: '700',
+    lineHeight: 16,
   },
   monthStrip: {
     flexDirection: 'row',
-    gap: 7,
+    gap: 8,
     paddingBottom: 2,
   },
   monthChip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
+    paddingHorizontal: 13,
+    paddingVertical: 8,
     borderRadius: 999,
     borderWidth: 1,
   },
   monthChipText: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '800',
   },
   monthGradeBadge: {
@@ -716,15 +613,6 @@ const styles = StyleSheet.create({
   },
   archiveStatText: {
     fontSize: 11,
-    fontWeight: '800',
-  },
-  backToNowChip: {
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-    borderRadius: 8,
-  },
-  backToNowText: {
-    fontSize: 10,
     fontWeight: '800',
   },
 });

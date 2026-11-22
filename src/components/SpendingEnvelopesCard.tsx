@@ -37,6 +37,8 @@ interface SpendingEnvelopesCardProps {
   ) => void;
   onDeleteEnvelope: (id: string) => void;
   onRefillEnvelope: (id: string) => void;
+  collapsible?: boolean;
+  defaultExpanded?: boolean;
 }
 
 const ENVELOPE_PRESETS: Array<{
@@ -89,7 +91,10 @@ export const SpendingEnvelopesCard: React.FC<SpendingEnvelopesCardProps> = ({
   onUpdateEnvelope,
   onDeleteEnvelope,
   onRefillEnvelope,
+  collapsible = false,
+  defaultExpanded = true,
 }) => {
+  const [expanded, setExpanded] = useState(collapsible ? defaultExpanded : true);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingEnvelope, setEditingEnvelope] =
     useState<SpendingEnvelopeItem | null>(null);
@@ -184,25 +189,65 @@ export const SpendingEnvelopesCard: React.FC<SpendingEnvelopesCardProps> = ({
       ]}
     >
       <View style={styles.headerRow}>
-        <View style={{ flex: 1 }}>
+        <ScalePressable
+          disabled={!collapsible}
+          onPress={() => {
+            triggerLightHaptic();
+            setExpanded((v) => !v);
+          }}
+          style={{ flex: 1 }}
+        >
           <Text style={[styles.title, { color: shade.text }]}>
-            Spending envelopes
+            Spending envelopes ({envelopes.length})
           </Text>
           <Text style={[styles.subtitle, { color: shade.muted }]}>
-            Budgeted upfront & guilt-free to spend
+            {collapsible
+              ? `${mask(totalMonthly)}/mo budgeted guilt-free`
+              : 'Budgeted upfront & guilt-free to spend'}
           </Text>
-        </View>
+        </ScalePressable>
 
-        <PopValueText valueTrigger={totalMonthly}>
-          <View style={[styles.totalPill, { backgroundColor: shade.surface }]}>
-            <Text style={[styles.totalText, { color: shade.dopamine }]}>
-              {mask(totalMonthly)}/mo
-            </Text>
+        {collapsible ? (
+          <View style={styles.headerActions}>
+            <ScalePressable
+              onPress={openCreateModal}
+              style={[
+                styles.customToggle,
+                { backgroundColor: shade.dopamineSoft },
+              ]}
+            >
+              <AppIcon name="plus" size={12} color={shade.dopamine} />
+              <Text style={[styles.customToggleText, { color: shade.dopamine }]}>
+                Add
+              </Text>
+            </ScalePressable>
+            <ScalePressable
+              onPress={() => {
+                triggerLightHaptic();
+                setExpanded((v) => !v);
+              }}
+              hitSlop={8}
+            >
+              <AppIcon
+                name={expanded ? 'chevron-down' : 'chevron-right'}
+                size={18}
+                color={shade.muted}
+              />
+            </ScalePressable>
           </View>
-        </PopValueText>
+        ) : (
+          <PopValueText valueTrigger={totalMonthly}>
+            <View style={[styles.totalPill, { backgroundColor: shade.surface }]}>
+              <Text style={[styles.totalText, { color: shade.dopamine }]}>
+                {mask(totalMonthly)}/mo
+              </Text>
+            </View>
+          </PopValueText>
+        )}
       </View>
 
-      <View style={styles.list}>
+      {expanded && (
+        <View style={styles.list}>
         {envelopes.length === 0 ? (
           <View style={[styles.emptyRow, { backgroundColor: shade.bg }]}>
             <Text style={[styles.emptyText, { color: shade.muted }]}>
@@ -308,47 +353,50 @@ export const SpendingEnvelopesCard: React.FC<SpendingEnvelopesCardProps> = ({
             );
           })
         )}
-      </View>
-
-      <View style={styles.presetSection}>
-        <View style={styles.headerRow}>
-          <Text style={[styles.presetLabel, { color: shade.muted }]}>
-            QUICK ADD ENVELOPE
-          </Text>
-          <ScalePressable
-            onPress={openCreateModal}
-            style={[styles.customToggle, { backgroundColor: shade.surface }]}
-          >
-            <AppIcon name="plus" size={12} color={shade.dopamine} />
-            <Text style={[styles.customToggleText, { color: shade.dopamine }]}>
-              Custom Envelope
-            </Text>
-          </ScalePressable>
         </View>
+      )}
 
-        <View style={styles.presetChips}>
-          {ENVELOPE_PRESETS.map((preset) => (
+      {expanded && !collapsible && (
+        <View style={styles.presetSection}>
+          <View style={styles.headerRow}>
+            <Text style={[styles.presetLabel, { color: shade.muted }]}>
+              QUICK ADD ENVELOPE
+            </Text>
             <ScalePressable
-              key={preset.name}
-              onPress={() =>
-                onAddEnvelope(
-                  preset.name,
-                  preset.icon,
-                  preset.amount,
-                  preset.cadence,
-                  preset.rolloverMode
-                )
-              }
-              style={[styles.presetChip, { backgroundColor: shade.surface }]}
+              onPress={openCreateModal}
+              style={[styles.customToggle, { backgroundColor: shade.surface }]}
             >
-              <AppIcon name={preset.icon} size={12} color={shade.dopamine} />
-              <Text style={[styles.presetChipText, { color: shade.text }]}>
-                {preset.name} ₱{preset.amount.toLocaleString()}
+              <AppIcon name="plus" size={12} color={shade.dopamine} />
+              <Text style={[styles.customToggleText, { color: shade.dopamine }]}>
+                Custom Envelope
               </Text>
             </ScalePressable>
-          ))}
+          </View>
+
+          <View style={styles.presetChips}>
+            {ENVELOPE_PRESETS.map((preset) => (
+              <ScalePressable
+                key={preset.name}
+                onPress={() =>
+                  onAddEnvelope(
+                    preset.name,
+                    preset.icon,
+                    preset.amount,
+                    preset.cadence,
+                    preset.rolloverMode
+                  )
+                }
+                style={[styles.presetChip, { backgroundColor: shade.surface }]}
+              >
+                <AppIcon name={preset.icon} size={12} color={shade.dopamine} />
+                <Text style={[styles.presetChipText, { color: shade.text }]}>
+                  {preset.name} ₱{preset.amount.toLocaleString()}
+                </Text>
+              </ScalePressable>
+            ))}
+          </View>
         </View>
-      </View>
+      )}
 
       <FormModal
         visible={modalVisible}
@@ -361,6 +409,35 @@ export const SpendingEnvelopesCard: React.FC<SpendingEnvelopesCardProps> = ({
           setModalVisible(false);
         }}
       >
+        {!editingEnvelope && collapsible && (
+          <View style={{ gap: 6 }}>
+            <Text style={[styles.modalLabel, { color: shade.muted }]}>
+              Quick Starters (tap to fill)
+            </Text>
+            <View style={styles.presetChips}>
+              {ENVELOPE_PRESETS.map((preset) => (
+                <ScalePressable
+                  key={preset.name}
+                  onPress={() => {
+                    triggerLightHaptic();
+                    setFormName(preset.name);
+                    setFormIcon(preset.icon);
+                    setFormAmountText(formatPesoInput(String(preset.amount)));
+                    setFormCadence(preset.cadence);
+                    setFormRolloverMode(preset.rolloverMode);
+                    setFormError(null);
+                  }}
+                  style={[styles.presetChip, { backgroundColor: shade.surface }]}
+                >
+                  <AppIcon name={preset.icon} size={12} color={shade.dopamine} />
+                  <Text style={[styles.presetChipText, { color: shade.text }]}>
+                    {preset.name} ₱{preset.amount.toLocaleString()}
+                  </Text>
+                </ScalePressable>
+              ))}
+            </View>
+          </View>
+        )}
         <Text style={[styles.modalLabel, { color: shade.muted }]}>
           Pick an icon
         </Text>
@@ -634,10 +711,10 @@ export const SpendingEnvelopesCard: React.FC<SpendingEnvelopesCardProps> = ({
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: 18,
+    borderRadius: 20,
     borderWidth: 1,
-    padding: 13,
-    gap: 11,
+    padding: 16,
+    gap: 12,
   },
   headerRow: {
     flexDirection: 'row',
@@ -645,12 +722,18 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 8,
   },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   title: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '800',
   },
   subtitle: {
-    fontSize: 11,
+    fontSize: 12,
+    marginTop: 1,
   },
   totalPill: {
     paddingHorizontal: 10,

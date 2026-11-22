@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import {
   AnimatedCounter,
@@ -37,8 +37,11 @@ export const WalletOverview: React.FC<WalletOverviewProps> = ({
     cashOnHand,
     banks,
     creditCards,
+    installments,
     entries,
   } = useBudget();
+
+  const [subTab, setSubTab] = useState<'accounts' | 'installments'>('accounts');
 
   const logCountsByAccount = useMemo(() => {
     const map: Record<string, number> = {};
@@ -52,7 +55,19 @@ export const WalletOverview: React.FC<WalletOverviewProps> = ({
 
   const totalBankBalance = banks.reduce((sum, b) => sum + b.balance, 0);
   const totalLiquid = cashOnHand + totalBankBalance;
-  const cashLogCount = logCountsByAccount['cash'] || 0;
+
+  const liquidAccounts = useMemo(
+    () => [
+      { id: 'cash', name: 'Physical Cash', balance: cashOnHand, isCash: true },
+      ...banks.map((b) => ({
+        id: b.id,
+        name: b.name,
+        balance: b.balance,
+        isCash: false,
+      })),
+    ],
+    [cashOnHand, banks]
+  );
 
   return (
     <ScrollView
@@ -80,7 +95,7 @@ export const WalletOverview: React.FC<WalletOverviewProps> = ({
             <View
               style={[styles.countPill, { backgroundColor: shade.heroSurface }]}
             >
-              <AppIcon name="briefcase" size={12} color="#4ADE80" />
+              <AppIcon name="briefcase" size={13} color="#4ADE80" />
               <Text style={[styles.countText, { color: '#4ADE80' }]}>
                 {banks.length} {banks.length === 1 ? 'Bank' : 'Banks'}
               </Text>
@@ -88,7 +103,7 @@ export const WalletOverview: React.FC<WalletOverviewProps> = ({
             <View
               style={[styles.countPill, { backgroundColor: shade.heroSurface }]}
             >
-              <AppIcon name="credit-card" size={12} color="#A5B4FC" />
+              <AppIcon name="credit-card" size={13} color="#A5B4FC" />
               <Text style={[styles.countText, { color: '#A5B4FC' }]}>
                 {creditCards.length}{' '}
                 {creditCards.length === 1 ? 'Card' : 'Cards'}
@@ -98,263 +113,303 @@ export const WalletOverview: React.FC<WalletOverviewProps> = ({
         </View>
       </FadeSlideIn>
 
-      <FadeSlideIn delay={40} distance={12}>
-        <View style={styles.section}>
-          <Text style={[styles.sectionTitle, { color: shade.muted }]}>
-            CASH IN WALLET (TAP FOR LOGS)
-          </Text>
-          <ScalePressable
-            onPress={() => onOpenAccount('cash')}
+      {/* Spacious 2-Segment Toggle: Accounts vs Installments */}
+      <View
+        style={[
+          styles.subTabBar,
+          { backgroundColor: shade.surface, borderColor: shade.border },
+        ]}
+      >
+        <ScalePressable
+          onPress={() => {
+            triggerLightHaptic();
+            setSubTab('accounts');
+          }}
+          style={[
+            styles.subTabBtn,
+            subTab === 'accounts' && { backgroundColor: shade.card },
+          ]}
+        >
+          <Text
             style={[
-              styles.accountRow,
-              { backgroundColor: shade.card, borderColor: shade.border },
+              styles.subTabText,
+              { color: subTab === 'accounts' ? shade.text : shade.muted },
             ]}
           >
-            <View style={styles.accountLeft}>
-              <IconBadge
-                name="dollar-sign"
-                size={15}
-                color={shade.text}
-                bg={shade.surface}
-                boxSize={34}
-              />
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.accountName, { color: shade.text }]}>
-                  Physical Cash
+            Accounts
+          </Text>
+        </ScalePressable>
+
+        <ScalePressable
+          onPress={() => {
+            triggerLightHaptic();
+            setSubTab('installments');
+          }}
+          style={[
+            styles.subTabBtn,
+            subTab === 'installments' && { backgroundColor: shade.card },
+          ]}
+        >
+          <Text
+            style={[
+              styles.subTabText,
+              { color: subTab === 'installments' ? shade.text : shade.muted },
+            ]}
+          >
+            Installments ({installments.length})
+          </Text>
+        </ScalePressable>
+      </View>
+
+      {subTab === 'accounts' ? (
+        <View style={styles.tabContentGap}>
+          {/* Single Grouped Cash & Banks Card */}
+          <FadeSlideIn delay={40} distance={10}>
+            <View style={styles.section}>
+              <View style={styles.rowBetween}>
+                <Text style={[styles.sectionTitle, { color: shade.muted }]}>
+                  CASH & BANKS ({liquidAccounts.length})
                 </Text>
-                <Text style={[styles.logBadgeText, { color: shade.accent }]}>
-                  {cashLogCount} {cashLogCount === 1 ? 'log' : 'logs'} • Tap to
-                  view logs ›
-                </Text>
+                <ScalePressable
+                  onPress={() => {
+                    triggerLightHaptic();
+                    onOpenAddBank();
+                  }}
+                  style={[styles.addToggle, { backgroundColor: shade.surface }]}
+                >
+                  <AppIcon name="plus" size={12} color={shade.accent} />
+                  <Text style={[styles.addToggleText, { color: shade.accent }]}>
+                    Add Bank
+                  </Text>
+                </ScalePressable>
+              </View>
+
+              <View
+                style={[
+                  styles.groupedCard,
+                  { backgroundColor: shade.card, borderColor: shade.border },
+                ]}
+              >
+                {liquidAccounts.map((acc, idx) => {
+                  const count = logCountsByAccount[acc.id] || 0;
+                  const isLast = idx === liquidAccounts.length - 1;
+                  return (
+                    <ScalePressable
+                      key={acc.id}
+                      onPress={() => onOpenAccount(acc.id)}
+                      style={[
+                        styles.groupedRow,
+                        !isLast && {
+                          borderBottomWidth: 1,
+                          borderBottomColor: shade.border,
+                        },
+                      ]}
+                    >
+                      <View style={styles.accountLeft}>
+                        <IconBadge
+                          name={acc.isCash ? 'dollar-sign' : 'briefcase'}
+                          size={16}
+                          color={acc.isCash ? shade.text : shade.positive}
+                          bg={acc.isCash ? shade.surface : shade.positiveSoft}
+                          boxSize={36}
+                        />
+                        <View style={{ flex: 1, minWidth: 0 }}>
+                          <Text
+                            numberOfLines={1}
+                            style={[styles.accountName, { color: shade.text }]}
+                          >
+                            {acc.name}
+                          </Text>
+                          <Text
+                            style={[styles.accountSub, { color: shade.muted }]}
+                          >
+                            {count} {count === 1 ? 'log' : 'logs'}
+                          </Text>
+                        </View>
+                      </View>
+
+                      <View style={styles.rowRightCluster}>
+                        <Text
+                          style={[styles.balanceValue, { color: shade.text }]}
+                        >
+                          {formatVisiblePeso(acc.balance)}
+                        </Text>
+                        <AppIcon
+                          name="chevron-right"
+                          size={16}
+                          color={shade.muted}
+                        />
+                      </View>
+                    </ScalePressable>
+                  );
+                })}
               </View>
             </View>
-            <Text style={[styles.balanceValue, { color: shade.text }]}>
-              {formatVisiblePeso(cashOnHand)}
-            </Text>
-          </ScalePressable>
-        </View>
-      </FadeSlideIn>
+          </FadeSlideIn>
 
-      <FadeSlideIn delay={80} distance={12}>
-        <View style={styles.section}>
-          <View style={styles.rowBetween}>
-            <Text style={[styles.sectionTitle, { color: shade.muted }]}>
-              BANK ACCOUNTS ({banks.length} •{' '}
-              {formatVisiblePeso(totalBankBalance)})
-            </Text>
-            <ScalePressable
-              onPress={() => {
-                triggerLightHaptic();
-                onOpenAddBank();
-              }}
-              style={[styles.addToggle, { backgroundColor: shade.surface }]}
-            >
-              <AppIcon name="plus" size={12} color={shade.accent} />
-              <Text style={[styles.addToggleText, { color: shade.accent }]}>
-                Add Bank
-              </Text>
-            </ScalePressable>
-          </View>
-
-          {banks.length === 0 ? (
-            <View
-              style={[
-                styles.emptyBox,
-                { backgroundColor: shade.card, borderColor: shade.border },
-              ]}
-            >
-              <Text style={{ color: shade.muted, fontSize: 12 }}>
-                0 banks added. Tap + Add Bank above.
-              </Text>
-            </View>
-          ) : (
-            <View style={styles.listGap}>
-              {banks.map((bank) => {
-                const count = logCountsByAccount[bank.id] || 0;
-                return (
-                  <ScalePressable
-                    key={bank.id}
-                    onPress={() => onOpenAccount(bank.id)}
-                    style={[
-                      styles.accountRow,
-                      { backgroundColor: shade.card, borderColor: shade.border },
-                    ]}
+          {/* Credit Cards Section */}
+          <FadeSlideIn delay={80} distance={10}>
+            <View style={styles.section}>
+              <View style={styles.rowBetween}>
+                <Text style={[styles.sectionTitle, { color: shade.muted }]}>
+                  CREDIT CARDS ({creditCards.length})
+                </Text>
+                <ScalePressable
+                  onPress={() => {
+                    triggerLightHaptic();
+                    onOpenAddCard();
+                  }}
+                  style={[styles.addToggle, { backgroundColor: shade.surface }]}
+                >
+                  <AppIcon name="plus" size={12} color={shade.dopamine} />
+                  <Text
+                    style={[styles.addToggleText, { color: shade.dopamine }]}
                   >
-                    <View style={styles.accountLeft}>
-                      <IconBadge
-                        name="briefcase"
-                        size={15}
-                        color={shade.positive}
-                        bg={shade.positiveSoft}
-                        boxSize={34}
-                      />
-                      <View style={{ flex: 1 }}>
-                        <Text
-                          style={[styles.accountName, { color: shade.text }]}
-                        >
-                          {bank.name}
-                        </Text>
-                        <Text
-                          style={[styles.logBadgeText, { color: shade.accent }]}
-                        >
-                          {count} {count === 1 ? 'log' : 'logs'} • Tap to view
-                          logs ›
-                        </Text>
-                      </View>
-                    </View>
-                    <Text style={[styles.balanceValue, { color: shade.text }]}>
-                      {formatVisiblePeso(bank.balance)}
-                    </Text>
-                  </ScalePressable>
-                );
-              })}
-            </View>
-          )}
-        </View>
-      </FadeSlideIn>
+                    Add Card
+                  </Text>
+                </ScalePressable>
+              </View>
 
-      <FadeSlideIn delay={120} distance={12}>
-        <View style={styles.section}>
-          <View style={styles.rowBetween}>
-            <Text style={[styles.sectionTitle, { color: shade.muted }]}>
-              CREDIT CARDS ({creditCards.length})
-            </Text>
-            <ScalePressable
-              onPress={() => {
-                triggerLightHaptic();
-                onOpenAddCard();
-              }}
-              style={[styles.addToggle, { backgroundColor: shade.surface }]}
-            >
-              <AppIcon name="plus" size={12} color={shade.dopamine} />
-              <Text style={[styles.addToggleText, { color: shade.dopamine }]}>
-                Add Card
-              </Text>
-            </ScalePressable>
-          </View>
+              {creditCards.length === 0 ? (
+                <View
+                  style={[
+                    styles.emptyBox,
+                    { backgroundColor: shade.card, borderColor: shade.border },
+                  ]}
+                >
+                  <Text style={{ color: shade.muted, fontSize: 13 }}>
+                    No credit cards added. Tap + Add Card above.
+                  </Text>
+                </View>
+              ) : (
+                <View style={styles.listGap}>
+                  {creditCards.map((card) => {
+                    const usedPct = Math.min(
+                      100,
+                      Math.round((card.used / Math.max(1, card.limit)) * 100)
+                    );
+                    const avail = Math.max(0, card.limit - card.used);
+                    const daysToCutoff = getDaysUntilDayOfMonth(card.cutoffDay);
 
-          {creditCards.length === 0 ? (
-            <View
-              style={[
-                styles.emptyBox,
-                { backgroundColor: shade.card, borderColor: shade.border },
-              ]}
-            >
-              <Text style={{ color: shade.muted, fontSize: 12 }}>
-                0 credit cards added. Tap + Add Card above.
-              </Text>
-            </View>
-          ) : (
-            <View style={styles.listGap}>
-              {creditCards.map((card) => {
-                const usedPct = Math.min(
-                  100,
-                  Math.round((card.used / Math.max(1, card.limit)) * 100)
-                );
-                const avail = Math.max(0, card.limit - card.used);
-                const daysToCutoff = getDaysUntilDayOfMonth(card.cutoffDay);
-                const count = logCountsByAccount[card.id] || 0;
+                    return (
+                      <ScalePressable
+                        key={card.id}
+                        onPress={() => onOpenAccount(card.id)}
+                        style={[
+                          styles.cardBox,
+                          {
+                            backgroundColor: shade.card,
+                            borderColor: shade.border,
+                          },
+                        ]}
+                      >
+                        <View style={styles.rowBetween}>
+                          <View style={[styles.inlineRow, { flex: 1, minWidth: 0 }]}>
+                            <IconBadge
+                              name="credit-card"
+                              size={16}
+                              color={shade.dopamine}
+                              bg={shade.dopamineSoft}
+                              boxSize={34}
+                            />
+                            <Text
+                              numberOfLines={1}
+                              style={[styles.accountName, { color: shade.text }]}
+                            >
+                              {card.name}
+                            </Text>
+                          </View>
+                          <View style={styles.rowRightCluster}>
+                            <View
+                              style={[
+                                styles.cutoffBadge,
+                                { backgroundColor: shade.dopamineSoft },
+                              ]}
+                            >
+                              <Text
+                                style={[
+                                  styles.cutoffText,
+                                  { color: shade.dopamine },
+                                ]}
+                              >
+                                Cut-off {formatOrdinal(card.cutoffDay)} (
+                                {daysToCutoff === 0
+                                  ? 'Today'
+                                  : `${daysToCutoff}d`}
+                                )
+                              </Text>
+                            </View>
+                            <AppIcon
+                              name="chevron-right"
+                              size={16}
+                              color={shade.muted}
+                            />
+                          </View>
+                        </View>
 
-                return (
-                  <ScalePressable
-                    key={card.id}
-                    onPress={() => onOpenAccount(card.id)}
-                    style={[
-                      styles.cardBox,
-                      { backgroundColor: shade.card, borderColor: shade.border },
-                    ]}
-                  >
-                    <View style={styles.rowBetween}>
-                      <View style={styles.inlineRow}>
-                        <IconBadge
-                          name="credit-card"
-                          size={15}
-                          color={shade.dopamine}
-                          bg={shade.dopamineSoft}
-                          boxSize={32}
+                        <View style={styles.rowBetween}>
+                          <Text
+                            style={[styles.accountSub, { color: shade.muted }]}
+                          >
+                            Used: {formatVisiblePeso(card.used)} /{' '}
+                            {formatVisiblePeso(card.limit)}
+                          </Text>
+                          <Text
+                            style={[
+                              styles.accountSub,
+                              { color: shade.positive, fontWeight: '800' },
+                            ]}
+                          >
+                            {formatVisiblePeso(avail)} avail
+                          </Text>
+                        </View>
+
+                        <AnimatedProgressBar
+                          percentage={usedPct}
+                          trackColor={shade.surface}
+                          fillColor={
+                            usedPct > 80 ? shade.warning : shade.dopamine
+                          }
+                          height={7}
                         />
-                        <Text
-                          style={[styles.accountName, { color: shade.text }]}
-                        >
-                          {card.name}
-                        </Text>
-                      </View>
-                      <View
-                        style={[
-                          styles.cutoffBadge,
-                          { backgroundColor: shade.dopamineSoft },
-                        ]}
-                      >
-                        <Text
-                          style={[styles.cutoffText, { color: shade.dopamine }]}
-                        >
-                          Cut-off: {formatOrdinal(card.cutoffDay)} (
-                          {daysToCutoff === 0 ? 'Today' : `${daysToCutoff}d`})
-                        </Text>
-                      </View>
-                    </View>
-
-                    <View style={styles.rowBetween}>
-                      <Text style={[styles.accountSub, { color: shade.muted }]}>
-                        Used: {formatVisiblePeso(card.used)} /{' '}
-                        {formatVisiblePeso(card.limit)}
-                      </Text>
-                      <Text
-                        style={[
-                          styles.accountSub,
-                          { color: shade.positive, fontWeight: '800' },
-                        ]}
-                      >
-                        {formatVisiblePeso(avail)} avail
-                      </Text>
-                    </View>
-
-                    <AnimatedProgressBar
-                      percentage={usedPct}
-                      trackColor={shade.surface}
-                      fillColor={usedPct > 80 ? shade.warning : shade.dopamine}
-                      height={7}
-                    />
-
-                    <Text
-                      style={[styles.logBadgeText, { color: shade.dopamine }]}
-                    >
-                      {count} {count === 1 ? 'log' : 'logs'} • Tap to view logs
-                      & pay bill ›
-                    </Text>
-                  </ScalePressable>
-                );
-              })}
+                      </ScalePressable>
+                    );
+                  })}
+                </View>
+              )}
             </View>
-          )}
+          </FadeSlideIn>
         </View>
-      </FadeSlideIn>
-
-      <FadeSlideIn delay={150} distance={12}>
-        <InstallmentsSection
-          onOpenAddModal={onOpenAddInstallment}
-          onRequestConfirm={onRequestConfirm}
-        />
-      </FadeSlideIn>
+      ) : (
+        <FadeSlideIn delay={40} distance={10}>
+          <InstallmentsSection
+            onOpenAddModal={onOpenAddInstallment}
+            onRequestConfirm={onRequestConfirm}
+          />
+        </FadeSlideIn>
+      )}
     </ScrollView>
   );
 };
 
 const styles = StyleSheet.create({
   scrollContent: {
-    paddingBottom: 36,
+    paddingBottom: 40,
+    gap: 16,
+  },
+  tabContentGap: {
     gap: 16,
   },
   inlineRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
   },
   summaryCard: {
-    borderRadius: 22,
+    borderRadius: 24,
     borderWidth: 1,
-    padding: 18,
-    gap: 9,
+    padding: 20,
+    gap: 10,
     shadowColor: '#111318',
     shadowOpacity: 0.12,
     shadowRadius: 14,
@@ -362,12 +417,12 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   kicker: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '800',
     letterSpacing: 0.9,
   },
   bigTotal: {
-    fontSize: 32,
+    fontSize: 34,
     fontWeight: '800',
     letterSpacing: -0.6,
   },
@@ -379,17 +434,34 @@ const styles = StyleSheet.create({
   countPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    gap: 6,
+    paddingHorizontal: 11,
+    paddingVertical: 6,
     borderRadius: 10,
   },
   countText: {
-    fontSize: 11,
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  subTabBar: {
+    flexDirection: 'row',
+    borderRadius: 15,
+    borderWidth: 1,
+    padding: 4,
+    gap: 4,
+  },
+  subTabBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 11,
+    alignItems: 'center',
+  },
+  subTabText: {
+    fontSize: 13,
     fontWeight: '800',
   },
   section: {
-    gap: 8,
+    gap: 10,
   },
   sectionTitle: {
     fontSize: 11,
@@ -402,64 +474,70 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 8,
   },
-  listGap: {
-    gap: 8,
-  },
-  accountRow: {
-    borderRadius: 16,
+  groupedCard: {
+    borderRadius: 20,
     borderWidth: 1,
-    paddingHorizontal: 14,
-    paddingVertical: 13,
+    overflow: 'hidden',
+  },
+  groupedRow: {
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    minHeight: 62,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 8,
+    gap: 10,
+  },
+  listGap: {
+    gap: 10,
   },
   accountLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 12,
     flex: 1,
+    minWidth: 0,
+  },
+  rowRightCluster: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   accountName: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '800',
   },
   accountSub: {
-    fontSize: 11,
-  },
-  logBadgeText: {
-    fontSize: 11,
-    fontWeight: '700',
-    marginTop: 2,
+    fontSize: 12,
+    marginTop: 1,
   },
   balanceValue: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '800',
   },
   addToggle: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 9,
+    paddingHorizontal: 11,
+    paddingVertical: 7,
+    borderRadius: 10,
   },
   addToggleText: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '800',
   },
   emptyBox: {
-    borderRadius: 16,
+    borderRadius: 18,
     borderWidth: 1,
-    padding: 16,
+    padding: 18,
     alignItems: 'center',
   },
   cardBox: {
-    borderRadius: 18,
+    borderRadius: 20,
     borderWidth: 1,
-    padding: 14,
-    gap: 9,
+    padding: 16,
+    gap: 11,
   },
   cutoffBadge: {
     paddingHorizontal: 9,
@@ -467,7 +545,7 @@ const styles = StyleSheet.create({
     borderRadius: 9,
   },
   cutoffText: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '800',
   },
 });
