@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { budgetReducer, canUndoEntry } from '../state/budgetReducer';
+import {
+  BudgetAction,
+  budgetReducer,
+  canUndoEntry,
+} from '../state/budgetReducer';
 import { createNewUserState, PersistedBudgetState } from '../state/defaults';
 import { normalizePersistedState } from '../state/persistence';
 
@@ -243,5 +247,69 @@ describe('budgetReducer & persistence', () => {
     expect(normalized.cashOnHand).toBe(0);
     expect(normalized.disciplineScore).toBe(999);
     expect(normalized.entries).toHaveLength(120);
+  });
+
+  it('dispatches across all 6 domain slices and preserves identity on no-ops', () => {
+    let state = makeReducerState();
+
+    // lifecycleAndPrefs
+    state = budgetReducer(state, { type: 'SET_THEME_MODE', mode: 'dark' });
+    expect(state.themeMode).toBe('dark');
+
+    // walletAndAccounts
+    state = budgetReducer(state, {
+      type: 'DEPOSIT_TO_WALLET',
+      sourceId: 'cash',
+      amount: 250,
+      todayKey: '2026-04-10',
+    });
+    expect(state.cashOnHand).toBe(1250);
+
+    // billsAndEnvelopes
+    const initialBillsCount = state.billItems.length;
+    state = budgetReducer(state, {
+      type: 'ADD_BILL_ITEM',
+      name: 'Fiber',
+      icon: 'wifi',
+      amount: 1500,
+    });
+    expect(state.billItems).toHaveLength(initialBillsCount + 1);
+    expect(state.billItems[state.billItems.length - 1].name).toBe('Fiber');
+
+    // goalsAndTreats
+    state = budgetReducer(state, {
+      type: 'BOOST_SAVINGS_GOAL',
+      delta: 500,
+    });
+    expect(state.settings.monthlySavingsGoal).toBe(
+      makeReducerState().settings.monthlySavingsGoal + 500
+    );
+
+    // installmentsAndDebts
+    state = budgetReducer(state, {
+      type: 'ADD_DEBT',
+      direction: 'i_owe',
+      personName: 'Alex',
+      amount: 400,
+    });
+    expect(state.debts).toHaveLength(1);
+
+    // dailyAndEntries
+    state = budgetReducer(state, {
+      type: 'SAVE_TO_JAR',
+      amount: 100,
+      dateKey: '2026-04-10',
+      todayKey: '2026-04-10',
+    });
+    expect(state.monthlySaved).toBe(100);
+
+    // No-op / unknown action preserves identity
+    const beforeNoop = state;
+    expect(
+      budgetReducer(state, { type: 'BOOST_SAVINGS_GOAL', delta: 0 })
+    ).toBe(beforeNoop);
+    expect(
+      budgetReducer(state, { type: 'UNKNOWN_ACTION' } as unknown as BudgetAction)
+    ).toBe(beforeNoop);
   });
 });

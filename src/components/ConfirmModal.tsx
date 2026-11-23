@@ -1,6 +1,6 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { useBudget } from '../context/BudgetContext';
+import { useThemePrefs } from '../context/BudgetContext';
 import { triggerLightHaptic } from '../utils/haptics';
 import { ScalePressable } from './AnimatedPrimitives';
 import { FormModal } from './FormModal';
@@ -31,7 +31,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
   onConfirm,
   onCancel,
 }) => {
-  const { shade } = useBudget();
+  const { shade } = useThemePrefs();
   const accent = destructive ? shade.warning : shade.accent;
 
   return (

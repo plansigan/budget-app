@@ -6,7 +6,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { useBudget } from '../context/BudgetContext';
+import { useThemePrefs } from '../context/BudgetContext';
 import {
   FAQ_CATEGORIES,
   FAQ_ITEMS,
@@ -38,7 +38,7 @@ const AppGuideFaqModalContent: React.FC<AppGuideFaqModalProps> = ({
   onClose,
   onReplayQuickGuide,
 }) => {
-  const { shade } = useBudget();
+  const { shade } = useThemePrefs();
 
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState<FaqCategoryKey>('all');

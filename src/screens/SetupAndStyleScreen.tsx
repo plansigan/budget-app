@@ -20,7 +20,12 @@ import { MonthlyBillsBreakdownCard } from '../components/MonthlyBillsBreakdownCa
 import { PayBillModal } from '../components/PayBillModal';
 import { SalaryScheduleCard } from '../components/SalaryScheduleCard';
 import { SpendingEnvelopesCard } from '../components/SpendingEnvelopesCard';
-import { useBudget } from '../context/BudgetContext';
+import {
+  useBudgetActions,
+  useDailyBudget,
+  useSystemStatus,
+  useThemePrefs,
+} from '../context/BudgetContext';
 import {
   AutoBackupSnapshot,
   formatSnapshotAgeLabel,
@@ -60,26 +65,27 @@ export const SetupAndStyleScreen: React.FC<SetupAndStyleScreenProps> = ({
   focusAllowancesKey = 0,
   onOpenFaq,
 }) => {
+  const { shade, privacyMode, formatVisiblePeso, themeMode, setThemeMode } =
+    useThemePrefs();
   const {
-    shade,
-    privacyMode,
-    formatVisiblePeso,
-    themeMode,
-    setThemeMode,
-    todayKey,
     lastBackupAt,
-    markBackupExported,
     lastAutoSnapshotAt,
     autoSnapshotCount,
     storagePersisted,
-    listAutoSnapshots,
-    restoreAutoSnapshot,
-    captureAutoSnapshotNow,
+  } = useSystemStatus();
+  const {
+    todayKey,
     settings,
     billItems,
     envelopes,
     entries,
     baseDailyAllowance,
+  } = useDailyBudget();
+  const {
+    markBackupExported,
+    listAutoSnapshots,
+    restoreAutoSnapshot,
+    captureAutoSnapshotNow,
     updateBudgetConfig,
     updateSalarySchedule,
     updateBillAmount,
@@ -98,7 +104,7 @@ export const SetupAndStyleScreen: React.FC<SetupAndStyleScreenProps> = ({
     resetDemoState,
     exportBackupJsonString,
     importBackupJsonString,
-  } = useBudget();
+  } = useBudgetActions();
 
   const [subTab, setSubTab] = useState<'plan' | 'settings'>('plan');
   const [billToPay, setBillToPay] = useState<BillItem | null>(null);
