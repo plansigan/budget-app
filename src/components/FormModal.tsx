@@ -1,20 +1,10 @@
-import React, { useEffect, useRef } from 'react';
-import {
-  Animated,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import React from 'react';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useBudget } from '../context/BudgetContext';
 import { triggerLightHaptic } from '../utils/haptics';
-import { useWebKeyboardInset } from '../utils/useWebKeyboardInset';
 import { ScalePressable } from './AnimatedPrimitives';
 import { AppIcon, IconBadge } from './AppIcon';
+import { BaseModal } from './BaseModal';
 
 interface FormModalProps {
   visible: boolean;
@@ -26,10 +16,7 @@ interface FormModalProps {
   children: React.ReactNode;
 }
 
-/**
- * Clean centered minimalist modal container used by every Add / Action flow in the app.
- */
-export const FormModal: React.FC<FormModalProps> = ({
+const FormModalContent: React.FC<FormModalProps> = ({
   visible,
   title,
   subtitle,
@@ -39,131 +26,71 @@ export const FormModal: React.FC<FormModalProps> = ({
   children,
 }) => {
   const { shade } = useBudget();
-  const cardScale = useRef(new Animated.Value(0.94)).current;
-  const { keyboardInset, viewportHeight, offsetTop } =
-    useWebKeyboardInset(visible);
-
-  useEffect(() => {
-    if (!visible) return;
-    cardScale.setValue(0.94);
-    Animated.spring(cardScale, {
-      toValue: 1,
-      speed: 28,
-      bounciness: 7,
-      useNativeDriver: true,
-    }).start();
-  }, [visible, cardScale]);
-
   const effectiveAccent = accentColor || shade.accent;
-  const webKeyboardBackdrop =
-    Platform.OS === 'web' && keyboardInset > 0
-      ? {
-          paddingBottom: keyboardInset + 8,
-          paddingTop: Math.max(12, offsetTop + 8),
-        }
-      : undefined;
-  const webKeyboardCard =
-    Platform.OS === 'web' && keyboardInset > 0 && viewportHeight > 0
-      ? { maxHeight: Math.max(240, viewportHeight - 24) }
-      : undefined;
 
   return (
-    <Modal
+    <BaseModal
       visible={visible}
-      transparent
-      animationType="fade"
-      onRequestClose={onClose}
+      onClose={onClose}
+      cardStyle={[
+        styles.card,
+        { backgroundColor: shade.card, borderColor: shade.border },
+      ]}
     >
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={[styles.backdrop, webKeyboardBackdrop]}
-      >
-        <Pressable
-          style={StyleSheet.absoluteFill}
-          onPress={onClose}
-          accessibilityLabel="Dismiss dialog"
-        />
-        <Animated.View
-          style={[
-            styles.card,
-            {
-              backgroundColor: shade.card,
-              borderColor: shade.border,
-              transform: [{ scale: cardScale }],
-            },
-            webKeyboardCard,
-          ]}
-        >
-          <View style={styles.headerRow}>
-            <View style={styles.titleRow}>
-              <IconBadge
-                name={icon}
-                size={16}
-                color={effectiveAccent}
-                bg={shade.surface}
-                boxSize={36}
-              />
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.title, { color: shade.text }]}>
-                  {title}
-                </Text>
-                {subtitle ? (
-                  <Text style={[styles.subtitle, { color: shade.muted }]}>
-                    {subtitle}
-                  </Text>
-                ) : null}
-              </View>
-            </View>
-
-            <ScalePressable
-              onPress={() => {
-                triggerLightHaptic();
-                onClose();
-              }}
-              accessibilityLabel="Close modal"
-              hitSlop={8}
-              style={[styles.closeBtn, { backgroundColor: shade.surface }]}
-            >
-              <AppIcon name="x" size={16} color={shade.muted} />
-            </ScalePressable>
+      <View style={styles.headerRow}>
+        <View style={styles.titleRow}>
+          <IconBadge
+            name={icon}
+            size={16}
+            color={effectiveAccent}
+            bg={shade.surface}
+            boxSize={36}
+          />
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.title, { color: shade.text }]}>{title}</Text>
+            {subtitle ? (
+              <Text style={[styles.subtitle, { color: shade.muted }]}>
+                {subtitle}
+              </Text>
+            ) : null}
           </View>
+        </View>
 
-          <ScrollView
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-            contentContainerStyle={styles.scrollBody}
-          >
-            {children}
-          </ScrollView>
-        </Animated.View>
-      </KeyboardAvoidingView>
-    </Modal>
+        <ScalePressable
+          onPress={() => {
+            triggerLightHaptic();
+            onClose();
+          }}
+          accessibilityLabel="Close modal"
+          hitSlop={8}
+          style={[styles.closeBtn, { backgroundColor: shade.surface }]}
+        >
+          <AppIcon name="x" size={16} color={shade.muted} />
+        </ScalePressable>
+      </View>
+
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={styles.scrollBody}
+      >
+        {children}
+      </ScrollView>
+    </BaseModal>
   );
 };
 
+/**
+ * Clean centered minimalist modal container used by every Add / Action flow in the app.
+ */
+export const FormModal: React.FC<FormModalProps> = (props) => {
+  if (!props.visible) return null;
+  return <FormModalContent {...props} />;
+};
+
 const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(17, 24, 39, 0.45)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 18,
-  },
   card: {
-    width: '100%',
-    maxWidth: 390,
-    minWidth: 0,
-    overflow: 'hidden',
-    borderRadius: 24,
-    borderWidth: 1,
-    padding: 18,
     gap: 14,
-    maxHeight: '86%',
-    shadowColor: '#111318',
-    shadowOpacity: 0.14,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 10,
   },
   headerRow: {
     flexDirection: 'row',

@@ -1,9 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -18,9 +14,9 @@ import {
   formatPesoInput,
   parsePesoInput,
 } from '../utils/numberFormat';
-import { useWebKeyboardInset } from '../utils/useWebKeyboardInset';
-import { FadeSlideIn, ScalePressable } from './AnimatedPrimitives';
+import { ScalePressable } from './AnimatedPrimitives';
 import { AppIcon, SPEND_CATEGORIES } from './AppIcon';
+import { BaseModal } from './BaseModal';
 
 export type ActionModalMode = 'spend' | 'save' | 'treat';
 
@@ -31,11 +27,7 @@ interface ActionAmountModalProps {
   onClose: () => void;
 }
 
-/**
- * Exact-amount entry modal (zero preset amount chips) for Spend!, Fund Treat,
- * and Save to Jar, with Daily Budget / Spending Envelope and Cash / Bank / Card selection.
- */
-export const ActionAmountModal: React.FC<ActionAmountModalProps> = ({
+const ActionAmountModalContent: React.FC<ActionAmountModalProps> = ({
   visible,
   mode,
   initialEnvelopeId = null,
@@ -160,52 +152,19 @@ export const ActionAmountModal: React.FC<ActionAmountModalProps> = ({
     onClose();
   };
 
-  const { keyboardInset, viewportHeight, offsetTop } =
-    useWebKeyboardInset(visible);
-  const webKeyboardBackdrop =
-    Platform.OS === 'web' && keyboardInset > 0
-      ? {
-          paddingBottom: keyboardInset + 8,
-          paddingTop: Math.max(12, offsetTop + 8),
-        }
-      : undefined;
-  const webKeyboardCard =
-    Platform.OS === 'web' && keyboardInset > 0 && viewportHeight > 0
-      ? { maxHeight: Math.max(240, viewportHeight - 24) }
-      : undefined;
-
   return (
-    <Modal
+    <BaseModal
       visible={visible}
-      transparent
-      animationType="fade"
-      onRequestClose={onClose}
+      onClose={onClose}
+      avoidKeyboard
+      androidAvoidHeight
+      backdropStyle={styles.backdrop}
+      cardStyle={[
+        styles.card,
+        { backgroundColor: shade.card, borderColor: accentColor },
+      ]}
     >
-      <KeyboardAvoidingView
-        behavior={
-          Platform.OS === 'ios'
-            ? 'padding'
-            : Platform.OS === 'android'
-            ? 'height'
-            : undefined
-        }
-        style={[styles.backdrop, webKeyboardBackdrop]}
-      >
-        <Pressable
-          style={StyleSheet.absoluteFill}
-          onPress={onClose}
-          accessibilityLabel="Dismiss dialog"
-        />
-        <FadeSlideIn
-          triggerKey={`${visible}-${mode}`}
-          distance={18}
-          style={[
-            styles.card,
-            { backgroundColor: shade.card, borderColor: accentColor },
-            webKeyboardCard,
-          ]}
-        >
-          <View style={styles.headerRow}>
+      <View style={styles.headerRow}>
             <View>
               <Text style={[styles.title, { color: shade.text }]}>
                 {modalTitle}
@@ -689,30 +648,27 @@ export const ActionAmountModal: React.FC<ActionAmountModalProps> = ({
               </Text>
             </ScalePressable>
           </ScrollView>
-        </FadeSlideIn>
-      </KeyboardAvoidingView>
-    </Modal>
+    </BaseModal>
   );
+};
+
+/**
+ * Exact-amount entry modal (zero preset amount chips) for Spend!, Fund Treat,
+ * and Save to Jar, with Daily Budget / Spending Envelope and Cash / Bank / Card selection.
+ */
+export const ActionAmountModal: React.FC<ActionAmountModalProps> = (props) => {
+  if (!props.visible) return null;
+  return <ActionAmountModalContent {...props} />;
 };
 
 const styles = StyleSheet.create({
   backdrop: {
-    flex: 1,
     backgroundColor: 'rgba(17, 24, 39, 0.42)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 18,
   },
   card: {
-    width: '100%',
-    maxWidth: 390,
     maxHeight: '88%',
-    minWidth: 0,
     alignSelf: 'center',
-    overflow: 'hidden',
-    borderRadius: 24,
     borderWidth: 1.5,
-    padding: 18,
     gap: 13,
   },
   modalScroll: {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   computeBaseDailyAllowance,
+  computeDayMetricsFromDayEntries,
   computeDayMetricsFromEntries,
   getBudgetedInstallmentsTotal,
   sumBills,
@@ -140,5 +141,14 @@ describe('budgetMath', () => {
       '2026-04-10',
     );
     expect(pastSummary.safeRemaining).toBe(300); // rollover only applies on todayKey
+
+    const indexedSummary = computeDayMetricsFromDayEntries(
+      entries,
+      '2026-04-10',
+      600,
+      100,
+      '2026-04-10',
+    );
+    expect(indexedSummary).toEqual(todaySummary);
   });
 });

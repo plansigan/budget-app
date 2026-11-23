@@ -1,10 +1,5 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
-  Animated,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -20,9 +15,9 @@ import {
   filterFaqItems,
 } from '../data/faqData';
 import { triggerLightHaptic } from '../utils/haptics';
-import { useWebKeyboardInset } from '../utils/useWebKeyboardInset';
 import { ScalePressable } from './AnimatedPrimitives';
 import { AppIcon, IconBadge } from './AppIcon';
+import { BaseModal } from './BaseModal';
 
 interface AppGuideFaqModalProps {
   visible: boolean;
@@ -38,19 +33,12 @@ const CATEGORY_LABEL_MAP: Record<FaqItem['category'], string> = {
   backup: 'Backup & Data',
 };
 
-/**
- * Searchable, categorized FAQ & App Guide modal explaining every feature in Velvet
- * and answering common user questions.
- */
-export const AppGuideFaqModal: React.FC<AppGuideFaqModalProps> = ({
+const AppGuideFaqModalContent: React.FC<AppGuideFaqModalProps> = ({
   visible,
   onClose,
   onReplayQuickGuide,
 }) => {
   const { shade } = useBudget();
-  const cardScale = useRef(new Animated.Value(0.94)).current;
-  const { keyboardInset, viewportHeight, offsetTop } =
-    useWebKeyboardInset(visible);
 
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState<FaqCategoryKey>('all');
@@ -61,14 +49,7 @@ export const AppGuideFaqModal: React.FC<AppGuideFaqModalProps> = ({
     setQuery('');
     setCategory('all');
     setExpandedIds(new Set());
-    cardScale.setValue(0.94);
-    Animated.spring(cardScale, {
-      toValue: 1,
-      speed: 28,
-      bounciness: 7,
-      useNativeDriver: true,
-    }).start();
-  }, [visible, cardScale]);
+  }, [visible]);
 
   const filteredItems = useMemo(
     () => filterFaqItems(FAQ_ITEMS, category, query),
@@ -88,46 +69,19 @@ export const AppGuideFaqModal: React.FC<AppGuideFaqModalProps> = ({
     });
   };
 
-  const webKeyboardBackdrop =
-    Platform.OS === 'web' && keyboardInset > 0
-      ? {
-          paddingBottom: keyboardInset + 8,
-          paddingTop: Math.max(12, offsetTop + 8),
-        }
-      : undefined;
-  const webKeyboardCard =
-    Platform.OS === 'web' && keyboardInset > 0 && viewportHeight > 0
-      ? { maxHeight: Math.max(260, viewportHeight - 24) }
-      : undefined;
-
   return (
-    <Modal
+    <BaseModal
       visible={visible}
-      transparent
-      animationType="fade"
-      onRequestClose={onClose}
+      onClose={onClose}
+      dismissLabel="Dismiss App Guide and FAQ"
+      minKeyboardCardHeight={260}
+      backdropStyle={styles.backdrop}
+      cardStyle={[
+        styles.card,
+        { backgroundColor: shade.card, borderColor: shade.border },
+      ]}
     >
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={[styles.backdrop, webKeyboardBackdrop]}
-      >
-        <Pressable
-          style={StyleSheet.absoluteFill}
-          onPress={onClose}
-          accessibilityLabel="Dismiss App Guide and FAQ"
-        />
-        <Animated.View
-          style={[
-            styles.card,
-            {
-              backgroundColor: shade.card,
-              borderColor: shade.border,
-              transform: [{ scale: cardScale }],
-            },
-            webKeyboardCard,
-          ]}
-        >
-          {/* Header */}
+      {/* Header */}
           <View style={styles.headerRow}>
             <View style={styles.titleRow}>
               <IconBadge
@@ -386,35 +340,27 @@ export const AppGuideFaqModal: React.FC<AppGuideFaqModalProps> = ({
               </ScalePressable>
             </View>
           </ScrollView>
-        </Animated.View>
-      </KeyboardAvoidingView>
-    </Modal>
+    </BaseModal>
   );
+};
+
+/**
+ * Searchable, categorized FAQ & App Guide modal explaining every feature in Velvet
+ * and answering common user questions.
+ */
+export const AppGuideFaqModal: React.FC<AppGuideFaqModalProps> = (props) => {
+  if (!props.visible) return null;
+  return <AppGuideFaqModalContent {...props} />;
 };
 
 const styles = StyleSheet.create({
   backdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(17, 24, 39, 0.45)',
-    justifyContent: 'center',
-    alignItems: 'center',
     paddingHorizontal: 16,
   },
   card: {
-    width: '100%',
     maxWidth: 460,
-    minWidth: 0,
-    overflow: 'hidden',
-    borderRadius: 24,
-    borderWidth: 1,
-    padding: 18,
     gap: 12,
     maxHeight: '88%',
-    shadowColor: '#111318',
-    shadowOpacity: 0.14,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 10,
   },
   headerRow: {
     flexDirection: 'row',

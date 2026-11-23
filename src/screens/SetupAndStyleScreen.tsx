@@ -260,6 +260,8 @@ export const SetupAndStyleScreen: React.FC<SetupAndStyleScreenProps> = ({
             triggerLightHaptic();
             setSubTab('plan');
           }}
+          accessibilityRole="tab"
+          accessibilityState={{ selected: subTab === 'plan' }}
           style={[
             styles.subTabBtn,
             subTab === 'plan' && { backgroundColor: shade.card },
@@ -280,6 +282,8 @@ export const SetupAndStyleScreen: React.FC<SetupAndStyleScreenProps> = ({
             triggerLightHaptic();
             setSubTab('settings');
           }}
+          accessibilityRole="tab"
+          accessibilityState={{ selected: subTab === 'settings' }}
           style={[
             styles.subTabBtn,
             subTab === 'settings' && { backgroundColor: shade.card },
