@@ -3,6 +3,8 @@ import {
   BillItem,
   BudgetSettings,
   CreditCardAccount,
+  DebtDirection,
+  DebtItem,
   EnvelopeCadence,
   EnvelopeRolloverMode,
   InstallmentItem,
@@ -248,6 +250,35 @@ export type BudgetAction =
       label: string;
       category?: SpendCategoryKey;
       icon?: string;
+    }
+  | {
+      type: 'ADD_DEBT';
+      direction: DebtDirection;
+      personName: string;
+      amount: number;
+      note?: string;
+      paymentSourceId?: string;
+      affectsDailyBudget?: boolean;
+      dateKey?: string;
+      todayKey?: string;
+    }
+  | {
+      type: 'UPDATE_DEBT';
+      id: string;
+      direction: DebtDirection;
+      personName: string;
+      amount: number;
+      note?: string;
+    }
+  | { type: 'DELETE_DEBT'; id: string }
+  | {
+      type: 'RECORD_DEBT_PAYMENT';
+      id: string;
+      amount: number;
+      paymentSourceId?: string;
+      affectsDailyBudget?: boolean;
+      dateKey?: string;
+      todayKey?: string;
     };
 
 export function isEditableEntryType(entry: TransactionEntry): boolean {
@@ -300,6 +331,103 @@ export function canUndoEntry(
 
 function makeUid(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+}
+
+function applyOptionalDebtWalletMovement(params: {
+  isOutflow: boolean;
+  amount: number;
+  sourceId?: string;
+  cashOnHand: number;
+  banks: BankAccount[];
+  creditCards: CreditCardAccount[];
+}): {
+  nextCash: number;
+  nextBanks: BankAccount[];
+  nextCards: CreditCardAccount[];
+  effectiveSourceId?: string;
+  sourceLabel?: string;
+  appliedWalletDelta: number;
+} {
+  const { isOutflow, amount, sourceId, cashOnHand, banks, creditCards } =
+    params;
+  if (!sourceId || sourceId === 'none') {
+    return {
+      nextCash: cashOnHand,
+      nextBanks: banks,
+      nextCards: creditCards,
+      effectiveSourceId: undefined,
+      sourceLabel: undefined,
+      appliedWalletDelta: 0,
+    };
+  }
+
+  if (sourceId === 'cash') {
+    const nextCash = isOutflow
+      ? Math.max(0, roundCurrency(cashOnHand - amount))
+      : roundCurrency(cashOnHand + amount);
+    const appliedWalletDelta = isOutflow
+      ? roundCurrency(cashOnHand - nextCash)
+      : amount;
+    return {
+      nextCash,
+      nextBanks: banks,
+      nextCards: creditCards,
+      effectiveSourceId: 'cash',
+      sourceLabel: 'Cash',
+      appliedWalletDelta,
+    };
+  }
+
+  const matchedBank = banks.find((b) => b.id === sourceId);
+  if (matchedBank) {
+    let appliedWalletDelta = amount;
+    const nextBanks = banks.map((b) => {
+      if (b.id !== sourceId) return b;
+      const nextBal = isOutflow
+        ? Math.max(0, roundCurrency(b.balance - amount))
+        : roundCurrency(b.balance + amount);
+      appliedWalletDelta = isOutflow
+        ? roundCurrency(b.balance - nextBal)
+        : amount;
+      return { ...b, balance: nextBal };
+    });
+    return {
+      nextCash: cashOnHand,
+      nextBanks,
+      nextCards: creditCards,
+      effectiveSourceId: matchedBank.id,
+      sourceLabel: matchedBank.name,
+      appliedWalletDelta,
+    };
+  }
+
+  if (isOutflow) {
+    const matchedCard = creditCards.find((c) => c.id === sourceId);
+    if (matchedCard) {
+      const nextCards = creditCards.map((c) =>
+        c.id === sourceId
+          ? { ...c, used: roundCurrency(c.used + amount) }
+          : c
+      );
+      return {
+        nextCash: cashOnHand,
+        nextBanks: banks,
+        nextCards,
+        effectiveSourceId: matchedCard.id,
+        sourceLabel: matchedCard.name,
+        appliedWalletDelta: amount,
+      };
+    }
+  }
+
+  return {
+    nextCash: cashOnHand,
+    nextBanks: banks,
+    nextCards: creditCards,
+    effectiveSourceId: undefined,
+    sourceLabel: undefined,
+    appliedWalletDelta: 0,
+  };
 }
 
 export function budgetReducer(
@@ -654,6 +782,7 @@ export function budgetReducer(
       let nextCards = state.creditCards;
       let nextBillItems = state.billItems;
       let nextEnvelopes = state.envelopes || [];
+      let nextDebts = state.debts || [];
       let nextLastPaydayCheckInKey = state.lastPaydayCheckInKey;
 
       if (freshTarget.type === 'spend') {
@@ -969,6 +1098,71 @@ export function budgetReducer(
               : c
           );
         }
+      } else if (
+        freshTarget.type === 'debt_outflow' ||
+        freshTarget.type === 'debt_inflow'
+      ) {
+        const src = freshTarget.paymentSourceId;
+        const walletDelta =
+          typeof freshTarget.appliedWalletDelta === 'number'
+            ? freshTarget.appliedWalletDelta
+            : src
+            ? freshTarget.amount
+            : 0;
+        if (freshTarget.type === 'debt_outflow') {
+          if (src === 'cash') {
+            nextCash = roundCurrency(nextCash + walletDelta);
+          } else if (src && nextBanks.some((b) => b.id === src)) {
+            nextBanks = nextBanks.map((b) =>
+              b.id === src
+                ? { ...b, balance: roundCurrency(b.balance + walletDelta) }
+                : b
+            );
+          } else if (src && nextCards.some((c) => c.id === src)) {
+            nextCards = nextCards.map((c) =>
+              c.id === src
+                ? { ...c, used: Math.max(0, roundCurrency(c.used - walletDelta)) }
+                : c
+            );
+          }
+        } else {
+          if (src === 'cash') {
+            nextCash = Math.max(0, roundCurrency(nextCash - walletDelta));
+          } else if (src && nextBanks.some((b) => b.id === src)) {
+            nextBanks = nextBanks.map((b) =>
+              b.id === src
+                ? {
+                    ...b,
+                    balance: Math.max(0, roundCurrency(b.balance - walletDelta)),
+                  }
+                : b
+            );
+          }
+        }
+
+        if (freshTarget.debtId) {
+          if (freshTarget.debtAction === 'payment') {
+            nextDebts = nextDebts.map((d) => {
+              if (d.id !== freshTarget.debtId) return d;
+              const nextPaid = Math.max(
+                0,
+                roundCurrency(d.paidAmount - freshTarget.amount)
+              );
+              return {
+                ...d,
+                paidAmount: nextPaid,
+                settledAt: nextPaid >= d.amount ? d.settledAt : undefined,
+              };
+            });
+          } else if (freshTarget.debtAction === 'created') {
+            const linkedDebt = nextDebts.find(
+              (d) => d.id === freshTarget.debtId
+            );
+            if (linkedDebt && linkedDebt.paidAmount === 0) {
+              nextDebts = nextDebts.filter((d) => d.id !== freshTarget.debtId);
+            }
+          }
+        }
       }
 
       return {
@@ -978,6 +1172,7 @@ export function budgetReducer(
         creditCards: nextCards,
         billItems: nextBillItems,
         envelopes: nextEnvelopes,
+        debts: nextDebts,
         lastPaydayCheckInKey: nextLastPaydayCheckInKey,
         monthlySaved: nextSaved,
         rolloverBalance: nextRollover,
@@ -2104,6 +2299,173 @@ export function budgetReducer(
         entries: state.entries.map((e) =>
           e.id === action.entryId ? updatedEntry : e
         ),
+      };
+    }
+
+    case 'ADD_DEBT': {
+      const trimmedName = action.personName.trim();
+      const cleanAmount = roundCurrency(action.amount);
+      if (!trimmedName || cleanAmount <= 0) return state;
+
+      const trimmedNote = action.note?.trim() || undefined;
+      const nowIso = new Date().toISOString();
+      const debtId = makeUid('debt');
+      const direction: DebtDirection =
+        action.direction === 'owed_to_me' ? 'owed_to_me' : 'i_owe';
+      const newDebt: DebtItem = {
+        id: debtId,
+        direction,
+        personName: trimmedName,
+        amount: cleanAmount,
+        paidAmount: 0,
+        ...(trimmedNote ? { note: trimmedNote } : {}),
+        createdAt: nowIso,
+      };
+
+      const isOutflow = direction === 'owed_to_me';
+      const movement = applyOptionalDebtWalletMovement({
+        isOutflow,
+        amount: cleanAmount,
+        sourceId: action.paymentSourceId,
+        cashOnHand: state.cashOnHand,
+        banks: state.banks,
+        creditCards: state.creditCards,
+      });
+
+      const affectsDailyBudget = Boolean(action.affectsDailyBudget);
+      const shouldLog =
+        Boolean(movement.effectiveSourceId) || affectsDailyBudget;
+
+      if (!shouldLog) {
+        return {
+          ...state,
+          debts: [newDebt, ...(state.debts || [])],
+        };
+      }
+
+      const todayKey = action.todayKey || getTodayKey();
+      const targetDateKey = action.dateKey || todayKey;
+      const entry: TransactionEntry = {
+        id: makeUid('debt-log'),
+        type: isOutflow ? 'debt_outflow' : 'debt_inflow',
+        amount: cleanAmount,
+        label: isOutflow
+          ? `Lent to ${trimmedName}`
+          : `Borrowed from ${trimmedName}`,
+        icon: isOutflow ? 'arrow-up-right' : 'arrow-down-left',
+        timestamp: nowIso,
+        dateKey: targetDateKey,
+        paymentSourceId: movement.effectiveSourceId,
+        paymentSourceLabel: movement.sourceLabel,
+        appliedWalletDelta: movement.appliedWalletDelta,
+        debtId,
+        debtAction: 'created',
+        affectsDailyBudget,
+      };
+
+      return {
+        ...state,
+        cashOnHand: movement.nextCash,
+        banks: movement.nextBanks,
+        creditCards: movement.nextCards,
+        debts: [newDebt, ...(state.debts || [])],
+        entries: [entry, ...state.entries],
+      };
+    }
+
+    case 'UPDATE_DEBT': {
+      const trimmedName = action.personName.trim();
+      const cleanAmount = roundCurrency(action.amount);
+      if (!trimmedName || cleanAmount <= 0) return state;
+      const trimmedNote = action.note?.trim() || undefined;
+      const nowIso = new Date().toISOString();
+
+      return {
+        ...state,
+        debts: (state.debts || []).map((d) => {
+          if (d.id !== action.id) return d;
+          const nextPaid = Math.min(d.paidAmount, cleanAmount);
+          const settled = nextPaid >= cleanAmount;
+          return {
+            ...d,
+            direction:
+              action.direction === 'owed_to_me' ? 'owed_to_me' : 'i_owe',
+            personName: trimmedName,
+            amount: cleanAmount,
+            paidAmount: nextPaid,
+            note: trimmedNote,
+            settledAt: settled ? d.settledAt || nowIso : undefined,
+          };
+        }),
+      };
+    }
+
+    case 'DELETE_DEBT':
+      return {
+        ...state,
+        debts: (state.debts || []).filter((d) => d.id !== action.id),
+      };
+
+    case 'RECORD_DEBT_PAYMENT': {
+      const debt = (state.debts || []).find((d) => d.id === action.id);
+      if (!debt) return state;
+      const remaining = roundCurrency(
+        Math.max(0, debt.amount - debt.paidAmount)
+      );
+      if (remaining <= 0) return state;
+
+      const requested = roundCurrency(Math.max(0.01, action.amount));
+      const appliedAmount = roundCurrency(Math.min(requested, remaining));
+      const nextPaid = roundCurrency(debt.paidAmount + appliedAmount);
+      const isSettled = nextPaid >= debt.amount;
+      const nowIso = new Date().toISOString();
+      const isOutflow = debt.direction === 'i_owe';
+
+      const movement = applyOptionalDebtWalletMovement({
+        isOutflow,
+        amount: appliedAmount,
+        sourceId: action.paymentSourceId,
+        cashOnHand: state.cashOnHand,
+        banks: state.banks,
+        creditCards: state.creditCards,
+      });
+
+      const todayKey = action.todayKey || getTodayKey();
+      const targetDateKey = action.dateKey || todayKey;
+      const affectsDailyBudget = Boolean(action.affectsDailyBudget);
+      const entry: TransactionEntry = {
+        id: makeUid('debt-pay'),
+        type: isOutflow ? 'debt_outflow' : 'debt_inflow',
+        amount: appliedAmount,
+        label: isOutflow
+          ? `Paid ${debt.personName}`
+          : `Received from ${debt.personName}`,
+        icon: isOutflow ? 'arrow-up-right' : 'arrow-down-left',
+        timestamp: nowIso,
+        dateKey: targetDateKey,
+        paymentSourceId: movement.effectiveSourceId,
+        paymentSourceLabel: movement.sourceLabel,
+        appliedWalletDelta: movement.appliedWalletDelta,
+        debtId: debt.id,
+        debtAction: 'payment',
+        affectsDailyBudget,
+      };
+
+      return {
+        ...state,
+        cashOnHand: movement.nextCash,
+        banks: movement.nextBanks,
+        creditCards: movement.nextCards,
+        debts: (state.debts || []).map((d) =>
+          d.id === debt.id
+            ? {
+                ...d,
+                paidAmount: nextPaid,
+                settledAt: isSettled ? nowIso : undefined,
+              }
+            : d
+        ),
+        entries: [entry, ...state.entries],
       };
     }
   }

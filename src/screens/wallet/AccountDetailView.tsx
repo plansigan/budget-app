@@ -115,6 +115,7 @@ export const AccountDetailView: React.FC<AccountDetailViewProps> = ({
         e.type === 'spend' ||
         e.type === 'bill_paid' ||
         e.type === 'envelope_spend' ||
+        e.type === 'debt_outflow' ||
         (e.type === 'wallet_transfer' &&
           e.paymentSourceId === selectedAccountId)
     )
@@ -123,6 +124,7 @@ export const AccountDetailView: React.FC<AccountDetailViewProps> = ({
     .filter(
       (e) =>
         e.type === 'wallet_deposit' ||
+        e.type === 'debt_inflow' ||
         (e.type === 'wallet_transfer' &&
           e.toPaymentSourceId === selectedAccountId)
     )
@@ -615,6 +617,8 @@ export const AccountDetailView: React.FC<AccountDetailViewProps> = ({
                   const isAdjust = entry.type === 'wallet_adjust';
                   const isBillPaid = entry.type === 'bill_paid';
                   const isEnvelopeSpend = entry.type === 'envelope_spend';
+                  const isDebtInflow = entry.type === 'debt_inflow';
+                  const isDebtOutflow = entry.type === 'debt_outflow';
                   const isTransfer = entry.type === 'wallet_transfer';
                   const isIncomingTransfer =
                     isTransfer && entry.toPaymentSourceId === selectedAccountId;
@@ -622,7 +626,7 @@ export const AccountDetailView: React.FC<AccountDetailViewProps> = ({
                   const editable = isEditableEntryType(entry);
 
                   const deltaColor =
-                    isDeposit || isIncomingTransfer
+                    isDeposit || isIncomingTransfer || isDebtInflow
                       ? shade.positive
                       : isAdjust
                       ? adjPositive
@@ -632,7 +636,7 @@ export const AccountDetailView: React.FC<AccountDetailViewProps> = ({
 
                   const deltaString = privacyMode
                     ? '₱••••'
-                    : isDeposit || isIncomingTransfer
+                    : isDeposit || isIncomingTransfer || isDebtInflow
                     ? `+${formatPeso(entry.amount)}`
                     : isAdjust
                     ? `${adjPositive ? '+' : '-'}${formatPeso(entry.amount)}`
@@ -648,6 +652,14 @@ export const AccountDetailView: React.FC<AccountDetailViewProps> = ({
                     ? selectedCard
                       ? 'Card Payment'
                       : 'Added'
+                    : isDebtInflow
+                    ? entry.debtAction === 'created'
+                      ? 'Borrowed'
+                      : 'Debt Received'
+                    : isDebtOutflow
+                    ? entry.debtAction === 'created'
+                      ? 'Lent'
+                      : 'Debt Paid'
                     : isAdjust
                     ? 'Updated Balance'
                     : isBillPaid

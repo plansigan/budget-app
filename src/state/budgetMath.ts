@@ -103,15 +103,20 @@ export function computeDayMetricsFromEntries(
   );
 
   let spent = 0;
+  let dailyInflowCredit = 0;
   let savedOrSkipped = 0;
 
   for (const e of dayEntries) {
     if (
       e.type === 'spend' ||
       e.type === 'save_direct' ||
-      e.type === 'treat_direct'
+      e.type === 'treat_direct' ||
+      (e.type === 'debt_outflow' && e.affectsDailyBudget)
     ) {
       spent = roundCurrency(spent + e.amount);
+    }
+    if (e.type === 'debt_inflow' && e.affectsDailyBudget) {
+      dailyInflowCredit = roundCurrency(dailyInflowCredit + e.amount);
     }
     if (e.type === 'midnight_split' && typeof e.savingsDelta === 'number') {
       spent = roundCurrency(spent + e.amount + e.savingsDelta);
@@ -131,7 +136,9 @@ export function computeDayMetricsFromEntries(
   }
 
   const rollover = dateKey === todayKey ? rolloverForToday : 0;
-  const safeRemaining = roundCurrency(baseDaily + rollover - spent);
+  const safeRemaining = roundCurrency(
+    baseDaily + rollover - spent + dailyInflowCredit
+  );
 
   return {
     spent,

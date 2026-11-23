@@ -81,6 +81,7 @@ const AppShell: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabKey>('today');
   const [pwaUpdateReady, setPwaUpdateReady] = useState(false);
   const [focusAllowancesKey, setFocusAllowancesKey] = useState(0);
+  const [focusDebtsKey, setFocusDebtsKey] = useState(0);
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
 
@@ -314,9 +315,15 @@ const AppShell: React.FC = () => {
                 setFocusAllowancesKey((k) => k + 1);
                 switchTab('setup');
               }}
+              onOpenDebts={() => {
+                setFocusDebtsKey((k) => k + 1);
+                switchTab('wallet');
+              }}
             />
           )}
-          {activeTab === 'wallet' && <WalletScreen />}
+          {activeTab === 'wallet' && (
+            <WalletScreen focusDebtsKey={focusDebtsKey} />
+          )}
           {activeTab === 'vault' && <TreatVaultScreen />}
           {activeTab === 'setup' && (
             <SetupAndStyleScreen focusAllowancesKey={focusAllowancesKey} />

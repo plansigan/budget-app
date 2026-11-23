@@ -1,6 +1,18 @@
 export type ThemeMode = 'system' | 'light' | 'dark';
 export type EnvelopeCadence = 'per_payday' | 'monthly';
 export type EnvelopeRolloverMode = 'rollover' | 'reset';
+export type DebtDirection = 'i_owe' | 'owed_to_me';
+
+export interface DebtItem {
+  id: string;
+  direction: DebtDirection;
+  personName: string;
+  amount: number;
+  paidAmount: number;
+  note?: string;
+  createdAt: string;
+  settledAt?: string;
+}
 
 export type TransactionType =
   | 'spend'
@@ -15,7 +27,9 @@ export type TransactionType =
   | 'envelope_refill'
   | 'wallet_deposit'
   | 'wallet_adjust'
-  | 'wallet_transfer';
+  | 'wallet_transfer'
+  | 'debt_outflow'
+  | 'debt_inflow';
 
 export type CardTier =
   | 'Matte Slate'
@@ -54,6 +68,9 @@ export interface TransactionEntry {
   treatId?: string;
   installmentId?: string;
   sinkingFundId?: string;
+  debtId?: string;
+  debtAction?: 'created' | 'payment';
+  affectsDailyBudget?: boolean;
   billId?: string;
   previousBillPaidMonth?: string;
   envelopeId?: string;

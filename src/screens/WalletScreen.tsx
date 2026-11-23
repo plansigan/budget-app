@@ -1,8 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { ConfirmModal } from '../components/ConfirmModal';
+import {
+  AddEditDebtModal,
+  DebtPaymentModal,
+} from '../components/DebtModals';
 import { TransferModal } from '../components/TransferModal';
 import { useBudget } from '../context/BudgetContext';
+import { DebtDirection, DebtItem } from '../types/budget';
 import { triggerLightHaptic } from '../utils/haptics';
 import {
   AccountDetailView,
@@ -11,10 +16,16 @@ import {
 import { WalletModals } from './wallet/WalletModals';
 import { WalletOverview } from './wallet/WalletOverview';
 
+interface WalletScreenProps {
+  focusDebtsKey?: number;
+}
+
 /**
- * Wallet tab managing Cash, Bank Accounts, Credit Cards, and Installments.
+ * Wallet tab managing Cash, Bank Accounts, Credit Cards, Installments, and Debts.
  */
-export const WalletScreen: React.FC = () => {
+export const WalletScreen: React.FC<WalletScreenProps> = ({
+  focusDebtsKey = 0,
+}) => {
   const { banks, creditCards } = useBudget();
 
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(
@@ -23,6 +34,12 @@ export const WalletScreen: React.FC = () => {
   const [showAddBank, setShowAddBank] = useState(false);
   const [showAddCard, setShowAddCard] = useState(false);
   const [showAddInst, setShowAddInst] = useState(false);
+  const [debtModal, setDebtModal] = useState<{
+    open: boolean;
+    editingDebt: DebtItem | null;
+    defaultDirection: DebtDirection;
+  }>({ open: false, editingDebt: null, defaultDirection: 'i_owe' });
+  const [payingDebt, setPayingDebt] = useState<DebtItem | null>(null);
   const [transferModal, setTransferModal] = useState<{
     open: boolean;
     fromId?: string | null;
@@ -30,6 +47,12 @@ export const WalletScreen: React.FC = () => {
   }>({ open: false });
   const [pendingConfirm, setPendingConfirm] =
     useState<WalletConfirmRequest | null>(null);
+
+  useEffect(() => {
+    if (focusDebtsKey > 0) {
+      setSelectedAccountId(null);
+    }
+  }, [focusDebtsKey]);
 
   useEffect(() => {
     if (selectedAccountId === null || selectedAccountId === 'cash') return;
@@ -62,10 +85,26 @@ export const WalletScreen: React.FC = () => {
         />
       ) : (
         <WalletOverview
+          focusDebtsKey={focusDebtsKey}
           onOpenAccount={openAccountPage}
           onOpenAddBank={() => setShowAddBank(true)}
           onOpenAddCard={() => setShowAddCard(true)}
           onOpenAddInstallment={() => setShowAddInst(true)}
+          onOpenAddDebt={(dir = 'i_owe') =>
+            setDebtModal({
+              open: true,
+              editingDebt: null,
+              defaultDirection: dir,
+            })
+          }
+          onEditDebt={(debt) =>
+            setDebtModal({
+              open: true,
+              editingDebt: debt,
+              defaultDirection: debt.direction,
+            })
+          }
+          onPayDebt={(debt) => setPayingDebt(debt)}
           onOpenTransfer={() => openTransferModal()}
           onRequestConfirm={setPendingConfirm}
         />
@@ -78,6 +117,24 @@ export const WalletScreen: React.FC = () => {
         onCloseAddCard={() => setShowAddCard(false)}
         showAddInst={showAddInst}
         onCloseAddInst={() => setShowAddInst(false)}
+      />
+
+      <AddEditDebtModal
+        visible={debtModal.open}
+        editingDebt={debtModal.editingDebt}
+        defaultDirection={debtModal.defaultDirection}
+        onClose={() =>
+          setDebtModal({
+            open: false,
+            editingDebt: null,
+            defaultDirection: 'i_owe',
+          })
+        }
+      />
+
+      <DebtPaymentModal
+        debt={payingDebt}
+        onClose={() => setPayingDebt(null)}
       />
 
       <TransferModal

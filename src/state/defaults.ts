@@ -3,6 +3,7 @@ import {
   BillItem,
   BudgetSettings,
   CreditCardAccount,
+  DebtItem,
   InstallmentItem,
   MonthlyArchiveSnapshot,
   SinkingFundItem,
@@ -63,6 +64,7 @@ export interface PersistedBudgetState {
   creditCards: CreditCardAccount[];
   installments: InstallmentItem[];
   sinkingFunds: SinkingFundItem[];
+  debts: DebtItem[];
   monthlySaved: number;
   rolloverBalance: number;
   checkedInToday: boolean;
@@ -153,6 +155,7 @@ export function createNewUserState(
     installments: [],
     envelopes: [],
     sinkingFunds: [],
+    debts: [],
     monthlySaved: 0,
     rolloverBalance: 0,
     checkedInToday: false,
@@ -224,6 +227,7 @@ export function createDemoState(
         monthsToGoal: 12,
       },
     ],
+    debts: [],
     monthlySaved: 2500,
     rolloverBalance: 150,
     checkedInToday: false,

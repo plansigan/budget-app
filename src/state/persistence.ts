@@ -4,6 +4,7 @@ import {
   BillItem,
   BudgetSettings,
   CreditCardAccount,
+  DebtItem,
   InstallmentItem,
   MonthlyArchiveSnapshot,
   SinkingFundItem,
@@ -232,6 +233,47 @@ export function normalizePersistedState(
         }))
     : [];
 
+  const normalizedDebts: DebtItem[] = Array.isArray(raw.debts)
+    ? raw.debts
+        .filter((d): d is DebtItem => Boolean(d && typeof d === 'object'))
+        .map((d, idx) => {
+          const amount = roundCurrency(safeNum(d.amount, 0.01, 0.01));
+          const paidAmount = roundCurrency(
+            safeNum(d.paidAmount, 0, 0, amount)
+          );
+          const trimmedNote =
+            typeof d.note === 'string' && d.note.trim()
+              ? d.note.trim()
+              : undefined;
+          const settled = paidAmount >= amount;
+          return {
+            id: typeof d.id === 'string' && d.id ? d.id : `debt-${idx}`,
+            direction: d.direction === 'owed_to_me' ? 'owed_to_me' : 'i_owe',
+            personName:
+              typeof d.personName === 'string' && d.personName.trim()
+                ? d.personName.trim()
+                : 'Someone',
+            amount,
+            paidAmount,
+            ...(trimmedNote ? { note: trimmedNote } : {}),
+            createdAt:
+              typeof d.createdAt === 'string' &&
+              !Number.isNaN(Date.parse(d.createdAt))
+                ? d.createdAt
+                : new Date().toISOString(),
+            ...(settled
+              ? {
+                  settledAt:
+                    typeof d.settledAt === 'string' &&
+                    !Number.isNaN(Date.parse(d.settledAt))
+                      ? d.settledAt
+                      : new Date().toISOString(),
+                }
+              : {}),
+          };
+        })
+    : [];
+
   return {
     ...base,
     hasCompletedOnboarding: Boolean(raw.hasCompletedOnboarding),
@@ -256,6 +298,7 @@ export function normalizePersistedState(
     creditCards: normalizedCards,
     installments: normalizedInstallments,
     sinkingFunds: normalizedFunds,
+    debts: normalizedDebts,
     monthlySaved: roundCurrency(safeNum(raw.monthlySaved, 0, 0)),
     rolloverBalance: roundCurrency(safeNum(raw.rolloverBalance, 0, 0)),
     checkedInToday: Boolean(raw.checkedInToday),

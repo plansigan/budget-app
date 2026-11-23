@@ -169,6 +169,26 @@ export function getTransactionPresentation(
       };
     }
 
+    case 'debt_outflow': {
+      const amt = Math.abs(entry.amount);
+      return {
+        deltaText: maskIfNeeded(`-${formatPeso(amt)}`),
+        deltaColor: shade.text,
+        csvSignedAmount: -amt,
+        isTreatHighlight: false,
+      };
+    }
+
+    case 'debt_inflow': {
+      const amt = Math.abs(entry.amount);
+      return {
+        deltaText: maskIfNeeded(`+${formatPeso(amt)}`),
+        deltaColor: shade.positive,
+        csvSignedAmount: amt,
+        isTreatHighlight: false,
+      };
+    }
+
     case 'midnight_split': {
       const savingsAmt = Math.max(0, entry.savingsDelta ?? 0);
       const treatAmt = Math.max(0, entry.amount);

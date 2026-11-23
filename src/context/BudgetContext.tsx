@@ -50,6 +50,8 @@ import {
   CardTier,
   CreditCardAccount,
   DaySummary,
+  DebtDirection,
+  DebtItem,
   EnvelopeCadence,
   EnvelopeRolloverMode,
   InstallmentItem,
@@ -100,6 +102,7 @@ interface BudgetContextValue {
   installments: InstallmentItem[];
   envelopes: SpendingEnvelopeItem[];
   sinkingFunds: SinkingFundItem[];
+  debts: DebtItem[];
   monthlySaved: number;
   baseDailyAllowance: number;
   rolloverBalance: number;
@@ -277,6 +280,30 @@ interface BudgetContextValue {
   ) => void;
   depositToSinkingFund: (id: string, amount: number) => void;
   deleteSinkingFund: (id: string) => void;
+  addDebt: (params: {
+    direction: DebtDirection;
+    personName: string;
+    amount: number;
+    note?: string;
+    paymentSourceId?: string;
+    affectsDailyBudget?: boolean;
+  }) => void;
+  updateDebt: (
+    id: string,
+    params: {
+      direction: DebtDirection;
+      personName: string;
+      amount: number;
+      note?: string;
+    }
+  ) => void;
+  deleteDebt: (id: string) => void;
+  recordDebtPayment: (
+    id: string,
+    amount: number,
+    paymentSourceId?: string,
+    affectsDailyBudget?: boolean
+  ) => void;
   exportBackupJsonString: () => string;
   importBackupJsonString: (raw: string) => { ok: boolean; message: string };
   lastAutoSnapshotAt?: string;
@@ -1774,6 +1801,130 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
     [showToast]
   );
 
+  const addDebt = useCallback(
+    (params: {
+      direction: DebtDirection;
+      personName: string;
+      amount: number;
+      note?: string;
+      paymentSourceId?: string;
+      affectsDailyBudget?: boolean;
+    }) => {
+      const trimmedName = params.personName.trim();
+      const cleanAmount = roundCurrency(params.amount);
+      if (!trimmedName || cleanAmount <= 0) return;
+
+      triggerSuccessHaptic();
+      dispatch({
+        type: 'ADD_DEBT',
+        direction: params.direction,
+        personName: trimmedName,
+        amount: cleanAmount,
+        note: params.note,
+        paymentSourceId: params.paymentSourceId,
+        affectsDailyBudget: params.affectsDailyBudget,
+        dateKey: selectedDateKeyRef.current,
+        todayKey: getTodayKey(),
+      });
+      showToast(
+        params.direction === 'i_owe'
+          ? `Added I Owe: ${trimmedName} (${formatPeso(cleanAmount)})`
+          : `Added Owed to Me: ${trimmedName} (${formatPeso(cleanAmount)})`,
+        false
+      );
+    },
+    [showToast]
+  );
+
+  const updateDebt = useCallback(
+    (
+      id: string,
+      params: {
+        direction: DebtDirection;
+        personName: string;
+        amount: number;
+        note?: string;
+      }
+    ) => {
+      const trimmedName = params.personName.trim();
+      const cleanAmount = roundCurrency(params.amount);
+      if (!trimmedName || cleanAmount <= 0) return;
+      triggerLightHaptic();
+      dispatch({
+        type: 'UPDATE_DEBT',
+        id,
+        direction: params.direction,
+        personName: trimmedName,
+        amount: cleanAmount,
+        note: params.note,
+      });
+      showToast(`Updated debt with ${trimmedName}`, false);
+    },
+    [showToast]
+  );
+
+  const deleteDebt = useCallback(
+    (id: string) => {
+      const target = (stateRef.current.debts || []).find((d) => d.id === id);
+      triggerLightHaptic();
+      dispatch({ type: 'DELETE_DEBT', id });
+      showToast(
+        target ? `Removed debt with ${target.personName}` : 'Removed debt',
+        false
+      );
+    },
+    [showToast]
+  );
+
+  const recordDebtPayment = useCallback(
+    (
+      id: string,
+      amount: number,
+      paymentSourceId?: string,
+      affectsDailyBudget?: boolean
+    ) => {
+      const debt = (stateRef.current.debts || []).find((d) => d.id === id);
+      if (!debt) return;
+      const remaining = roundCurrency(Math.max(0, debt.amount - debt.paidAmount));
+      if (remaining <= 0) return;
+
+      const applied = roundCurrency(
+        Math.min(Math.max(0.01, amount), remaining)
+      );
+      const fullySettled = roundCurrency(debt.paidAmount + applied) >= debt.amount;
+
+      if (fullySettled) triggerCelebrationHaptic();
+      else triggerSuccessHaptic();
+
+      dispatch({
+        type: 'RECORD_DEBT_PAYMENT',
+        id,
+        amount: applied,
+        paymentSourceId,
+        affectsDailyBudget,
+        dateKey: selectedDateKeyRef.current,
+        todayKey: getTodayKey(),
+      });
+
+      if (debt.direction === 'i_owe') {
+        showToast(
+          fullySettled
+            ? `Settled debt with ${debt.personName} (${formatPeso(applied)})!`
+            : `Paid ${formatPeso(applied)} to ${debt.personName}`,
+          fullySettled
+        );
+      } else {
+        showToast(
+          fullySettled
+            ? `${debt.personName} paid in full (${formatPeso(applied)})!`
+            : `Received ${formatPeso(applied)} from ${debt.personName}`,
+          true
+        );
+      }
+    },
+    [showToast]
+  );
+
   const exportBackupJsonString = useCallback(() => {
     return serializeBackupJson(stateRef.current);
   }, []);
@@ -1877,6 +2028,7 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
       installments: state.installments,
       envelopes: state.envelopes || [],
       sinkingFunds: state.sinkingFunds,
+      debts: state.debts || [],
       monthlySaved: state.monthlySaved,
       baseDailyAllowance,
       rolloverBalance: state.rolloverBalance,
@@ -1949,6 +2101,10 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
       addSinkingFund,
       depositToSinkingFund,
       deleteSinkingFund,
+      addDebt,
+      updateDebt,
+      deleteDebt,
+      recordDebtPayment,
       exportBackupJsonString,
       importBackupJsonString,
       lastAutoSnapshotAt,
@@ -2029,6 +2185,10 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
       addSinkingFund,
       depositToSinkingFund,
       deleteSinkingFund,
+      addDebt,
+      updateDebt,
+      deleteDebt,
+      recordDebtPayment,
       exportBackupJsonString,
       importBackupJsonString,
       lastAutoSnapshotAt,
