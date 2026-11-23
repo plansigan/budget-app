@@ -19,6 +19,7 @@ export interface BackupSummary {
   treatsCount: number;
   installmentsCount: number;
   sinkingFundsCount: number;
+  debtsCount: number;
 }
 
 function csvEscape(value: string | number, neutralizeFormula = true): string {
@@ -93,6 +94,7 @@ const ARRAY_KEYS = [
   'creditCards',
   'installments',
   'sinkingFunds',
+  'debts',
   'treats',
   'entries',
   'monthlyArchives',
@@ -221,6 +223,7 @@ export function summarizeBackupJson(
       treatsCount: normalized.treats.length,
       installmentsCount: normalized.installments.length,
       sinkingFundsCount: normalized.sinkingFunds.length,
+      debtsCount: normalized.debts.length,
     },
   };
 }

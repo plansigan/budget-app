@@ -14,15 +14,17 @@ import {
 } from '../components/AnimatedPrimitives';
 import { AppIcon, IconBadge } from '../components/AppIcon';
 import { ConfirmModal } from '../components/ConfirmModal';
+import { DebtPaymentModal } from '../components/DebtModals';
 import { EditTransactionModal } from '../components/EditTransactionModal';
 import { PayBillModal } from '../components/PayBillModal';
 import { PaydayCheckInModal } from '../components/PaydayCheckInModal';
 import { WeeklyBelt } from '../components/WeeklyBelt';
 import { useBudget } from '../context/BudgetContext';
-import { parseDateKeyLocal } from '../state/budgetMath';
+import { parseDateKeyLocal, roundCurrency } from '../state/budgetMath';
 import { isEditableEntryType } from '../state/budgetReducer';
 import {
   BillItem,
+  DebtItem,
   TransactionEntry,
   getDaysUntilDayOfMonth,
   getExpectedPaycheckAmount,
@@ -36,6 +38,7 @@ interface TodayScreenProps {
   onOpenVault: () => void;
   onOpenBudgetSetup?: () => void;
   onOpenAllowances?: () => void;
+  onOpenDebts?: () => void;
 }
 
 /**
@@ -46,6 +49,7 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
   onOpenVault,
   onOpenBudgetSetup,
   onOpenAllowances,
+  onOpenDebts,
 }) => {
   const {
     shade,
@@ -54,6 +58,7 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
     settings,
     billItems,
     envelopes,
+    debts,
     lastPaydayCheckInKey,
     monthlySaved,
     baseDailyAllowance,
@@ -75,6 +80,7 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
   const [modalEnvelopeId, setModalEnvelopeId] = useState<string | null>(null);
   const [showPaydayModal, setShowPaydayModal] = useState(false);
   const [billToPay, setBillToPay] = useState<BillItem | null>(null);
+  const [debtToPay, setDebtToPay] = useState<DebtItem | null>(null);
   const [showAllActivity, setShowAllActivity] = useState(false);
   const [editingEntry, setEditingEntry] = useState<TransactionEntry | null>(
     null
@@ -110,6 +116,23 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
     .filter((item) => item.daysLeft <= 5)
     .sort((a, b) => a.daysLeft - b.daysLeft)
     .slice(0, 3);
+
+  const openDebts = (debts || []).filter(
+    (d) => roundCurrency(Math.max(0, d.amount - d.paidAmount)) > 0
+  );
+  const iOweTotal = openDebts
+    .filter((d) => d.direction === 'i_owe')
+    .reduce(
+      (sum, d) => roundCurrency(sum + Math.max(0, d.amount - d.paidAmount)),
+      0
+    );
+  const owedToMeTotal = openDebts
+    .filter((d) => d.direction === 'owed_to_me')
+    .reduce(
+      (sum, d) => roundCurrency(sum + Math.max(0, d.amount - d.paidAmount)),
+      0
+    );
+  const previewDebts = openDebts.slice(0, 3);
 
   const goal = Math.max(0.01, settings.monthlySavingsGoal);
   const savPct = Math.min(100, Math.round((monthlySaved / goal) * 100));
@@ -610,6 +633,158 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
           </FadeSlideIn>
         )}
 
+        {/* Compact Debts Reminder Card */}
+        {openDebts.length > 0 && (
+          <FadeSlideIn delay={112} distance={14}>
+            <View
+              style={[
+                styles.sectionCard,
+                { backgroundColor: shade.card, borderColor: shade.border },
+              ]}
+            >
+              <View style={styles.rowBetween}>
+                <Text style={[styles.sectionKicker, { color: shade.muted }]}>
+                  DEBTS ({openDebts.length})
+                </Text>
+                <ScalePressable
+                  onPress={() => {
+                    triggerLightHaptic();
+                    onOpenDebts?.();
+                  }}
+                  hitSlop={6}
+                >
+                  <Text
+                    style={[
+                      styles.sectionSubHint,
+                      { color: shade.accent, fontWeight: '800' },
+                    ]}
+                  >
+                    Manage ›
+                  </Text>
+                </ScalePressable>
+              </View>
+
+              <View
+                style={[
+                  styles.billDueRow,
+                  {
+                    backgroundColor: shade.surface,
+                    paddingVertical: 8,
+                    flexWrap: 'wrap',
+                    gap: 8,
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.rowSub,
+                    {
+                      color: shade.warning,
+                      fontWeight: '800',
+                      fontVariant: ['tabular-nums'],
+                    },
+                  ]}
+                >
+                  I Owe {formatVisiblePeso(iOweTotal)}
+                </Text>
+                <Text
+                  style={[
+                    styles.rowSub,
+                    {
+                      color: shade.positive,
+                      fontWeight: '800',
+                      fontVariant: ['tabular-nums'],
+                    },
+                  ]}
+                >
+                  Owed to Me {formatVisiblePeso(owedToMeTotal)}
+                </Text>
+              </View>
+
+              <View style={{ gap: 8 }}>
+                {previewDebts.map((debt) => {
+                  const remaining = roundCurrency(
+                    Math.max(0, debt.amount - debt.paidAmount)
+                  );
+                  const isOwe = debt.direction === 'i_owe';
+                  return (
+                    <View
+                      key={debt.id}
+                      style={[
+                        styles.billDueRow,
+                        { backgroundColor: shade.surface },
+                      ]}
+                    >
+                      <View style={styles.billLeftRow}>
+                        <IconBadge
+                          name={isOwe ? 'arrow-up-right' : 'arrow-down-left'}
+                          size={14}
+                          color={isOwe ? shade.warning : shade.positive}
+                          bg={isOwe ? shade.warningSoft : shade.positiveSoft}
+                          boxSize={34}
+                        />
+                        <View style={{ flex: 1, minWidth: 0 }}>
+                          <Text
+                            numberOfLines={1}
+                            style={[styles.rowTitle, { color: shade.text }]}
+                          >
+                            {debt.personName}
+                          </Text>
+                          <Text
+                            numberOfLines={1}
+                            style={[styles.rowSub, { color: shade.muted }]}
+                          >
+                            {isOwe ? 'I Owe' : 'Owed to Me'}
+                            {debt.note ? ` • ${debt.note}` : ''}
+                          </Text>
+                        </View>
+                      </View>
+
+                      <View style={styles.billRightRow}>
+                        <Text
+                          style={[
+                            styles.rowDelta,
+                            { color: isOwe ? shade.text : shade.positive },
+                          ]}
+                        >
+                          {formatVisiblePeso(remaining)}
+                        </Text>
+                        <ScalePressable
+                          onPress={() => {
+                            triggerLightHaptic();
+                            setDebtToPay(debt);
+                          }}
+                          style={[
+                            styles.payMiniBtn,
+                            {
+                              backgroundColor: isOwe
+                                ? shade.accent
+                                : shade.positiveSoft,
+                            },
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.payMiniText,
+                              {
+                                color: isOwe
+                                  ? shade.accentText
+                                  : shade.positive,
+                              },
+                            ]}
+                          >
+                            {isOwe ? 'Pay' : 'Got Paid'}
+                          </Text>
+                        </ScalePressable>
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            </View>
+          </FadeSlideIn>
+        )}
+
         {/* Selected Day's Activity (Spacious 4-Row Cap + View All Modal) */}
         <FadeSlideIn delay={120} distance={14}>
           <View
@@ -803,6 +978,11 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
       <PayBillModal
         bill={billToPay}
         onClose={() => setBillToPay(null)}
+      />
+
+      <DebtPaymentModal
+        debt={debtToPay}
+        onClose={() => setDebtToPay(null)}
       />
 
       <ActivityHistoryModal

@@ -69,6 +69,7 @@ const VALID_FEATHER_SET = new Set<AppIconName>([
   'tv',
   'umbrella',
   'upload',
+  'users',
   'watch',
   'wifi',
   'x',

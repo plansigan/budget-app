@@ -31,6 +31,7 @@ type HistoryFilterKey =
   | 'spend'
   | 'envelopes'
   | 'bills'
+  | 'debts'
   | 'savings'
   | 'wallet';
 
@@ -39,6 +40,7 @@ const HISTORY_FILTERS: Array<{ key: HistoryFilterKey; label: string }> = [
   { key: 'spend', label: 'Spends' },
   { key: 'envelopes', label: 'Allowances' },
   { key: 'bills', label: 'Bills' },
+  { key: 'debts', label: 'Debts' },
   { key: 'savings', label: 'Savings' },
   { key: 'wallet', label: 'Wallet' },
 ];
@@ -58,6 +60,8 @@ function matchesHistoryFilter(
       return type === 'envelope_spend' || type === 'envelope_refill';
     case 'bills':
       return type === 'bill_paid' || type === 'installment_paid';
+    case 'debts':
+      return type === 'debt_outflow' || type === 'debt_inflow';
     case 'savings':
       return (
         type === 'save_direct' ||

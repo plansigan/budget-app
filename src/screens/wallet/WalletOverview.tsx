@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import {
   AnimatedCounter,
@@ -9,26 +9,39 @@ import {
 } from '../../components/AnimatedPrimitives';
 import { AppIcon, IconBadge } from '../../components/AppIcon';
 import { useBudget } from '../../context/BudgetContext';
-import { getDaysUntilDayOfMonth } from '../../types/budget';
+import {
+  DebtDirection,
+  DebtItem,
+  getDaysUntilDayOfMonth,
+} from '../../types/budget';
 import { triggerLightHaptic } from '../../utils/haptics';
 import { formatOrdinal } from '../../utils/numberFormat';
 import { WalletConfirmRequest } from './AccountDetailView';
+import { DebtsSection } from './DebtsSection';
 import { InstallmentsSection } from './InstallmentsSection';
 
 interface WalletOverviewProps {
+  focusDebtsKey?: number;
   onOpenAccount: (accountId: string) => void;
   onOpenAddBank: () => void;
   onOpenAddCard: () => void;
   onOpenAddInstallment: () => void;
+  onOpenAddDebt: (defaultDirection?: DebtDirection) => void;
+  onEditDebt: (debt: DebtItem) => void;
+  onPayDebt: (debt: DebtItem) => void;
   onOpenTransfer: () => void;
   onRequestConfirm: (req: WalletConfirmRequest) => void;
 }
 
 export const WalletOverview: React.FC<WalletOverviewProps> = ({
+  focusDebtsKey = 0,
   onOpenAccount,
   onOpenAddBank,
   onOpenAddCard,
   onOpenAddInstallment,
+  onOpenAddDebt,
+  onEditDebt,
+  onPayDebt,
   onOpenTransfer,
   onRequestConfirm,
 }) => {
@@ -40,10 +53,24 @@ export const WalletOverview: React.FC<WalletOverviewProps> = ({
     banks,
     creditCards,
     installments,
+    debts,
     entries,
   } = useBudget();
 
-  const [subTab, setSubTab] = useState<'accounts' | 'installments'>('accounts');
+  const [subTab, setSubTab] = useState<'accounts' | 'installments' | 'debts'>(
+    focusDebtsKey > 0 ? 'debts' : 'accounts'
+  );
+
+  useEffect(() => {
+    if (focusDebtsKey > 0) {
+      setSubTab('debts');
+    }
+  }, [focusDebtsKey]);
+
+  const openDebtsCount = useMemo(
+    () => debts.filter((d) => d.paidAmount < d.amount).length,
+    [debts]
+  );
 
   const logCountsByAccount = useMemo(() => {
     const map: Record<string, number> = {};
@@ -114,11 +141,28 @@ export const WalletOverview: React.FC<WalletOverviewProps> = ({
                 {creditCards.length === 1 ? 'Card' : 'Cards'}
               </Text>
             </View>
+            {openDebtsCount > 0 && (
+              <ScalePressable
+                onPress={() => {
+                  triggerLightHaptic();
+                  setSubTab('debts');
+                }}
+                style={[
+                  styles.countPill,
+                  { backgroundColor: shade.heroSurface },
+                ]}
+              >
+                <AppIcon name="users" size={13} color="#FBBF24" />
+                <Text style={[styles.countText, { color: '#FBBF24' }]}>
+                  {openDebtsCount} {openDebtsCount === 1 ? 'Debt' : 'Debts'}
+                </Text>
+              </ScalePressable>
+            )}
           </View>
         </View>
       </FadeSlideIn>
 
-      {/* Spacious 2-Segment Toggle: Accounts vs Installments */}
+      {/* Spacious 3-Segment Toggle: Accounts | Installments | Debts */}
       <View
         style={[
           styles.subTabBar,
@@ -136,6 +180,7 @@ export const WalletOverview: React.FC<WalletOverviewProps> = ({
           ]}
         >
           <Text
+            numberOfLines={1}
             style={[
               styles.subTabText,
               { color: subTab === 'accounts' ? shade.text : shade.muted },
@@ -156,12 +201,34 @@ export const WalletOverview: React.FC<WalletOverviewProps> = ({
           ]}
         >
           <Text
+            numberOfLines={1}
             style={[
               styles.subTabText,
               { color: subTab === 'installments' ? shade.text : shade.muted },
             ]}
           >
             Installments ({installments.length})
+          </Text>
+        </ScalePressable>
+
+        <ScalePressable
+          onPress={() => {
+            triggerLightHaptic();
+            setSubTab('debts');
+          }}
+          style={[
+            styles.subTabBtn,
+            subTab === 'debts' && { backgroundColor: shade.card },
+          ]}
+        >
+          <Text
+            numberOfLines={1}
+            style={[
+              styles.subTabText,
+              { color: subTab === 'debts' ? shade.text : shade.muted },
+            ]}
+          >
+            {openDebtsCount > 0 ? `Debts (${openDebtsCount})` : 'Debts'}
           </Text>
         </ScalePressable>
       </View>
@@ -436,10 +503,19 @@ export const WalletOverview: React.FC<WalletOverviewProps> = ({
             </View>
           </FadeSlideIn>
         </View>
-      ) : (
+      ) : subTab === 'installments' ? (
         <FadeSlideIn delay={40} distance={10}>
           <InstallmentsSection
             onOpenAddModal={onOpenAddInstallment}
+            onRequestConfirm={onRequestConfirm}
+          />
+        </FadeSlideIn>
+      ) : (
+        <FadeSlideIn delay={40} distance={10}>
+          <DebtsSection
+            onOpenAddDebt={onOpenAddDebt}
+            onEditDebt={onEditDebt}
+            onPayDebt={onPayDebt}
             onRequestConfirm={onRequestConfirm}
           />
         </FadeSlideIn>
@@ -484,6 +560,7 @@ const styles = StyleSheet.create({
   },
   countsRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 8,
     paddingTop: 2,
   },
@@ -509,11 +586,12 @@ const styles = StyleSheet.create({
   subTabBtn: {
     flex: 1,
     paddingVertical: 10,
+    paddingHorizontal: 4,
     borderRadius: 11,
     alignItems: 'center',
   },
   subTabText: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '800',
   },
   section: {
