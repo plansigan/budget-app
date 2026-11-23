@@ -44,6 +44,8 @@ export const TreatVaultScreen: React.FC = () => {
             triggerLightHaptic();
             setSubTab('goals');
           }}
+          accessibilityRole="tab"
+          accessibilityState={{ selected: subTab === 'goals' }}
           style={[
             styles.subTabBtn,
             subTab === 'goals' && { backgroundColor: shade.card },
@@ -71,6 +73,8 @@ export const TreatVaultScreen: React.FC = () => {
             triggerLightHaptic();
             setSubTab('insights');
           }}
+          accessibilityRole="tab"
+          accessibilityState={{ selected: subTab === 'insights' }}
           style={[
             styles.subTabBtn,
             subTab === 'insights' && { backgroundColor: shade.card },

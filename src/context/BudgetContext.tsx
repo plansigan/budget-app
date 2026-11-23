@@ -20,6 +20,7 @@ import {
 } from '../state/autoSnapshots';
 import {
   computeBaseDailyAllowance,
+  computeDayMetricsFromDayEntries,
   computeDayMetricsFromEntries,
   getBudgetedInstallmentsTotal,
   getTodayKey,
@@ -316,6 +317,8 @@ interface BudgetContextValue {
   captureAutoSnapshotNow: () => Promise<boolean>;
 }
 
+const EMPTY_DAY_ENTRIES: TransactionEntry[] = [];
+
 const BudgetContext = createContext<BudgetContextValue | null>(null);
 
 export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
@@ -601,23 +604,32 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
     [state.settings, budgetedInstallmentsTotal, monthlyEnvelopesTotal]
   );
 
+  const entriesByDateKey = useMemo(() => {
+    const map = new Map<string, TransactionEntry[]>();
+    for (const entry of state.entries) {
+      const key = entry.dateKey || state.lastActiveDate;
+      const bucket = map.get(key);
+      if (bucket) {
+        bucket.push(entry);
+      } else {
+        map.set(key, [entry]);
+      }
+    }
+    return map;
+  }, [state.entries, state.lastActiveDate]);
+
   const getDaySummary = useCallback(
-    (dateKey: string): DaySummary =>
-      computeDayMetricsFromEntries(
-        state.entries,
+    (dateKey: string): DaySummary => {
+      const dayEntries = entriesByDateKey.get(dateKey) ?? EMPTY_DAY_ENTRIES;
+      return computeDayMetricsFromDayEntries(
+        dayEntries,
         dateKey,
         baseDailyAllowance,
         state.rolloverBalance,
-        todayKey,
-        state.lastActiveDate
-      ),
-    [
-      state.entries,
-      state.rolloverBalance,
-      state.lastActiveDate,
-      baseDailyAllowance,
-      todayKey,
-    ]
+        todayKey
+      );
+    },
+    [entriesByDateKey, state.rolloverBalance, baseDailyAllowance, todayKey]
   );
 
   const selectedDaySummary = useMemo(

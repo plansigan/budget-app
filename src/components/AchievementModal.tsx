@@ -1,8 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import {
   Animated,
-  Modal,
-  Pressable,
   StyleSheet,
   Text,
   View,
@@ -10,6 +8,7 @@ import {
 import { useBudget } from '../context/BudgetContext';
 import { ScalePressable } from './AnimatedPrimitives';
 import { AppIcon } from './AppIcon';
+import { BaseModal } from './BaseModal';
 
 interface AchievementModalProps {
   onNavigateTab: (tab: 'today' | 'wallet' | 'vault' | 'setup') => void;
@@ -25,37 +24,27 @@ export const AchievementModal: React.FC<AchievementModalProps> = ({
   const { shade, pendingMilestone, dismissMilestone, boostSavingsGoal } =
     useBudget();
 
-  const cardScale = useRef(new Animated.Value(0.88)).current;
   const iconBounce = useRef(new Animated.Value(0.6)).current;
 
   useEffect(() => {
     if (!pendingMilestone) return;
-    cardScale.setValue(0.88);
     iconBounce.setValue(0.6);
 
-    Animated.parallel([
-      Animated.spring(cardScale, {
-        toValue: 1,
-        speed: 24,
-        bounciness: 10,
+    Animated.sequence([
+      Animated.spring(iconBounce, {
+        toValue: 1.15,
+        speed: 30,
+        bounciness: 12,
         useNativeDriver: true,
       }),
-      Animated.sequence([
-        Animated.spring(iconBounce, {
-          toValue: 1.15,
-          speed: 30,
-          bounciness: 12,
-          useNativeDriver: true,
-        }),
-        Animated.spring(iconBounce, {
-          toValue: 1,
-          speed: 26,
-          bounciness: 8,
-          useNativeDriver: true,
-        }),
-      ]),
+      Animated.spring(iconBounce, {
+        toValue: 1,
+        speed: 26,
+        bounciness: 8,
+        useNativeDriver: true,
+      }),
     ]).start();
-  }, [pendingMilestone, cardScale, iconBounce]);
+  }, [pendingMilestone, iconBounce]);
 
   if (!pendingMilestone) return null;
 
@@ -77,29 +66,20 @@ export const AchievementModal: React.FC<AchievementModalProps> = ({
     pendingMilestone.actionType !== 'none';
 
   return (
-    <Modal
+    <BaseModal
       visible
-      transparent
-      animationType="fade"
-      onRequestClose={dismissMilestone}
+      onClose={dismissMilestone}
+      avoidKeyboard={false}
+      initialScale={0.88}
+      springSpeed={24}
+      springBounciness={10}
+      backdropStyle={styles.backdrop}
+      cardStyle={[
+        styles.card,
+        { backgroundColor: shade.card, borderColor: shade.border },
+      ]}
     >
-      <View style={styles.backdrop}>
-        <Pressable
-          style={StyleSheet.absoluteFill}
-          onPress={dismissMilestone}
-          accessibilityLabel="Dismiss dialog"
-        />
-        <Animated.View
-          style={[
-            styles.card,
-            {
-              backgroundColor: shade.card,
-              borderColor: shade.border,
-              transform: [{ scale: cardScale }],
-            },
-          ]}
-        >
-          <View style={styles.topCenter}>
+      <View style={styles.topCenter}>
             <Animated.View
               style={[
                 styles.iconBadge,
@@ -182,32 +162,18 @@ export const AchievementModal: React.FC<AchievementModalProps> = ({
               </Text>
             </ScalePressable>
           </View>
-        </Animated.View>
-      </View>
-    </Modal>
+    </BaseModal>
   );
 };
 
 const styles = StyleSheet.create({
   backdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(17, 24, 39, 0.45)',
-    justifyContent: 'center',
-    alignItems: 'center',
     paddingHorizontal: 20,
   },
   card: {
-    width: '100%',
-    maxWidth: 390,
     borderRadius: 26,
-    borderWidth: 1,
     padding: 22,
     gap: 16,
-    shadowColor: '#111318',
-    shadowOpacity: 0.14,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 10,
   },
   topCenter: {
     alignItems: 'center',

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { ConfirmModal } from '../components/ConfirmModal';
 import {
@@ -18,6 +18,8 @@ import { WalletOverview } from './wallet/WalletOverview';
 
 interface WalletScreenProps {
   focusDebtsKey?: number;
+  selectedAccountId?: string | null;
+  onSelectAccount?: (accountId: string | null) => void;
 }
 
 /**
@@ -25,12 +27,31 @@ interface WalletScreenProps {
  */
 export const WalletScreen: React.FC<WalletScreenProps> = ({
   focusDebtsKey = 0,
+  selectedAccountId: controlledAccountId,
+  onSelectAccount,
 }) => {
   const { banks, creditCards } = useBudget();
 
-  const [selectedAccountId, setSelectedAccountId] = useState<string | null>(
+  const [internalAccountId, setInternalAccountId] = useState<string | null>(
     null
   );
+  const isControlled = controlledAccountId !== undefined;
+  const selectedAccountId = isControlled
+    ? controlledAccountId
+    : internalAccountId;
+
+  const setSelectedAccountId = useCallback(
+    (accountId: string | null) => {
+      if (onSelectAccount) {
+        onSelectAccount(accountId);
+      }
+      if (!isControlled) {
+        setInternalAccountId(accountId);
+      }
+    },
+    [isControlled, onSelectAccount]
+  );
+
   const [showAddBank, setShowAddBank] = useState(false);
   const [showAddCard, setShowAddCard] = useState(false);
   const [showAddInst, setShowAddInst] = useState(false);
@@ -52,7 +73,7 @@ export const WalletScreen: React.FC<WalletScreenProps> = ({
     if (focusDebtsKey > 0) {
       setSelectedAccountId(null);
     }
-  }, [focusDebtsKey]);
+  }, [focusDebtsKey, setSelectedAccountId]);
 
   useEffect(() => {
     if (selectedAccountId === null || selectedAccountId === 'cash') return;
@@ -62,7 +83,7 @@ export const WalletScreen: React.FC<WalletScreenProps> = ({
     if (!exists) {
       setSelectedAccountId(null);
     }
-  }, [selectedAccountId, banks, creditCards]);
+  }, [selectedAccountId, banks, creditCards, setSelectedAccountId]);
 
   const openAccountPage = (accountId: string) => {
     triggerLightHaptic();

@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  BackHandler,
   Platform,
   StyleSheet,
   Text,
@@ -30,6 +31,46 @@ import { WalletScreen } from './src/screens/WalletScreen';
 import { triggerLightHaptic } from './src/utils/haptics';
 
 type TabKey = 'today' | 'wallet' | 'vault' | 'setup';
+
+interface HashRoute {
+  tab: TabKey;
+  walletAccountId: string | null;
+}
+
+function parseWebHashRoute(hash: string): HashRoute {
+  const clean = hash.replace(/^#/, '').trim();
+  if (!clean) {
+    return { tab: 'today', walletAccountId: null };
+  }
+  if (clean === 'wallet') {
+    return { tab: 'wallet', walletAccountId: null };
+  }
+  if (clean.startsWith('wallet/')) {
+    const rawId = clean.slice('wallet/'.length);
+    if (!rawId) {
+      return { tab: 'wallet', walletAccountId: null };
+    }
+    try {
+      return { tab: 'wallet', walletAccountId: decodeURIComponent(rawId) };
+    } catch {
+      return { tab: 'wallet', walletAccountId: rawId };
+    }
+  }
+  if (clean === 'vault') {
+    return { tab: 'vault', walletAccountId: null };
+  }
+  if (clean === 'setup') {
+    return { tab: 'setup', walletAccountId: null };
+  }
+  return { tab: 'today', walletAccountId: null };
+}
+
+function buildWebHash(tab: TabKey, walletAccountId: string | null): string {
+  if (tab === 'wallet' && walletAccountId) {
+    return `#wallet/${encodeURIComponent(walletAccountId)}`;
+  }
+  return `#${tab}`;
+}
 
 const ToastOverlay: React.FC = () => {
   const { shade } = useBudget();
@@ -80,19 +121,76 @@ const AppShell: React.FC = () => {
     streakDays,
     treats,
   } = useBudget();
-  const [activeTab, setActiveTab] = useState<TabKey>('today');
+  const initialRoute = useMemo<HashRoute>(() => {
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      return parseWebHashRoute(window.location.hash);
+    }
+    return { tab: 'today', walletAccountId: null };
+  }, []);
+
+  const [activeTab, setActiveTab] = useState<TabKey>(initialRoute.tab);
+  const [walletAccountId, setWalletAccountId] = useState<string | null>(
+    initialRoute.walletAccountId
+  );
+  const [mountedTabs, setMountedTabs] = useState<Record<TabKey, boolean>>(() => ({
+    today: true,
+    wallet: initialRoute.tab === 'wallet',
+    vault: initialRoute.tab === 'vault',
+    setup: initialRoute.tab === 'setup',
+  }));
   const [pwaUpdateReady, setPwaUpdateReady] = useState(false);
   const [focusAllowancesKey, setFocusAllowancesKey] = useState(0);
   const [focusDebtsKey, setFocusDebtsKey] = useState(0);
   const [showFaq, setShowFaq] = useState(false);
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
+  const wasIncompleteAfterHydrationRef = useRef(false);
 
   useEffect(() => {
-    if (hasCompletedOnboarding) {
+    if (!isHydrated) return;
+    if (!hasCompletedOnboarding) {
+      wasIncompleteAfterHydrationRef.current = true;
       setActiveTab('today');
+      setWalletAccountId(null);
+      setMountedTabs({ today: true, wallet: false, vault: false, setup: false });
+      return;
     }
-  }, [hasCompletedOnboarding]);
+    if (wasIncompleteAfterHydrationRef.current) {
+      wasIncompleteAfterHydrationRef.current = false;
+      setActiveTab('today');
+      setWalletAccountId(null);
+      setMountedTabs({ today: true, wallet: false, vault: false, setup: false });
+      if (
+        Platform.OS === 'web' &&
+        typeof window !== 'undefined' &&
+        window.location.hash !== '#today'
+      ) {
+        window.location.hash = '#today';
+      }
+    }
+  }, [isHydrated, hasCompletedOnboarding]);
+
+  useEffect(() => {
+    if (
+      Platform.OS !== 'web' ||
+      typeof window === 'undefined' ||
+      typeof window.addEventListener !== 'function'
+    ) {
+      return;
+    }
+    const handleHashChange = () => {
+      const route = parseWebHashRoute(window.location.hash);
+      setActiveTab(route.tab);
+      setWalletAccountId(route.walletAccountId);
+      setMountedTabs((prev) =>
+        prev[route.tab] ? prev : { ...prev, [route.tab]: true }
+      );
+    };
+    window.addEventListener('hashchange', handleHashChange);
+    return () => {
+      window.removeEventListener('hashchange', handleHashChange);
+    };
+  }, []);
 
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof document === 'undefined') return;
@@ -100,7 +198,7 @@ const AppShell: React.FC = () => {
       const style = document.createElement('style');
       style.id = 'velvet-web-polish';
       style.textContent = [
-        'input:focus, textarea:focus { outline: none !important; box-shadow: none !important; }',
+        'input:focus:not(:focus-visible), textarea:focus:not(:focus-visible) { outline: none !important; box-shadow: none !important; }',
         '@supports (-webkit-touch-callout: none) { input, textarea, select { font-size: 16px !important; } }',
         'html, body { height: 100%; margin: 0; padding: 0; }',
         'body { padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); box-sizing: border-box; }',
@@ -182,10 +280,84 @@ const AppShell: React.FC = () => {
   const headerTopPad = isDesktopWeb ? 12 : Math.max(insets.top, 12);
   const tabBottomPad = isDesktopWeb ? 10 : Math.max(insets.bottom, 10);
 
-  const switchTab = (tab: TabKey) => {
-    triggerLightHaptic();
-    setActiveTab(tab);
-  };
+  const syncWebHash = useCallback(
+    (tab: TabKey, accountId: string | null) => {
+      if (
+        Platform.OS !== 'web' ||
+        typeof window === 'undefined' ||
+        !isHydrated ||
+        !hasCompletedOnboarding
+      ) {
+        return;
+      }
+      const nextHash = buildWebHash(tab, accountId);
+      if (window.location.hash !== nextHash) {
+        window.location.hash = nextHash;
+      }
+    },
+    [isHydrated, hasCompletedOnboarding]
+  );
+
+  const switchTab = useCallback(
+    (tab: TabKey, nextAccountId?: string | null) => {
+      triggerLightHaptic();
+      const resolvedAccountId =
+        nextAccountId !== undefined ? nextAccountId : walletAccountId;
+      if (nextAccountId !== undefined) {
+        setWalletAccountId(nextAccountId);
+      }
+      setActiveTab(tab);
+      setMountedTabs((prev) => (prev[tab] ? prev : { ...prev, [tab]: true }));
+      syncWebHash(tab, tab === 'wallet' ? resolvedAccountId : null);
+    },
+    [syncWebHash, walletAccountId]
+  );
+
+  const handleSelectWalletAccount = useCallback(
+    (accountId: string | null) => {
+      setWalletAccountId(accountId);
+      if (activeTab === 'wallet') {
+        syncWebHash('wallet', accountId);
+      }
+    },
+    [activeTab, syncWebHash]
+  );
+
+  useEffect(() => {
+    if (
+      !isHydrated ||
+      !hasCompletedOnboarding ||
+      typeof BackHandler?.addEventListener !== 'function'
+    ) {
+      return;
+    }
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (showFaq) {
+        setShowFaq(false);
+        return true;
+      }
+      if (activeTab === 'wallet' && walletAccountId !== null) {
+        handleSelectWalletAccount(null);
+        return true;
+      }
+      if (activeTab !== 'today') {
+        switchTab('today');
+        return true;
+      }
+      return false;
+    });
+    return () => {
+      subscription.remove();
+    };
+  }, [
+    isHydrated,
+    hasCompletedOnboarding,
+    showFaq,
+    activeTab,
+    walletAccountId,
+    handleSelectWalletAccount,
+    switchTab,
+  ]);
 
   const statusBarStyle = shade.dark ? 'light' : 'dark';
 
@@ -324,32 +496,66 @@ const AppShell: React.FC = () => {
           distance={10}
           style={styles.body}
         >
-          {activeTab === 'today' && (
-            <TodayScreen
-              onOpenVault={() => switchTab('vault')}
-              onOpenBudgetSetup={() => switchTab('setup')}
-              onOpenAllowances={() => {
-                setFocusAllowancesKey((k) => k + 1);
-                switchTab('setup');
-              }}
-              onOpenDebts={() => {
-                setFocusDebtsKey((k) => k + 1);
-                switchTab('wallet');
-              }}
-            />
+          {mountedTabs.today && (
+            <View
+              style={[
+                styles.tabPane,
+                activeTab !== 'today' && styles.tabPaneHidden,
+              ]}
+            >
+              <TodayScreen
+                onOpenVault={() => switchTab('vault')}
+                onOpenBudgetSetup={() => switchTab('setup')}
+                onOpenAllowances={() => {
+                  setFocusAllowancesKey((k) => k + 1);
+                  switchTab('setup');
+                }}
+                onOpenDebts={() => {
+                  setFocusDebtsKey((k) => k + 1);
+                  switchTab('wallet', null);
+                }}
+              />
+            </View>
           )}
-          {activeTab === 'wallet' && (
-            <WalletScreen focusDebtsKey={focusDebtsKey} />
+          {mountedTabs.wallet && (
+            <View
+              style={[
+                styles.tabPane,
+                activeTab !== 'wallet' && styles.tabPaneHidden,
+              ]}
+            >
+              <WalletScreen
+                focusDebtsKey={focusDebtsKey}
+                selectedAccountId={walletAccountId}
+                onSelectAccount={handleSelectWalletAccount}
+              />
+            </View>
           )}
-          {activeTab === 'vault' && <TreatVaultScreen />}
-          {activeTab === 'setup' && (
-            <SetupAndStyleScreen
-              focusAllowancesKey={focusAllowancesKey}
-              onOpenFaq={() => {
-                triggerLightHaptic();
-                setShowFaq(true);
-              }}
-            />
+          {mountedTabs.vault && (
+            <View
+              style={[
+                styles.tabPane,
+                activeTab !== 'vault' && styles.tabPaneHidden,
+              ]}
+            >
+              <TreatVaultScreen />
+            </View>
+          )}
+          {mountedTabs.setup && (
+            <View
+              style={[
+                styles.tabPane,
+                activeTab !== 'setup' && styles.tabPaneHidden,
+              ]}
+            >
+              <SetupAndStyleScreen
+                focusAllowancesKey={focusAllowancesKey}
+                onOpenFaq={() => {
+                  triggerLightHaptic();
+                  setShowFaq(true);
+                }}
+              />
+            </View>
           )}
         </FadeSlideIn>
       </View>
@@ -662,6 +868,12 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 16,
     paddingTop: 12,
+  },
+  tabPane: {
+    flex: 1,
+  },
+  tabPaneHidden: {
+    display: 'none',
   },
   tabBar: {
     flexDirection: 'row',

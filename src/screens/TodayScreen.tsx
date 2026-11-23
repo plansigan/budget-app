@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import {
   ActionAmountModal,
@@ -97,7 +97,7 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
 
   const isTodaySelected = selectedDateKey === todayKey;
   const isOver = safeToSpendOnSelectedDay <= 0;
-  const todayDateObj = parseDateKeyLocal(todayKey);
+  const todayDateObj = useMemo(() => parseDateKeyLocal(todayKey), [todayKey]);
   const currentMonthKey = todayKey.slice(0, 7);
   const paydayLabel = getNextPaydayLabel(settings, todayDateObj);
   const isPaydayPromptVisible =
@@ -105,34 +105,46 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
     lastPaydayCheckInKey !== todayKey;
   const expectedPay = getExpectedPaycheckAmount(settings);
 
-  const upcomingUnpaidBills = billItems
-    .filter(
-      (b) => typeof b.dueDay === 'number' && b.lastPaidMonth !== currentMonthKey
-    )
-    .map((b) => ({
-      bill: b,
-      daysLeft: getDaysUntilDayOfMonth(b.dueDay!, todayDateObj),
-    }))
-    .filter((item) => item.daysLeft <= 5)
-    .sort((a, b) => a.daysLeft - b.daysLeft)
-    .slice(0, 3);
-
-  const openDebts = (debts || []).filter(
-    (d) => roundCurrency(Math.max(0, d.amount - d.paidAmount)) > 0
+  const upcomingUnpaidBills = useMemo(
+    () =>
+      billItems
+        .filter(
+          (b) =>
+            typeof b.dueDay === 'number' && b.lastPaidMonth !== currentMonthKey
+        )
+        .map((b) => ({
+          bill: b,
+          daysLeft: getDaysUntilDayOfMonth(b.dueDay!, todayDateObj),
+        }))
+        .filter((item) => item.daysLeft <= 5)
+        .sort((a, b) => a.daysLeft - b.daysLeft)
+        .slice(0, 3),
+    [billItems, currentMonthKey, todayDateObj]
   );
-  const iOweTotal = openDebts
-    .filter((d) => d.direction === 'i_owe')
-    .reduce(
-      (sum, d) => roundCurrency(sum + Math.max(0, d.amount - d.paidAmount)),
-      0
+
+  const { openDebts, iOweTotal, owedToMeTotal, previewDebts } = useMemo(() => {
+    const active = (debts || []).filter(
+      (d) => roundCurrency(Math.max(0, d.amount - d.paidAmount)) > 0
     );
-  const owedToMeTotal = openDebts
-    .filter((d) => d.direction === 'owed_to_me')
-    .reduce(
-      (sum, d) => roundCurrency(sum + Math.max(0, d.amount - d.paidAmount)),
-      0
-    );
-  const previewDebts = openDebts.slice(0, 3);
+    const owe = active
+      .filter((d) => d.direction === 'i_owe')
+      .reduce(
+        (sum, d) => roundCurrency(sum + Math.max(0, d.amount - d.paidAmount)),
+        0
+      );
+    const owed = active
+      .filter((d) => d.direction === 'owed_to_me')
+      .reduce(
+        (sum, d) => roundCurrency(sum + Math.max(0, d.amount - d.paidAmount)),
+        0
+      );
+    return {
+      openDebts: active,
+      iOweTotal: owe,
+      owedToMeTotal: owed,
+      previewDebts: active.slice(0, 3),
+    };
+  }, [debts]);
 
   const goal = Math.max(0.01, settings.monthlySavingsGoal);
   const savPct = Math.min(100, Math.round((monthlySaved / goal) * 100));
@@ -150,8 +162,9 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
     activeTreat!.funded >= activeTreat!.target &&
     !activeTreat!.claimed;
 
-  const selectedDayEntries = entries.filter(
-    (e) => (e.dateKey || todayKey) === selectedDateKey
+  const selectedDayEntries = useMemo(
+    () => entries.filter((e) => (e.dateKey || todayKey) === selectedDateKey),
+    [entries, selectedDateKey, todayKey]
   );
 
   return (

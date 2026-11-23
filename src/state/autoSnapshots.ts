@@ -265,15 +265,11 @@ export async function captureAutoSnapshot(
 ): Promise<AutoBackupSnapshot | null> {
   try {
     const savedAt = now.toISOString();
-    const json = JSON.stringify(
-      {
-        version: 6,
-        exportedAt: savedAt,
-        data: state,
-      },
-      null,
-      2
-    );
+    const json = JSON.stringify({
+      version: 6,
+      exportedAt: savedAt,
+      data: state,
+    });
 
     const snapshot: AutoBackupSnapshot = {
       id: `snap-${now.getTime()}-${Math.floor(Math.random() * 10000)}`,

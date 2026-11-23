@@ -90,18 +90,13 @@ export function computeBaseDailyAllowance(
   return Math.max(0, Math.round((discretionary / days) * 100) / 100);
 }
 
-export function computeDayMetricsFromEntries(
-  entries: TransactionEntry[],
+export function computeDayMetricsFromDayEntries(
+  dayEntries: TransactionEntry[],
   dateKey: string,
   baseDaily: number,
   rolloverForToday: number,
-  todayKey: string,
-  fallbackDateKey: string
+  todayKey: string
 ): DaySummary {
-  const dayEntries = entries.filter(
-    (e) => (e.dateKey || fallbackDateKey) === dateKey
-  );
-
   let spent = 0;
   let dailyInflowCredit = 0;
   let savedOrSkipped = 0;
@@ -146,4 +141,25 @@ export function computeDayMetricsFromEntries(
     safeRemaining,
     entriesCount: dayEntries.length,
   };
+}
+
+export function computeDayMetricsFromEntries(
+  entries: TransactionEntry[],
+  dateKey: string,
+  baseDaily: number,
+  rolloverForToday: number,
+  todayKey: string,
+  fallbackDateKey: string
+): DaySummary {
+  const dayEntries = entries.filter(
+    (e) => (e.dateKey || fallbackDateKey) === dateKey
+  );
+
+  return computeDayMetricsFromDayEntries(
+    dayEntries,
+    dateKey,
+    baseDaily,
+    rolloverForToday,
+    todayKey
+  );
 }

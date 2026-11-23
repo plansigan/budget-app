@@ -1,10 +1,7 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Animated,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  Pressable,
+  FlatList,
+  ListRenderItemInfo,
   ScrollView,
   StyleSheet,
   Text,
@@ -20,9 +17,9 @@ import {
   formatEntryDateLocal,
   getTransactionPresentation,
 } from '../utils/transactionDisplay';
-import { useWebKeyboardInset } from '../utils/useWebKeyboardInset';
 import { ScalePressable } from './AnimatedPrimitives';
 import { AppIcon, IconBadge } from './AppIcon';
+import { BaseModal } from './BaseModal';
 import { ConfirmModal } from './ConfirmModal';
 import { EditTransactionModal } from './EditTransactionModal';
 
@@ -45,7 +42,7 @@ const HISTORY_FILTERS: Array<{ key: HistoryFilterKey; label: string }> = [
   { key: 'wallet', label: 'Wallet' },
 ];
 
-const PAGE_SIZE = 30;
+const HistoryRowSeparator: React.FC = () => <View style={{ height: 6 }} />;
 
 function matchesHistoryFilter(
   type: TransactionType,
@@ -85,22 +82,16 @@ interface ActivityHistoryModalProps {
   onClose: () => void;
 }
 
-/**
- * Full searchable & filterable transaction history modal with paginated
- * rendering and 1-tap Undo for every entry.
- */
-export const ActivityHistoryModal: React.FC<ActivityHistoryModalProps> = ({
+const ActivityHistoryModalContent: React.FC<ActivityHistoryModalProps> = ({
   visible,
   initialMonthKey = null,
   onClose,
 }) => {
   const { shade, privacyMode, entries, treats, undoEntry } = useBudget();
-  const cardScale = useRef(new Animated.Value(0.95)).current;
 
   const [query, setQuery] = useState('');
   const [filterKey, setFilterKey] = useState<HistoryFilterKey>('all');
   const [monthFilter, setMonthFilter] = useState<string | null>(initialMonthKey);
-  const [visibleLimit, setVisibleLimit] = useState(PAGE_SIZE);
   const [editingEntry, setEditingEntry] = useState<TransactionEntry | null>(
     null
   );
@@ -114,15 +105,7 @@ export const ActivityHistoryModal: React.FC<ActivityHistoryModalProps> = ({
       return;
     }
     setMonthFilter(initialMonthKey || null);
-    setVisibleLimit(PAGE_SIZE);
-    cardScale.setValue(0.95);
-    Animated.spring(cardScale, {
-      toValue: 1,
-      speed: 28,
-      bounciness: 6,
-      useNativeDriver: true,
-    }).start();
-  }, [visible, initialMonthKey, cardScale]);
+  }, [visible, initialMonthKey]);
 
   const monthOptions = useMemo(() => {
     const keys = new Set<string>();
@@ -157,56 +140,126 @@ export const ActivityHistoryModal: React.FC<ActivityHistoryModalProps> = ({
     });
   }, [entries, filterKey, monthFilter, query]);
 
-  const visibleEntries = useMemo(
-    () => filteredEntries.slice(0, visibleLimit),
-    [filteredEntries, visibleLimit]
+  const renderHistoryItem = useCallback(
+    ({ item: entry }: ListRenderItemInfo<TransactionEntry>) => {
+      const { deltaText, deltaColor, isTreatHighlight } =
+        getTransactionPresentation(entry, shade, privacyMode);
+      const dateStr = formatEntryDateLocal(entry);
+      const editable =
+        isEditableEntryType(entry) &&
+        (entry.type !== 'treat_direct' ||
+          !entry.treatId ||
+          !treats.some((t) => t.id === entry.treatId && t.claimed));
+      const sourceMeta =
+        entry.type === 'wallet_transfer' &&
+        entry.paymentSourceLabel &&
+        entry.toPaymentSourceLabel
+          ? `${entry.paymentSourceLabel} → ${entry.toPaymentSourceLabel}`
+          : entry.paymentSourceLabel || '';
+      return (
+        <View
+          style={[
+            styles.rowCard,
+            {
+              backgroundColor: shade.surface,
+              borderColor: isTreatHighlight ? shade.dopamine : shade.border,
+            },
+          ]}
+        >
+          <View style={styles.rowContent}>
+            <View style={styles.rowTop}>
+              <ScalePressable
+                disabled={!editable}
+                onPress={() => {
+                  if (!editable) return;
+                  triggerLightHaptic();
+                  setEditingEntry(entry);
+                }}
+                style={{
+                  flex: 1,
+                  minWidth: 0,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 10,
+                }}
+              >
+                <IconBadge
+                  name={entry.icon}
+                  size={13}
+                  color={deltaColor}
+                  bg={shade.card}
+                  boxSize={30}
+                />
+                <Text
+                  numberOfLines={1}
+                  style={[styles.rowLabel, { color: shade.text }]}
+                >
+                  {entry.label}
+                </Text>
+              </ScalePressable>
+              <ScalePressable
+                onPress={() => {
+                  const linkedClaimed =
+                    (entry.type === 'treat_direct' ||
+                      entry.type === 'impulse_skipped' ||
+                      entry.type === 'midnight_split') &&
+                    Boolean(entry.treatId) &&
+                    treats.some((t) => t.id === entry.treatId && t.claimed);
+                  if (linkedClaimed) {
+                    undoEntry(entry.id);
+                    return;
+                  }
+                  triggerLightHaptic();
+                  setPendingUndoEntry(entry);
+                }}
+                accessibilityLabel={`Undo ${entry.label}`}
+                hitSlop={6}
+                style={[styles.undoBtn, { backgroundColor: shade.card }]}
+              >
+                <Text style={[styles.undoText, { color: shade.muted }]}>
+                  Undo
+                </Text>
+              </ScalePressable>
+            </View>
+            <ScalePressable
+              disabled={!editable}
+              onPress={() => {
+                if (!editable) return;
+                triggerLightHaptic();
+                setEditingEntry(entry);
+              }}
+              style={styles.rowBottom}
+            >
+              <Text
+                numberOfLines={1}
+                style={[styles.rowSub, { color: shade.muted }]}
+              >
+                {dateStr}
+                {sourceMeta ? ` • ${sourceMeta}` : ''}
+              </Text>
+              <Text style={[styles.rowDelta, { color: deltaColor }]}>
+                {deltaText}
+              </Text>
+            </ScalePressable>
+          </View>
+        </View>
+      );
+    },
+    [shade, privacyMode, treats, undoEntry]
   );
-
-  const hasMore = filteredEntries.length > visibleEntries.length;
-  const { keyboardInset, viewportHeight, offsetTop } = useWebKeyboardInset(
-    visible && editingEntry === null && pendingUndoEntry === null
-  );
-  const webKeyboardBackdrop =
-    Platform.OS === 'web' && keyboardInset > 0
-      ? {
-          paddingBottom: keyboardInset + 8,
-          paddingTop: Math.max(12, offsetTop + 8),
-        }
-      : undefined;
-  const webKeyboardCard =
-    Platform.OS === 'web' && keyboardInset > 0 && viewportHeight > 0
-      ? { maxHeight: Math.max(240, viewportHeight - 24) }
-      : undefined;
 
   return (
     <>
-      <Modal
+      <BaseModal
         visible={visible && editingEntry === null && pendingUndoEntry === null}
-        transparent
-        animationType="fade"
-        onRequestClose={onClose}
+        onClose={onClose}
+        dismissLabel="Dismiss activity history"
+        cardStyle={[
+          styles.card,
+          { backgroundColor: shade.card, borderColor: shade.border },
+        ]}
       >
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={[styles.backdrop, webKeyboardBackdrop]}
-        >
-          <Pressable
-            style={StyleSheet.absoluteFill}
-            onPress={onClose}
-            accessibilityLabel="Dismiss activity history"
-          />
-          <Animated.View
-            style={[
-              styles.card,
-              {
-                backgroundColor: shade.card,
-                borderColor: shade.border,
-                transform: [{ scale: cardScale }],
-              },
-              webKeyboardCard,
-            ]}
-          >
-            <View style={styles.headerRow}>
+        <View style={styles.headerRow}>
               <View style={styles.titleRow}>
                 <IconBadge
                   name="list"
@@ -249,10 +302,7 @@ export const ActivityHistoryModal: React.FC<ActivityHistoryModalProps> = ({
             <AppIcon name="search" size={14} color={shade.muted} />
             <TextInput
               value={query}
-              onChangeText={(text) => {
-                setQuery(text);
-                setVisibleLimit(PAGE_SIZE);
-              }}
+              onChangeText={setQuery}
               placeholder="Search note, category, or account..."
               placeholderTextColor={shade.muted}
               style={[styles.searchInput, { color: shade.text }]}
@@ -261,7 +311,6 @@ export const ActivityHistoryModal: React.FC<ActivityHistoryModalProps> = ({
               <ScalePressable
                 onPress={() => {
                   setQuery('');
-                  setVisibleLimit(PAGE_SIZE);
                 }}
                 accessibilityLabel="Clear search"
                 hitSlop={6}
@@ -285,7 +334,6 @@ export const ActivityHistoryModal: React.FC<ActivityHistoryModalProps> = ({
                   onPress={() => {
                     triggerLightHaptic();
                     setFilterKey(f.key);
-                    setVisibleLimit(PAGE_SIZE);
                   }}
                   style={[
                     styles.chipPill,
@@ -319,7 +367,6 @@ export const ActivityHistoryModal: React.FC<ActivityHistoryModalProps> = ({
                 onPress={() => {
                   triggerLightHaptic();
                   setMonthFilter(null);
-                  setVisibleLimit(PAGE_SIZE);
                 }}
                 style={[
                   styles.monthPill,
@@ -352,7 +399,6 @@ export const ActivityHistoryModal: React.FC<ActivityHistoryModalProps> = ({
                     onPress={() => {
                       triggerLightHaptic();
                       setMonthFilter(mk);
-                      setVisibleLimit(PAGE_SIZE);
                     }}
                     style={[
                       styles.monthPill,
@@ -379,17 +425,23 @@ export const ActivityHistoryModal: React.FC<ActivityHistoryModalProps> = ({
           )}
 
           <Text style={[styles.countMeta, { color: shade.muted }]}>
-            Showing {visibleEntries.length} of {filteredEntries.length} matching{' '}
+            Showing {filteredEntries.length} matching{' '}
             {filteredEntries.length === 1 ? 'log' : 'logs'}
           </Text>
 
-          <ScrollView
+          <FlatList<TransactionEntry>
+            data={filteredEntries}
+            keyExtractor={(item) => item.id}
+            renderItem={renderHistoryItem}
+            ItemSeparatorComponent={HistoryRowSeparator}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
             contentContainerStyle={styles.listBody}
             style={styles.listScroll}
-          >
-            {visibleEntries.length === 0 ? (
+            initialNumToRender={20}
+            maxToRenderPerBatch={20}
+            windowSize={7}
+            ListEmptyComponent={
               <View
                 style={[
                   styles.emptyBox,
@@ -400,138 +452,9 @@ export const ActivityHistoryModal: React.FC<ActivityHistoryModalProps> = ({
                   No logs match your current search or filters.
                 </Text>
               </View>
-            ) : (
-              visibleEntries.map((entry) => {
-                const { deltaText, deltaColor, isTreatHighlight } =
-                  getTransactionPresentation(entry, shade, privacyMode);
-                const dateStr = formatEntryDateLocal(entry);
-                const editable =
-                  isEditableEntryType(entry) &&
-                  (entry.type !== 'treat_direct' ||
-                    !entry.treatId ||
-                    !treats.some((t) => t.id === entry.treatId && t.claimed));
-                const sourceMeta =
-                  entry.type === 'wallet_transfer' &&
-                  entry.paymentSourceLabel &&
-                  entry.toPaymentSourceLabel
-                    ? `${entry.paymentSourceLabel} → ${entry.toPaymentSourceLabel}`
-                    : entry.paymentSourceLabel || '';
-                return (
-                  <View
-                    key={entry.id}
-                    style={[
-                      styles.rowCard,
-                      {
-                        backgroundColor: shade.surface,
-                        borderColor: isTreatHighlight
-                          ? shade.dopamine
-                          : shade.border,
-                      },
-                    ]}
-                  >
-                    <View style={styles.rowContent}>
-                      <View style={styles.rowTop}>
-                        <ScalePressable
-                          disabled={!editable}
-                          onPress={() => {
-                            if (!editable) return;
-                            triggerLightHaptic();
-                            setEditingEntry(entry);
-                          }}
-                          style={{
-                            flex: 1,
-                            minWidth: 0,
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            gap: 10,
-                          }}
-                        >
-                          <IconBadge
-                            name={entry.icon}
-                            size={13}
-                            color={deltaColor}
-                            bg={shade.card}
-                            boxSize={30}
-                          />
-                          <Text
-                            numberOfLines={1}
-                            style={[styles.rowLabel, { color: shade.text }]}
-                          >
-                            {entry.label}
-                          </Text>
-                        </ScalePressable>
-                        <ScalePressable
-                          onPress={() => {
-                            const linkedClaimed =
-                              (entry.type === 'treat_direct' ||
-                                entry.type === 'impulse_skipped' ||
-                                entry.type === 'midnight_split') &&
-                              Boolean(entry.treatId) &&
-                              treats.some(
-                                (t) => t.id === entry.treatId && t.claimed
-                              );
-                            if (linkedClaimed) {
-                              undoEntry(entry.id);
-                              return;
-                            }
-                            triggerLightHaptic();
-                            setPendingUndoEntry(entry);
-                          }}
-                          accessibilityLabel={`Undo ${entry.label}`}
-                          hitSlop={6}
-                          style={[styles.undoBtn, { backgroundColor: shade.card }]}
-                        >
-                          <Text style={[styles.undoText, { color: shade.muted }]}>
-                            Undo
-                          </Text>
-                        </ScalePressable>
-                      </View>
-                      <ScalePressable
-                        disabled={!editable}
-                        onPress={() => {
-                          if (!editable) return;
-                          triggerLightHaptic();
-                          setEditingEntry(entry);
-                        }}
-                        style={styles.rowBottom}
-                      >
-                        <Text
-                          numberOfLines={1}
-                          style={[styles.rowSub, { color: shade.muted }]}
-                        >
-                          {dateStr}
-                          {sourceMeta ? ` • ${sourceMeta}` : ''}
-                        </Text>
-                        <Text style={[styles.rowDelta, { color: deltaColor }]}>
-                          {deltaText}
-                        </Text>
-                      </ScalePressable>
-                    </View>
-                  </View>
-                );
-              })
-            )}
-
-            {hasMore && (
-              <ScalePressable
-                onPress={() => {
-                  triggerLightHaptic();
-                  setVisibleLimit((prev) => prev + PAGE_SIZE);
-                }}
-                style={[
-                  styles.loadMoreBtn,
-                  { backgroundColor: shade.surface, borderColor: shade.border },
-                ]}
-              >
-                <Text style={[styles.loadMoreText, { color: shade.accent }]}>
-                  Load {Math.min(PAGE_SIZE, filteredEntries.length - visibleEntries.length)} More
-                </Text>
-              </ScalePressable>
-            )}
-          </ScrollView>
-        </Animated.View>
-      </KeyboardAvoidingView>
-    </Modal>
+            }
+          />
+      </BaseModal>
 
       <EditTransactionModal
         entry={editingEntry}
@@ -565,29 +488,21 @@ export const ActivityHistoryModal: React.FC<ActivityHistoryModalProps> = ({
   );
 };
 
+/**
+ * Full searchable & filterable transaction history modal with virtualized
+ * rendering and 1-tap Undo for every entry.
+ */
+export const ActivityHistoryModal: React.FC<ActivityHistoryModalProps> = (
+  props
+) => {
+  if (!props.visible) return null;
+  return <ActivityHistoryModalContent {...props} />;
+};
+
 const styles = StyleSheet.create({
-  backdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(17, 24, 39, 0.45)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 18,
-  },
   card: {
-    width: '100%',
-    maxWidth: 390,
-    minWidth: 0,
-    overflow: 'hidden',
-    borderRadius: 24,
-    borderWidth: 1,
-    padding: 18,
     gap: 10,
     maxHeight: '88%',
-    shadowColor: '#111318',
-    shadowOpacity: 0.14,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 10,
   },
   headerRow: {
     flexDirection: 'row',
@@ -670,7 +585,6 @@ const styles = StyleSheet.create({
     minHeight: 160,
   },
   listBody: {
-    gap: 6,
     paddingBottom: 6,
   },
   emptyBox: {
@@ -733,16 +647,5 @@ const styles = StyleSheet.create({
   undoText: {
     fontSize: 10,
     fontWeight: '700',
-  },
-  loadMoreBtn: {
-    borderRadius: 12,
-    borderWidth: 1,
-    paddingVertical: 10,
-    alignItems: 'center',
-    marginTop: 4,
-  },
-  loadMoreText: {
-    fontSize: 12,
-    fontWeight: '800',
   },
 });

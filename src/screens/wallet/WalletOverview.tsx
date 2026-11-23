@@ -174,6 +174,8 @@ export const WalletOverview: React.FC<WalletOverviewProps> = ({
             triggerLightHaptic();
             setSubTab('accounts');
           }}
+          accessibilityRole="tab"
+          accessibilityState={{ selected: subTab === 'accounts' }}
           style={[
             styles.subTabBtn,
             subTab === 'accounts' && { backgroundColor: shade.card },
@@ -195,6 +197,8 @@ export const WalletOverview: React.FC<WalletOverviewProps> = ({
             triggerLightHaptic();
             setSubTab('installments');
           }}
+          accessibilityRole="tab"
+          accessibilityState={{ selected: subTab === 'installments' }}
           style={[
             styles.subTabBtn,
             subTab === 'installments' && { backgroundColor: shade.card },
@@ -216,6 +220,8 @@ export const WalletOverview: React.FC<WalletOverviewProps> = ({
             triggerLightHaptic();
             setSubTab('debts');
           }}
+          accessibilityRole="tab"
+          accessibilityState={{ selected: subTab === 'debts' }}
           style={[
             styles.subTabBtn,
             subTab === 'debts' && { backgroundColor: shade.card },

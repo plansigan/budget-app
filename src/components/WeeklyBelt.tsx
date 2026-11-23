@@ -84,7 +84,7 @@ function buildWeekWindow(
  * Top Mon-Sun weekly belt showing today's day and letting the user step backward
  * across recent weeks to inspect past performance or log forgotten expenses.
  */
-export const WeeklyBelt: React.FC = () => {
+export const WeeklyBelt: React.FC = React.memo(() => {
   const {
     shade,
     todayKey,
@@ -108,7 +108,10 @@ export const WeeklyBelt: React.FC = () => {
     () => formatDateKeyLabel(selectedDateKey),
     [selectedDateKey]
   );
-  const selectedSummary = getDaySummary(selectedDateKey);
+  const selectedSummary = useMemo(
+    () => getDaySummary(selectedDateKey),
+    [getDaySummary, selectedDateKey]
+  );
 
   const weekHeaderLabel =
     weekOffset === 0
@@ -188,6 +191,12 @@ export const WeeklyBelt: React.FC = () => {
                 key={item.dateKey}
                 disabled={item.isFuture}
                 onPress={() => setSelectedDateKey(item.dateKey)}
+                accessibilityRole="button"
+                accessibilityLabel={item.fullLabel}
+                accessibilityState={{
+                  selected: isSelected,
+                  disabled: item.isFuture,
+                }}
                 scaleTo={0.92}
                 style={[
                   styles.dayPill,
@@ -274,7 +283,7 @@ export const WeeklyBelt: React.FC = () => {
       )}
     </View>
   );
-};
+});
 
 const styles = StyleSheet.create({
   container: {

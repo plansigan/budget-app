@@ -1,8 +1,5 @@
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { useMemo } from 'react';
 import {
-  Animated,
-  Modal,
-  Pressable,
   Share,
   StyleSheet,
   Text,
@@ -18,6 +15,7 @@ import {
 import { formatPesoDisplay } from '../utils/numberFormat';
 import { ScalePressable } from './AnimatedPrimitives';
 import { AppIcon } from './AppIcon';
+import { BaseModal } from './BaseModal';
 
 interface MonthlyWrapUpModalProps {
   visible: boolean;
@@ -25,11 +23,7 @@ interface MonthlyWrapUpModalProps {
   archiveSnapshot?: MonthlyArchiveSnapshot | null;
 }
 
-/**
- * Dark Obsidian Spotify-Wrapped-inspired Monthly Report Card summarizing savings,
- * spending, streaks, top category, and grade with 1-tap Share.
- */
-export const MonthlyWrapUpModal: React.FC<MonthlyWrapUpModalProps> = ({
+const MonthlyWrapUpModalContent: React.FC<MonthlyWrapUpModalProps> = ({
   visible,
   onClose,
   archiveSnapshot = null,
@@ -45,19 +39,6 @@ export const MonthlyWrapUpModal: React.FC<MonthlyWrapUpModalProps> = ({
     sinkingFunds,
     privacyMode,
   } = useBudget();
-
-  const cardScale = useRef(new Animated.Value(0.9)).current;
-
-  useEffect(() => {
-    if (!visible) return;
-    cardScale.setValue(0.9);
-    Animated.spring(cardScale, {
-      toValue: 1,
-      speed: 24,
-      bounciness: 8,
-      useNativeDriver: true,
-    }).start();
-  }, [visible, cardScale]);
 
   const report = useMemo(
     () =>
@@ -101,29 +82,20 @@ export const MonthlyWrapUpModal: React.FC<MonthlyWrapUpModalProps> = ({
   };
 
   return (
-    <Modal
+    <BaseModal
       visible={visible}
-      transparent
-      animationType="fade"
-      onRequestClose={onClose}
+      onClose={onClose}
+      avoidKeyboard={false}
+      initialScale={0.9}
+      springSpeed={24}
+      springBounciness={8}
+      backdropStyle={styles.backdrop}
+      cardStyle={[
+        styles.card,
+        { backgroundColor: shade.heroBg, borderColor: shade.heroBorder },
+      ]}
     >
-      <View style={styles.backdrop}>
-        <Pressable
-          style={StyleSheet.absoluteFill}
-          onPress={onClose}
-          accessibilityLabel="Dismiss dialog"
-        />
-        <Animated.View
-          style={[
-            styles.card,
-            {
-              backgroundColor: shade.heroBg,
-              borderColor: shade.heroBorder,
-              transform: [{ scale: cardScale }],
-            },
-          ]}
-        >
-          <View style={styles.topRow}>
+      <View style={styles.topRow}>
             <Text style={[styles.kicker, { color: shade.heroMuted }]}>
               {report.monthTitle}
             </Text>
@@ -273,25 +245,25 @@ export const MonthlyWrapUpModal: React.FC<MonthlyWrapUpModalProps> = ({
               </Text>
             </ScalePressable>
           </View>
-        </Animated.View>
-      </View>
-    </Modal>
+    </BaseModal>
   );
+};
+
+/**
+ * Dark Obsidian Spotify-Wrapped-inspired Monthly Report Card summarizing savings,
+ * spending, streaks, top category, and grade with 1-tap Share.
+ */
+export const MonthlyWrapUpModal: React.FC<MonthlyWrapUpModalProps> = (props) => {
+  if (!props.visible) return null;
+  return <MonthlyWrapUpModalContent {...props} />;
 };
 
 const styles = StyleSheet.create({
   backdrop: {
-    flex: 1,
     backgroundColor: 'rgba(17, 24, 39, 0.55)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 18,
   },
   card: {
-    width: '100%',
-    maxWidth: 390,
     borderRadius: 26,
-    borderWidth: 1,
     padding: 20,
     gap: 16,
   },
