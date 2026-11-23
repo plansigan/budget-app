@@ -49,6 +49,7 @@ const SNAPSHOT_REASON_LABEL: Record<AutoBackupSnapshot['reason'], string> = {
 
 interface SetupAndStyleScreenProps {
   focusAllowancesKey?: number;
+  onOpenFaq?: () => void;
 }
 
 /**
@@ -57,6 +58,7 @@ interface SetupAndStyleScreenProps {
  */
 export const SetupAndStyleScreen: React.FC<SetupAndStyleScreenProps> = ({
   focusAllowancesKey = 0,
+  onOpenFaq,
 }) => {
   const {
     shade,
@@ -623,14 +625,19 @@ export const SetupAndStyleScreen: React.FC<SetupAndStyleScreenProps> = ({
             ]}
           >
             <ScalePressable
-              onPress={openTutorial}
+              onPress={() => (onOpenFaq ? onOpenFaq() : openTutorial())}
               style={[styles.groupedRow, { borderBottomColor: shade.border }]}
             >
               <View style={styles.rowLeft}>
                 <AppIcon name="help-circle" size={16} color={shade.dopamine} />
-                <Text style={[styles.rowTitle, { color: shade.dopamine }]}>
-                  Open App Guide
-                </Text>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={[styles.rowTitle, { color: shade.dopamine }]}>
+                    App Guide & FAQ
+                  </Text>
+                  <Text style={[styles.rowSub, { color: shade.muted }]}>
+                    How every feature works & common questions
+                  </Text>
+                </View>
               </View>
               <AppIcon name="chevron-right" size={17} color={shade.muted} />
             </ScalePressable>
