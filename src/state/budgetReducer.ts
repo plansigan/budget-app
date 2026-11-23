@@ -2332,7 +2332,8 @@ export function budgetReducer(
         creditCards: state.creditCards,
       });
 
-      const affectsDailyBudget = Boolean(action.affectsDailyBudget);
+      const affectsDailyBudget =
+        direction === 'owed_to_me' && Boolean(action.affectsDailyBudget);
       const shouldLog =
         Boolean(movement.effectiveSourceId) || affectsDailyBudget;
 

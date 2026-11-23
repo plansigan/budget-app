@@ -19,6 +19,7 @@ interface AccountingOptionsProps {
   onSelectSource: (id: string) => void;
   affectsDaily: boolean;
   onToggleDaily: () => void;
+  showDailyToggle?: boolean;
 }
 
 const DebtAccountingOptions: React.FC<AccountingOptionsProps> = ({
@@ -27,6 +28,7 @@ const DebtAccountingOptions: React.FC<AccountingOptionsProps> = ({
   onSelectSource,
   affectsDaily,
   onToggleDaily,
+  showDailyToggle = true,
 }) => {
   const {
     shade,
@@ -216,32 +218,16 @@ const DebtAccountingOptions: React.FC<AccountingOptionsProps> = ({
         </ScrollView>
       </View>
 
-      <ScalePressable
-        onPress={() => {
-          triggerLightHaptic();
-          onToggleDaily();
-        }}
-        style={[
-          styles.dailyToggleCard,
-          {
-            backgroundColor: shade.surface,
-            borderColor: affectsDaily
-              ? isOutflow
-                ? shade.accent
-                : shade.positive
-              : shade.border,
-          },
-        ]}
-      >
-        <View
+      {showDailyToggle && (
+        <ScalePressable
+          onPress={() => {
+            triggerLightHaptic();
+            onToggleDaily();
+          }}
           style={[
-            styles.checkCircle,
+            styles.dailyToggleCard,
             {
-              backgroundColor: affectsDaily
-                ? isOutflow
-                  ? shade.accent
-                  : shade.positive
-                : shade.card,
+              backgroundColor: shade.surface,
               borderColor: affectsDaily
                 ? isOutflow
                   ? shade.accent
@@ -250,27 +236,45 @@ const DebtAccountingOptions: React.FC<AccountingOptionsProps> = ({
             },
           ]}
         >
-          {affectsDaily && (
-            <AppIcon
-              name="check"
-              size={12}
-              color={isOutflow ? shade.accentText : '#FFFFFF'}
-            />
-          )}
-        </View>
-        <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-          <Text style={[styles.toggleTitle, { color: shade.text }]}>
-            {isOutflow
-              ? "Count against today's Safe-to-Spend"
-              : "Add back to today's Safe-to-Spend"}
-          </Text>
-          <Text style={[styles.toggleSub, { color: shade.muted }]}>
-            {isOutflow
-              ? 'Subtracted from daily allowance (off = reminder only)'
-              : 'Increases today’s allowance (e.g., split payback)'}
-          </Text>
-        </View>
-      </ScalePressable>
+          <View
+            style={[
+              styles.checkCircle,
+              {
+                backgroundColor: affectsDaily
+                  ? isOutflow
+                    ? shade.accent
+                    : shade.positive
+                  : shade.card,
+                borderColor: affectsDaily
+                  ? isOutflow
+                    ? shade.accent
+                    : shade.positive
+                  : shade.border,
+              },
+            ]}
+          >
+            {affectsDaily && (
+              <AppIcon
+                name="check"
+                size={12}
+                color={isOutflow ? shade.accentText : '#FFFFFF'}
+              />
+            )}
+          </View>
+          <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+            <Text style={[styles.toggleTitle, { color: shade.text }]}>
+              {isOutflow
+                ? "Count against today's Safe-to-Spend"
+                : "Add back to today's Safe-to-Spend"}
+            </Text>
+            <Text style={[styles.toggleSub, { color: shade.muted }]}>
+              {isOutflow
+                ? 'Subtracted from daily allowance (off = reminder only)'
+                : 'Increases today’s allowance (e.g., split payback)'}
+            </Text>
+          </View>
+        </ScalePressable>
+      )}
     </View>
   );
 };
@@ -319,11 +323,11 @@ export const AddEditDebtModal: React.FC<AddEditDebtModalProps> = ({
   const handleSelectDirection = (next: DebtDirection) => {
     triggerLightHaptic();
     setDirection(next);
-    if (
-      next === 'i_owe' &&
-      creditCards.some((c) => c.id === sourceId)
-    ) {
-      setSourceId('none');
+    if (next === 'i_owe') {
+      setAffectsDaily(false);
+      if (creditCards.some((c) => c.id === sourceId)) {
+        setSourceId('none');
+      }
     }
   };
 
@@ -356,7 +360,7 @@ export const AddEditDebtModal: React.FC<AddEditDebtModalProps> = ({
         amount: numericAmount,
         note: note.trim() || undefined,
         paymentSourceId: sourceId === 'none' ? undefined : sourceId,
-        affectsDailyBudget: affectsDaily,
+        affectsDailyBudget: direction === 'owed_to_me' ? affectsDaily : false,
       });
     }
     onClose();
@@ -482,6 +486,7 @@ export const AddEditDebtModal: React.FC<AddEditDebtModalProps> = ({
           onSelectSource={setSourceId}
           affectsDaily={affectsDaily}
           onToggleDaily={() => setAffectsDaily((v) => !v)}
+          showDailyToggle={direction === 'owed_to_me'}
         />
       )}
 

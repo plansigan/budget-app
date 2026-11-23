@@ -213,9 +213,60 @@ describe('Debts tracker (I Owe / Owed to Me)', () => {
     expect(outSummary.spent).toBe(120.25);
     expect(outSummary.safeRemaining).toBe(379.75);
 
-    // 2. Inflow affecting daily budget increases safeRemaining without negative spent (even if payback > spent)
-    const samDebt = afterOutflow.debts[0];
-    const afterPayback = budgetReducer(afterOutflow, {
+    // 2. Creating an I Owe debt never inflates daily Safe-to-Spend (even if affectsDailyBudget is passed)
+    const afterIOweAdd = budgetReducer(afterOutflow, {
+      type: 'ADD_DEBT',
+      direction: 'i_owe',
+      personName: 'Marco',
+      amount: 200,
+      affectsDailyBudget: true,
+      dateKey: today,
+      todayKey: today,
+    });
+    expect(afterIOweAdd.entries).toHaveLength(afterOutflow.entries.length);
+    const afterIOweAddSummary = computeDayMetricsFromEntries(
+      afterIOweAdd.entries,
+      today,
+      baseDaily,
+      0,
+      today,
+      today
+    );
+    expect(afterIOweAddSummary.safeRemaining).toBe(379.75);
+
+    // 3. Paying an I Owe debt with daily toggle ON reduces safeRemaining and adds to spent
+    const marcoDebt = afterIOweAdd.debts.find((d) => d.personName === 'Marco')!;
+    const afterIOwePay = budgetReducer(afterIOweAdd, {
+      type: 'RECORD_DEBT_PAYMENT',
+      id: marcoDebt.id,
+      amount: 50,
+      affectsDailyBudget: true,
+      dateKey: today,
+      todayKey: today,
+    });
+    const afterIOwePaySummary = computeDayMetricsFromEntries(
+      afterIOwePay.entries,
+      today,
+      baseDaily,
+      0,
+      today,
+      today
+    );
+    expect(afterIOwePaySummary.spent).toBe(170.25);
+    expect(afterIOwePaySummary.safeRemaining).toBe(329.75);
+
+    // 4. Inflow affecting daily budget (e.g., repayments exceeding today's spent)
+    // increases safeRemaining without negative spent, and UNDO_ENTRY reverts it
+    const samDebt = afterIOwePay.debts.find((d) => d.personName === 'Sam')!;
+    const afterBeaAdd = budgetReducer(afterIOwePay, {
+      type: 'ADD_DEBT',
+      direction: 'owed_to_me',
+      personName: 'Bea',
+      amount: 250,
+      todayKey: today,
+    });
+    const beaDebt = afterBeaAdd.debts.find((d) => d.personName === 'Bea')!;
+    const afterSamPayback = budgetReducer(afterBeaAdd, {
       type: 'RECORD_DEBT_PAYMENT',
       id: samDebt.id,
       amount: 120.25,
@@ -223,31 +274,32 @@ describe('Debts tracker (I Owe / Owed to Me)', () => {
       dateKey: today,
       todayKey: today,
     });
-    const afterRefund = budgetReducer(afterPayback, {
-      type: 'ADD_DEBT',
-      direction: 'i_owe',
-      personName: 'Sam',
-      amount: 80,
+    const afterBeaPayback = budgetReducer(afterSamPayback, {
+      type: 'RECORD_DEBT_PAYMENT',
+      id: beaDebt.id,
+      amount: 250,
       affectsDailyBudget: true,
       dateKey: today,
       todayKey: today,
     });
     const inSummary = computeDayMetricsFromEntries(
-      afterRefund.entries,
+      afterBeaPayback.entries,
       today,
       baseDaily,
       0,
       today,
       today
     );
-    expect(inSummary.spent).toBe(120.25);
-    expect(inSummary.safeRemaining).toBe(roundCurrency(500 - 120.25 + 200.25));
+    expect(inSummary.spent).toBe(170.25);
+    expect(inSummary.safeRemaining).toBe(
+      roundCurrency(baseDaily - 170.25 + 120.25 + 250)
+    );
 
-    // Undoing the inflow payment reverts safeRemaining
-    const paybackEntryId = afterPayback.entries[0].id;
-    const afterUndoInflow = budgetReducer(afterRefund, {
+    // Undoing Bea's inflow payment reverts safeRemaining
+    const beaPaybackEntryId = afterBeaPayback.entries[0].id;
+    const afterUndoInflow = budgetReducer(afterBeaPayback, {
       type: 'UNDO_ENTRY',
-      entryId: paybackEntryId,
+      entryId: beaPaybackEntryId,
     });
     const revertedSummary = computeDayMetricsFromEntries(
       afterUndoInflow.entries,
@@ -257,7 +309,9 @@ describe('Debts tracker (I Owe / Owed to Me)', () => {
       today,
       today
     );
-    expect(revertedSummary.safeRemaining).toBe(roundCurrency(500 - 120.25 + 80));
+    expect(revertedSummary.safeRemaining).toBe(
+      roundCurrency(baseDaily - 170.25 + 120.25)
+    );
   });
 
   it('supports UPDATE_DEBT clamping and DELETE_DEBT cleanly', () => {
