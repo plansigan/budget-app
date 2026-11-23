@@ -1,6 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { useBudget } from '../context/BudgetContext';
+import {
+  useBudgetActions,
+  useDailyBudget,
+  useThemePrefs,
+  useWallet,
+} from '../context/BudgetContext';
 import {
   getExpectedPaycheckAmount,
   getExpectedPaycheckSavingsSlice,
@@ -28,15 +33,10 @@ export const PaydayCheckInModal: React.FC<PaydayCheckInModalProps> = ({
   visible,
   onClose,
 }) => {
-  const {
-    shade,
-    formatVisiblePeso,
-    settings,
-    cashOnHand,
-    banks,
-    envelopes,
-    logPaydayCheckIn,
-  } = useBudget();
+  const { shade, formatVisiblePeso } = useThemePrefs();
+  const { settings, envelopes } = useDailyBudget();
+  const { cashOnHand, banks } = useWallet();
+  const { logPaydayCheckIn } = useBudgetActions();
 
   const [payText, setPayText] = useState('');
   const [sourceId, setSourceId] = useState('cash');

@@ -8,7 +8,12 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { useBudget } from '../context/BudgetContext';
+import {
+  useBudgetActions,
+  useDailyBudget,
+  useGoals,
+  useThemePrefs,
+} from '../context/BudgetContext';
 import { isEditableEntryType } from '../state/budgetReducer';
 import { TransactionEntry, TransactionType } from '../types/budget';
 import { triggerLightHaptic } from '../utils/haptics';
@@ -87,7 +92,10 @@ const ActivityHistoryModalContent: React.FC<ActivityHistoryModalProps> = ({
   initialMonthKey = null,
   onClose,
 }) => {
-  const { shade, privacyMode, entries, treats, undoEntry } = useBudget();
+  const { shade, privacyMode } = useThemePrefs();
+  const { entries } = useDailyBudget();
+  const { treats } = useGoals();
+  const { undoEntry } = useBudgetActions();
 
   const [query, setQuery] = useState('');
   const [filterKey, setFilterKey] = useState<HistoryFilterKey>('all');

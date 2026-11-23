@@ -5,7 +5,11 @@ import {
   Text,
   View,
 } from 'react-native';
-import { useBudget } from '../context/BudgetContext';
+import {
+  useDailyBudget,
+  useGoals,
+  useThemePrefs,
+} from '../context/BudgetContext';
 import { MonthlyArchiveSnapshot } from '../types/budget';
 import { triggerLightHaptic, triggerSuccessHaptic } from '../utils/haptics';
 import {
@@ -28,17 +32,10 @@ const MonthlyWrapUpModalContent: React.FC<MonthlyWrapUpModalProps> = ({
   onClose,
   archiveSnapshot = null,
 }) => {
-  const {
-    shade,
-    settings,
-    monthlySaved,
-    entries,
-    streakDays,
-    disciplineScore,
-    treats,
-    sinkingFunds,
-    privacyMode,
-  } = useBudget();
+  const { shade, privacyMode } = useThemePrefs();
+  const { settings, entries } = useDailyBudget();
+  const { monthlySaved, streakDays, disciplineScore, treats, sinkingFunds } =
+    useGoals();
 
   const report = useMemo(
     () =>

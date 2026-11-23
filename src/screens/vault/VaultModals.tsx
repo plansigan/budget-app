@@ -7,7 +7,11 @@ import {
   TREAT_ICON_CHOICES,
 } from '../../components/AppIcon';
 import { FormModal } from '../../components/FormModal';
-import { useBudget } from '../../context/BudgetContext';
+import {
+  useBudgetActions,
+  useGoals,
+  useThemePrefs,
+} from '../../context/BudgetContext';
 import { SinkingFundItem } from '../../types/budget';
 import { triggerLightHaptic } from '../../utils/haptics';
 import { formatPesoInput, parsePesoInput } from '../../utils/numberFormat';
@@ -36,8 +40,10 @@ export const VaultModals: React.FC<VaultModalsProps> = ({
   depositTargetFund,
   onCloseDepositFund,
 }) => {
-  const { shade, treats, addTreat, addSinkingFund, depositToSinkingFund } =
-    useBudget();
+  const { shade } = useThemePrefs();
+  const { treats } = useGoals();
+  const { addTreat, addSinkingFund, depositToSinkingFund } =
+    useBudgetActions();
 
   const [newName, setNewName] = useState('');
   const [newIcon, setNewIcon] = useState<string>('headphones');

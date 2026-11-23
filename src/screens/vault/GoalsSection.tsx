@@ -6,7 +6,11 @@ import {
   ScalePressable,
 } from '../../components/AnimatedPrimitives';
 import { AppIcon, IconBadge } from '../../components/AppIcon';
-import { useBudget } from '../../context/BudgetContext';
+import {
+  useBudgetActions,
+  useGoals,
+  useThemePrefs,
+} from '../../context/BudgetContext';
 import { SinkingFundItem } from '../../types/budget';
 import { triggerLightHaptic } from '../../utils/haptics';
 import { computeSinkingFundPace } from '../../utils/insightsEngine';
@@ -35,17 +39,10 @@ export const GoalsSection: React.FC<GoalsSectionProps> = ({
   onOpenDepositFund,
   onRequestConfirm,
 }) => {
-  const {
-    shade,
-    formatVisiblePeso,
-    treats,
-    activeTreat,
-    sinkingFunds,
-    claimTreat,
-    deleteTreat,
-    setActiveTreat,
-    deleteSinkingFund,
-  } = useBudget();
+  const { shade, formatVisiblePeso } = useThemePrefs();
+  const { treats, activeTreat, sinkingFunds } = useGoals();
+  const { claimTreat, deleteTreat, setActiveTreat, deleteSinkingFund } =
+    useBudgetActions();
 
   const canAddMore = treats.length < 3;
 

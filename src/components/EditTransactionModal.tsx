@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { StyleSheet, Text, TextInput, View } from 'react-native';
-import { useBudget } from '../context/BudgetContext';
+import { useBudgetActions, useThemePrefs } from '../context/BudgetContext';
 import { SpendCategoryKey, TransactionEntry } from '../types/budget';
 import { triggerLightHaptic } from '../utils/haptics';
 import { classifySpendCategory } from '../utils/insightsEngine';
@@ -27,7 +27,8 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
   entry,
   onClose,
 }) => {
-  const { shade, editEntry } = useBudget();
+  const { shade } = useThemePrefs();
+  const { editEntry } = useBudgetActions();
 
   const [amountText, setAmountText] = useState('');
   const [labelText, setLabelText] = useState('');

@@ -6,7 +6,13 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { useBudget } from '../context/BudgetContext';
+import {
+  useBudgetActions,
+  useDailyBudget,
+  useGoals,
+  useThemePrefs,
+  useWallet,
+} from '../context/BudgetContext';
 import { SpendCategoryKey } from '../types/budget';
 import { triggerLightHaptic } from '../utils/haptics';
 import {
@@ -33,21 +39,12 @@ const ActionAmountModalContent: React.FC<ActionAmountModalProps> = ({
   initialEnvelopeId = null,
   onClose,
 }) => {
-  const {
-    shade,
-    formatVisiblePeso,
-    cashOnHand,
-    banks,
-    creditCards,
-    envelopes,
-    activeTreat,
-    selectedDateKey,
-    lastPaymentSourceId,
-    logSpend,
-    spendFromEnvelope,
-    fundActiveTreat,
-    saveToJar,
-  } = useBudget();
+  const { shade, formatVisiblePeso } = useThemePrefs();
+  const { cashOnHand, banks, creditCards, lastPaymentSourceId } = useWallet();
+  const { envelopes, selectedDateKey } = useDailyBudget();
+  const { activeTreat } = useGoals();
+  const { logSpend, spendFromEnvelope, fundActiveTreat, saveToJar } =
+    useBudgetActions();
 
   const [amountText, setAmountText] = useState('');
   const [selectedCategory, setSelectedCategory] =

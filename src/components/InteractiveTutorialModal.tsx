@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Animated, StyleSheet, Text, View } from 'react-native';
-import { useBudget } from '../context/BudgetContext';
+import { useBudgetActions, useThemePrefs } from '../context/BudgetContext';
 import {
   triggerCelebrationHaptic,
   triggerLightHaptic,
@@ -45,7 +45,8 @@ const GUIDE_SLIDES: GuideSlide[] = [
  * Clean, visual Quick Guide with 1 clear primary button per slide and animated mini previews.
  */
 export const InteractiveTutorialModal: React.FC = () => {
-  const { shade, completeTutorial } = useBudget();
+  const { shade } = useThemePrefs();
+  const { completeTutorial } = useBudgetActions();
   const [stepIdx, setStepIdx] = useState(0);
   const [direction, setDirection] = useState<'right' | 'left'>('right');
   const [treatDemoPct, setTreatDemoPct] = useState(38);
