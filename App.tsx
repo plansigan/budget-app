@@ -18,6 +18,7 @@ import {
 } from './src/components/AnimatedPrimitives';
 import { AppErrorBoundary } from './src/components/AppErrorBoundary';
 import { AppIcon } from './src/components/AppIcon';
+import { AppGuideFaqModal } from './src/components/AppGuideFaqModal';
 import { InteractiveTutorialModal } from './src/components/InteractiveTutorialModal';
 import { BudgetProvider, useBudget } from './src/context/BudgetContext';
 import { ToastProvider, useToast } from './src/context/ToastContext';
@@ -72,6 +73,7 @@ const AppShell: React.FC = () => {
     isHydrated,
     hasCompletedOnboarding,
     hasSeenTutorial,
+    openTutorial,
     privacyMode,
     togglePrivacyMode,
     shade,
@@ -82,6 +84,7 @@ const AppShell: React.FC = () => {
   const [pwaUpdateReady, setPwaUpdateReady] = useState(false);
   const [focusAllowancesKey, setFocusAllowancesKey] = useState(0);
   const [focusDebtsKey, setFocusDebtsKey] = useState(0);
+  const [showFaq, setShowFaq] = useState(false);
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
 
@@ -226,6 +229,20 @@ const AppShell: React.FC = () => {
 
         <View style={styles.headerPills}>
           <ScalePressable
+            onPress={() => {
+              triggerLightHaptic();
+              setShowFaq(true);
+            }}
+            accessibilityLabel="Open App Guide and FAQ"
+            hitSlop={6}
+            style={[
+              styles.statusPill,
+              { backgroundColor: shade.surface, borderColor: shade.border },
+            ]}
+          >
+            <AppIcon name="help-circle" size={15} color={shade.text} />
+          </ScalePressable>
+          <ScalePressable
             onPress={togglePrivacyMode}
             accessibilityLabel={privacyMode ? 'Show amounts' : 'Hide amounts'}
             hitSlop={6}
@@ -326,7 +343,13 @@ const AppShell: React.FC = () => {
           )}
           {activeTab === 'vault' && <TreatVaultScreen />}
           {activeTab === 'setup' && (
-            <SetupAndStyleScreen focusAllowancesKey={focusAllowancesKey} />
+            <SetupAndStyleScreen
+              focusAllowancesKey={focusAllowancesKey}
+              onOpenFaq={() => {
+                triggerLightHaptic();
+                setShowFaq(true);
+              }}
+            />
           )}
         </FadeSlideIn>
       </View>
@@ -448,6 +471,14 @@ const AppShell: React.FC = () => {
       </View>
 
       {!hasSeenTutorial && <InteractiveTutorialModal />}
+      <AppGuideFaqModal
+        visible={showFaq}
+        onClose={() => setShowFaq(false)}
+        onReplayQuickGuide={() => {
+          setShowFaq(false);
+          openTutorial();
+        }}
+      />
       <AchievementModal onNavigateTab={(tab) => switchTab(tab)} />
     </View>
   );
