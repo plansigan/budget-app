@@ -21,7 +21,13 @@ import { AppErrorBoundary } from './src/components/AppErrorBoundary';
 import { AppIcon } from './src/components/AppIcon';
 import { AppGuideFaqModal } from './src/components/AppGuideFaqModal';
 import { InteractiveTutorialModal } from './src/components/InteractiveTutorialModal';
-import { BudgetProvider, useBudget } from './src/context/BudgetContext';
+import {
+  BudgetProvider,
+  useBudgetActions,
+  useGoals,
+  useSystemStatus,
+  useThemePrefs,
+} from './src/context/BudgetContext';
 import { ToastProvider, useToast } from './src/context/ToastContext';
 import { OnboardingScreen } from './src/screens/OnboardingScreen';
 import { SetupAndStyleScreen } from './src/screens/SetupAndStyleScreen';
@@ -73,7 +79,7 @@ function buildWebHash(tab: TabKey, walletAccountId: string | null): string {
 }
 
 const ToastOverlay: React.FC = () => {
-  const { shade } = useBudget();
+  const { shade } = useThemePrefs();
   const { toast, dismissToast } = useToast();
 
   if (!toast) return null;
@@ -110,17 +116,11 @@ const ToastOverlay: React.FC = () => {
 };
 
 const AppShell: React.FC = () => {
-  const {
-    isHydrated,
-    hasCompletedOnboarding,
-    hasSeenTutorial,
-    openTutorial,
-    privacyMode,
-    togglePrivacyMode,
-    shade,
-    streakDays,
-    treats,
-  } = useBudget();
+  const { isHydrated, hasCompletedOnboarding, hasSeenTutorial } =
+    useSystemStatus();
+  const { privacyMode, togglePrivacyMode, shade } = useThemePrefs();
+  const { streakDays, treats } = useGoals();
+  const { openTutorial } = useBudgetActions();
   const initialRoute = useMemo<HashRoute>(() => {
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
       return parseWebHashRoute(window.location.hash);

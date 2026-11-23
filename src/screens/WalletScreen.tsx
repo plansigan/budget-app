@@ -6,7 +6,7 @@ import {
   DebtPaymentModal,
 } from '../components/DebtModals';
 import { TransferModal } from '../components/TransferModal';
-import { useBudget } from '../context/BudgetContext';
+import { useWallet } from '../context/BudgetContext';
 import { DebtDirection, DebtItem } from '../types/budget';
 import { triggerLightHaptic } from '../utils/haptics';
 import {
@@ -30,7 +30,7 @@ export const WalletScreen: React.FC<WalletScreenProps> = ({
   selectedAccountId: controlledAccountId,
   onSelectAccount,
 }) => {
-  const { banks, creditCards } = useBudget();
+  const { banks, creditCards } = useWallet();
 
   const [internalAccountId, setInternalAccountId] = useState<string | null>(
     null

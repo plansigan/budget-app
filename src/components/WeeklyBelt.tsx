@@ -1,6 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { getTodayKey, useBudget } from '../context/BudgetContext';
+import {
+  getTodayKey,
+  useBudgetActions,
+  useDailyBudget,
+  useThemePrefs,
+} from '../context/BudgetContext';
 import { parseDateKeyLocal } from '../state/budgetMath';
 import { triggerLightHaptic } from '../utils/haptics';
 import { FadeSlideIn, ScalePressable } from './AnimatedPrimitives';
@@ -85,14 +90,9 @@ function buildWeekWindow(
  * across recent weeks to inspect past performance or log forgotten expenses.
  */
 export const WeeklyBelt: React.FC = React.memo(() => {
-  const {
-    shade,
-    todayKey,
-    selectedDateKey,
-    setSelectedDateKey,
-    getDaySummary,
-    formatVisiblePeso,
-  } = useBudget();
+  const { shade, formatVisiblePeso } = useThemePrefs();
+  const { todayKey, selectedDateKey, getDaySummary } = useDailyBudget();
+  const { setSelectedDateKey } = useBudgetActions();
 
   const [weekOffset, setWeekOffset] = useState(0);
 

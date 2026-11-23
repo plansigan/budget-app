@@ -4,7 +4,7 @@ import { ScalePressable } from '../components/AnimatedPrimitives';
 import { AppIcon } from '../components/AppIcon';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { MonthlyWrapUpModal } from '../components/MonthlyWrapUpModal';
-import { useBudget } from '../context/BudgetContext';
+import { useThemePrefs } from '../context/BudgetContext';
 import { MonthlyArchiveSnapshot, SinkingFundItem } from '../types/budget';
 import { triggerLightHaptic } from '../utils/haptics';
 import { GoalsSection, VaultConfirmRequest } from './vault/GoalsSection';
@@ -15,7 +15,7 @@ import { VaultModals } from './vault/VaultModals';
  * Goals & Insights tab orchestrator.
  */
 export const TreatVaultScreen: React.FC = () => {
-  const { shade } = useBudget();
+  const { shade } = useThemePrefs();
 
   const [subTab, setSubTab] = useState<'goals' | 'insights'>('goals');
   const [wrapVisible, setWrapVisible] = useState(false);

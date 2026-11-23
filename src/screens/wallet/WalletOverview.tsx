@@ -8,7 +8,11 @@ import {
   ScalePressable,
 } from '../../components/AnimatedPrimitives';
 import { AppIcon, IconBadge } from '../../components/AppIcon';
-import { useBudget } from '../../context/BudgetContext';
+import {
+  useDailyBudget,
+  useThemePrefs,
+  useWallet,
+} from '../../context/BudgetContext';
 import {
   DebtDirection,
   DebtItem,
@@ -45,17 +49,9 @@ export const WalletOverview: React.FC<WalletOverviewProps> = ({
   onOpenTransfer,
   onRequestConfirm,
 }) => {
-  const {
-    shade,
-    privacyMode,
-    formatVisiblePeso,
-    cashOnHand,
-    banks,
-    creditCards,
-    installments,
-    debts,
-    entries,
-  } = useBudget();
+  const { shade, privacyMode, formatVisiblePeso } = useThemePrefs();
+  const { cashOnHand, banks, creditCards, installments, debts } = useWallet();
+  const { entries } = useDailyBudget();
 
   const [subTab, setSubTab] = useState<'accounts' | 'installments' | 'debts'>(
     focusDebtsKey > 0 ? 'debts' : 'accounts'

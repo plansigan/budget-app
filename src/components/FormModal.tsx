@@ -1,6 +1,6 @@
 import React from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useBudget } from '../context/BudgetContext';
+import { useThemePrefs } from '../context/BudgetContext';
 import { triggerLightHaptic } from '../utils/haptics';
 import { ScalePressable } from './AnimatedPrimitives';
 import { AppIcon, IconBadge } from './AppIcon';
@@ -25,7 +25,7 @@ const FormModalContent: React.FC<FormModalProps> = ({
   onClose,
   children,
 }) => {
-  const { shade } = useBudget();
+  const { shade } = useThemePrefs();
   const effectiveAccent = accentColor || shade.accent;
 
   return (

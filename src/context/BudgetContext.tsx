@@ -25,14 +25,9 @@ import {
   getBudgetedInstallmentsTotal,
   getTodayKey,
   getTotalMonthlyEnvelopes,
-  roundCurrency,
   sumBills,
 } from '../state/budgetMath';
-import {
-  budgetReducer,
-  canUndoEntry,
-  isEditableEntry,
-} from '../state/budgetReducer';
+import { budgetReducer } from '../state/budgetReducer';
 import {
   OnboardingParams,
   PersistedBudgetState,
@@ -65,62 +60,39 @@ import {
   TreatVaultItem,
   getCardTier,
 } from '../types/budget';
-import { parseBackupJson, serializeBackupJson } from '../utils/backupExport';
 import {
   triggerCelebrationHaptic,
   triggerLightHaptic,
-  triggerSuccessHaptic,
 } from '../utils/haptics';
-import { formatPeso, formatPesoDisplay } from '../utils/numberFormat';
+import { formatPesoDisplay } from '../utils/numberFormat';
 import {
   MilestoneDefinition,
   detectNextUnlockedMilestone,
 } from '../utils/savingsCoach';
 import { useToast } from './ToastContext';
+import { useDailyActions } from './actions/useDailyActions';
+import { useGoalsActions } from './actions/useGoalsActions';
+import { usePlanActions } from './actions/usePlanActions';
+import { useRecoveryActions } from './actions/useRecoveryActions';
+import { useWalletActions } from './actions/useWalletActions';
 
 export { computeBaseDailyAllowance, getTodayKey, sumBills };
 export type { OnboardingParams };
 
-interface BudgetContextValue {
-  isHydrated: boolean;
-  hasCompletedOnboarding: boolean;
-  isEditingOnboarding: boolean;
-  hasSeenTutorial: boolean;
+export interface ThemePrefsContextValue {
+  shade: ThemeShade;
+  themeMode: ThemeMode;
+  setThemeMode: (mode: ThemeMode) => void;
   privacyMode: boolean;
   togglePrivacyMode: () => void;
   formatVisiblePeso: (amount: number, decimals?: number) => string;
-  themeMode: ThemeMode;
-  setThemeMode: (mode: ThemeMode) => void;
-  lastPaydayCheckInKey: string;
-  lastBackupAt?: string;
-  markBackupExported: () => void;
-  shade: ThemeShade;
-  settings: BudgetSettings;
-  billItems: BillItem[];
-  cashOnHand: number;
-  banks: BankAccount[];
-  creditCards: CreditCardAccount[];
-  installments: InstallmentItem[];
-  envelopes: SpendingEnvelopeItem[];
-  sinkingFunds: SinkingFundItem[];
-  debts: DebtItem[];
-  monthlySaved: number;
-  baseDailyAllowance: number;
-  rolloverBalance: number;
-  todayKey: string;
-  selectedDateKey: string;
+}
+
+export interface BudgetActionsContextValue {
   setSelectedDateKey: (dateKey: string) => void;
-  getDaySummary: (dateKey: string) => DaySummary;
-  spentOnSelectedDay: number;
-  safeToSpendOnSelectedDay: number;
-  streakDays: number;
-  bufferShields: number;
-  disciplineScore: number;
-  cardTier: CardTier;
-  treats: TreatVaultItem[];
-  activeTreat: TreatVaultItem | null;
-  entries: TransactionEntry[];
-  monthlyArchives: MonthlyArchiveSnapshot[];
+  dismissMilestone: () => void;
+  togglePrivacyMode: () => void;
+  setThemeMode: (mode: ThemeMode) => void;
   logSpend: (
     amount: number,
     label: string,
@@ -137,7 +109,6 @@ interface BudgetContextValue {
   deleteTreat: (treatId: string) => void;
   setActiveTreat: (treatId: string) => void;
   undoEntry: (entryId: string) => void;
-  lastPaymentSourceId?: string;
   editEntry: (
     entryId: string,
     updates: {
@@ -247,9 +218,6 @@ interface BudgetContextValue {
   openTutorial: () => void;
   resetToNewUser: () => void;
   resetDemoState: () => void;
-  unlockedMilestones: string[];
-  pendingMilestone: MilestoneDefinition | null;
-  dismissMilestone: () => void;
   boostSavingsGoal: (delta: number) => void;
   addInstallment: (params: {
     name: string;
@@ -307,9 +275,7 @@ interface BudgetContextValue {
   ) => void;
   exportBackupJsonString: () => string;
   importBackupJsonString: (raw: string) => { ok: boolean; message: string };
-  lastAutoSnapshotAt?: string;
-  autoSnapshotCount: number;
-  storagePersisted: boolean;
+  markBackupExported: () => void;
   listAutoSnapshots: () => Promise<AutoBackupSnapshot[]>;
   restoreAutoSnapshot: (
     snapshotId: string
@@ -317,9 +283,75 @@ interface BudgetContextValue {
   captureAutoSnapshotNow: () => Promise<boolean>;
 }
 
+export interface DailyBudgetContextValue {
+  settings: BudgetSettings;
+  billItems: BillItem[];
+  envelopes: SpendingEnvelopeItem[];
+  entries: TransactionEntry[];
+  baseDailyAllowance: number;
+  rolloverBalance: number;
+  todayKey: string;
+  selectedDateKey: string;
+  getDaySummary: (dateKey: string) => DaySummary;
+  spentOnSelectedDay: number;
+  safeToSpendOnSelectedDay: number;
+  lastPaydayCheckInKey: string;
+}
+
+export interface WalletContextValue {
+  cashOnHand: number;
+  banks: BankAccount[];
+  creditCards: CreditCardAccount[];
+  installments: InstallmentItem[];
+  debts: DebtItem[];
+  lastPaymentSourceId?: string;
+}
+
+export interface GoalsContextValue {
+  treats: TreatVaultItem[];
+  activeTreat: TreatVaultItem | null;
+  sinkingFunds: SinkingFundItem[];
+  monthlySaved: number;
+  monthlyArchives: MonthlyArchiveSnapshot[];
+  streakDays: number;
+  bufferShields: number;
+  disciplineScore: number;
+  cardTier: CardTier;
+  unlockedMilestones: string[];
+  pendingMilestone: MilestoneDefinition | null;
+}
+
+export interface SystemStatusContextValue {
+  isHydrated: boolean;
+  hasCompletedOnboarding: boolean;
+  isEditingOnboarding: boolean;
+  hasSeenTutorial: boolean;
+  lastBackupAt?: string;
+  lastAutoSnapshotAt?: string;
+  autoSnapshotCount: number;
+  storagePersisted: boolean;
+}
+
+export interface BudgetContextValue
+  extends ThemePrefsContextValue,
+    BudgetActionsContextValue,
+    DailyBudgetContextValue,
+    WalletContextValue,
+    GoalsContextValue,
+    SystemStatusContextValue {}
+
 const EMPTY_DAY_ENTRIES: TransactionEntry[] = [];
 
-const BudgetContext = createContext<BudgetContextValue | null>(null);
+const ThemePrefsContext = createContext<ThemePrefsContextValue | null>(null);
+const BudgetActionsContext = createContext<BudgetActionsContextValue | null>(
+  null
+);
+const DailyBudgetContext = createContext<DailyBudgetContextValue | null>(null);
+const WalletContext = createContext<WalletContextValue | null>(null);
+const GoalsContext = createContext<GoalsContextValue | null>(null);
+const SystemStatusContext = createContext<SystemStatusContextValue | null>(
+  null
+);
 
 export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
@@ -581,6 +613,9 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
     };
   }, [isHydrated, checkRolloverIfDayChanged, flushPendingSave]);
 
+  const envelopes = useMemo(() => state.envelopes || [], [state.envelopes]);
+  const debts = useMemo(() => state.debts || [], [state.debts]);
+
   const budgetedInstallmentsTotal = useMemo(
     () => getBudgetedInstallmentsTotal(state.installments),
     [state.installments]
@@ -588,11 +623,8 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const monthlyEnvelopesTotal = useMemo(
     () =>
-      getTotalMonthlyEnvelopes(
-        state.envelopes || [],
-        state.settings.salaryFrequency
-      ),
-    [state.envelopes, state.settings.salaryFrequency]
+      getTotalMonthlyEnvelopes(envelopes, state.settings.salaryFrequency),
+    [envelopes, state.settings.salaryFrequency]
   );
 
   const baseDailyAllowance = useMemo(
@@ -647,7 +679,14 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
       return;
     }
 
-    const todaySummary = getDaySummary(todayKey);
+    const todaySummary = computeDayMetricsFromEntries(
+      state.entries,
+      todayKey,
+      baseDailyAllowance,
+      state.rolloverBalance,
+      todayKey,
+      state.lastActiveDate
+    );
     const nextMilestone = detectNextUnlockedMilestone(
       {
         settings: state.settings,
@@ -682,9 +721,10 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
     state.cashOnHand,
     state.banks,
     state.creditCards,
+    state.rolloverBalance,
+    state.lastActiveDate,
     baseDailyAllowance,
     todayKey,
-    getDaySummary,
     pendingMilestone,
   ]);
 
@@ -692,764 +732,6 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
     triggerLightHaptic();
     setPendingMilestone(null);
   }, []);
-
-  const boostSavingsGoal = useCallback(
-    (delta: number) => {
-      const cleanDelta = roundCurrency(Math.max(0, delta));
-      if (cleanDelta <= 0) return;
-      triggerSuccessHaptic();
-      dispatch({ type: 'BOOST_SAVINGS_GOAL', delta: cleanDelta });
-      showToast(
-        `Monthly savings goal raised by +${formatPeso(cleanDelta)}!`,
-        true
-      );
-    },
-    [showToast]
-  );
-
-  const logSpend = useCallback(
-    (
-      amount: number,
-      label: string,
-      icon: string,
-      paymentSourceId: string = 'cash',
-      category?: SpendCategoryKey
-    ) => {
-      const cleanAmount = roundCurrency(Math.max(0.01, amount));
-      const targetDateKey = selectedDateKeyRef.current;
-      const current = stateRef.current;
-
-      let sourceLabel = 'Cash';
-      if (paymentSourceId !== 'cash') {
-        const matchedBank = current.banks.find((b) => b.id === paymentSourceId);
-        const matchedCard = current.creditCards.find(
-          (c) => c.id === paymentSourceId
-        );
-        if (matchedBank) sourceLabel = matchedBank.name;
-        else if (matchedCard) sourceLabel = matchedCard.name;
-      }
-
-      triggerLightHaptic();
-      dispatch({
-        type: 'LOG_SPEND',
-        amount: cleanAmount,
-        label,
-        icon,
-        paymentSourceId,
-        category,
-        dateKey: targetDateKey,
-        todayKey: getTodayKey(),
-      });
-
-      const cleanLabel = label.trim() || 'Expense';
-      showToast(
-        `Logged ${cleanLabel}: -${formatPeso(cleanAmount)} (${sourceLabel})`,
-        false
-      );
-    },
-    [showToast]
-  );
-
-  const fundActiveTreat = useCallback(
-    (amount: number) => {
-      const cleanAmount = roundCurrency(Math.max(0.01, amount));
-      const targetDateKey = selectedDateKeyRef.current;
-      const current = stateRef.current;
-      const activeUnclaimed =
-        current.treats.find(
-          (t) => t.id === current.activeTreatId && !t.claimed
-        ) || current.treats.find((t) => !t.claimed);
-
-      if (!activeUnclaimed) {
-        triggerLightHaptic();
-        showToast('Add a Treat in the Goals tab first!', false);
-        return;
-      }
-
-      const remainingNeeded = Math.max(
-        0,
-        roundCurrency(activeUnclaimed.target - activeUnclaimed.funded)
-      );
-      if (remainingNeeded <= 0) {
-        triggerLightHaptic();
-        showToast(
-          `${activeUnclaimed.name} is already 100% funded! Tap Claim Treat.`,
-          true
-        );
-        return;
-      }
-
-      const actualAmount = roundCurrency(Math.min(cleanAmount, remainingNeeded));
-      const today = getTodayKey();
-      const baseDaily = computeBaseDailyAllowance(
-        current.settings,
-        getBudgetedInstallmentsTotal(current.installments) +
-          getTotalMonthlyEnvelopes(
-            current.envelopes || [],
-            current.settings.salaryFrequency
-          )
-      );
-      const daySummary = computeDayMetricsFromEntries(
-        current.entries,
-        targetDateKey,
-        baseDaily,
-        current.rolloverBalance,
-        today,
-        current.lastActiveDate
-      );
-      const exceededSafe =
-        actualAmount > Math.max(0, roundCurrency(daySummary.safeRemaining));
-
-      triggerSuccessHaptic();
-      dispatch({
-        type: 'FUND_ACTIVE_TREAT',
-        amount: cleanAmount,
-        dateKey: targetDateKey,
-        todayKey: today,
-      });
-
-      if (exceededSafe) {
-        showToast(
-          `Added ${formatPeso(actualAmount)} to ${activeUnclaimed.name} (exceeded daily safe-to-spend).`,
-          false
-        );
-      } else if (actualAmount < cleanAmount) {
-        showToast(
-          `Funded ${formatPeso(actualAmount)} to finish ${activeUnclaimed.name}!`,
-          true
-        );
-      } else {
-        showToast(
-          `Added ${formatPeso(actualAmount)} to ${activeUnclaimed.name}!`,
-          true
-        );
-      }
-    },
-    [showToast]
-  );
-
-  const saveToJar = useCallback(
-    (amount: number) => {
-      const cleanAmount = roundCurrency(Math.max(0.01, amount));
-      const targetDateKey = selectedDateKeyRef.current;
-      const current = stateRef.current;
-      const today = getTodayKey();
-      const baseDaily = computeBaseDailyAllowance(
-        current.settings,
-        getBudgetedInstallmentsTotal(current.installments) +
-          getTotalMonthlyEnvelopes(
-            current.envelopes || [],
-            current.settings.salaryFrequency
-          )
-      );
-      const daySummary = computeDayMetricsFromEntries(
-        current.entries,
-        targetDateKey,
-        baseDaily,
-        current.rolloverBalance,
-        today,
-        current.lastActiveDate
-      );
-      const take = roundCurrency(
-        Math.min(cleanAmount, Math.max(0, daySummary.safeRemaining))
-      );
-
-      if (take <= 0) {
-        triggerLightHaptic();
-        showToast(
-          'No Safe-to-Spend left on this day to move to savings.',
-          false
-        );
-        return;
-      }
-
-      triggerSuccessHaptic();
-      dispatch({
-        type: 'SAVE_TO_JAR',
-        amount: cleanAmount,
-        dateKey: targetDateKey,
-        todayKey: today,
-      });
-      showToast(
-        `Saved ${formatPeso(take)} into your Savings Jar!`,
-        true
-      );
-    },
-    [showToast]
-  );
-
-  const bankTodaySurplus = useCallback(() => {
-    const current = stateRef.current;
-    const targetDateKey = selectedDateKeyRef.current;
-    const today = getTodayKey();
-    const baseDaily = computeBaseDailyAllowance(
-      current.settings,
-      getBudgetedInstallmentsTotal(current.installments) +
-        getTotalMonthlyEnvelopes(
-          current.envelopes || [],
-          current.settings.salaryFrequency
-        )
-    );
-    const daySummary = computeDayMetricsFromEntries(
-      current.entries,
-      targetDateKey,
-      baseDaily,
-      current.rolloverBalance,
-      today,
-      current.lastActiveDate
-    );
-    const remaining = Math.max(0, roundCurrency(daySummary.safeRemaining));
-
-    if (remaining <= 0) {
-      triggerLightHaptic();
-      showToast('Nothing left to save on this day.', false);
-      return;
-    }
-
-    const activeUnclaimed =
-      current.treats.find(
-        (t) => t.id === current.activeTreatId && !t.claimed
-      ) || current.treats.find((t) => !t.claimed);
-
-    const toSavings = activeUnclaimed
-      ? roundCurrency(remaining * 0.5)
-      : remaining;
-    const toTreat = activeUnclaimed
-      ? roundCurrency(remaining - toSavings)
-      : 0;
-
-    triggerCelebrationHaptic();
-    dispatch({
-      type: 'BANK_TODAY_SURPLUS',
-      dateKey: targetDateKey,
-      todayKey: today,
-    });
-
-    if (activeUnclaimed) {
-      showToast(
-        `Day ended! +${formatPeso(toSavings)} Savings & +${formatPeso(toTreat)} Treat`,
-        true
-      );
-    } else {
-      showToast(
-        `Day ended! +${formatPeso(toSavings)} added to Savings Jar`,
-        true
-      );
-    }
-  }, [showToast]);
-
-  const simulateMidnightSplit = useCallback(() => {
-    const current = stateRef.current;
-    const today = getTodayKey();
-    const alreadyRolledToday = current.entries.some(
-      (e) =>
-        e.type === 'midnight_split' && e.isAutoRollover && e.dateKey === today
-    );
-    if (alreadyRolledToday) {
-      triggerLightHaptic();
-      showToast(
-        'Already tested 50/50 Midnight Split today. Undo it in Activity to re-test.',
-        false
-      );
-      return;
-    }
-
-    const baseDaily = computeBaseDailyAllowance(
-      current.settings,
-      getBudgetedInstallmentsTotal(current.installments) +
-        getTotalMonthlyEnvelopes(
-          current.envelopes || [],
-          current.settings.salaryFrequency
-        )
-    );
-    const todaySummary = computeDayMetricsFromEntries(
-      current.entries,
-      today,
-      baseDaily,
-      current.rolloverBalance,
-      today,
-      current.lastActiveDate
-    );
-    if (todaySummary.safeRemaining <= 0) {
-      triggerLightHaptic();
-      showToast('No Safe-to-Spend left today to split.', false);
-      return;
-    }
-
-    triggerSuccessHaptic();
-    const result = applyMidnightRollover(current, today, 0);
-    dispatch({ type: 'APPLY_ROLLOVER', newDateKey: today });
-
-    showToast(
-      `🌙 50/50 Split: +${formatPeso(result.vaultAdded)} & +${formatPeso(result.rolloverNext)} rollover!`,
-      true
-    );
-  }, [showToast]);
-
-  const claimTreat = useCallback(
-    (treatId: string) => {
-      const target = stateRef.current.treats.find((t) => t.id === treatId);
-      if (!target || target.funded < target.target || target.claimed) {
-        return;
-      }
-      triggerCelebrationHaptic();
-      dispatch({ type: 'CLAIM_TREAT', treatId });
-      showToast(`🎟️ Claimed ${target.name}! Enjoy guilt-free!`, true);
-    },
-    [showToast]
-  );
-
-  const addTreat = useCallback(
-    (name: string, icon: string, target: number) => {
-      if (stateRef.current.treats.length >= 3) {
-        triggerLightHaptic();
-        showToast('Maximum of 3 treats allowed in Wishlist.', false);
-        return;
-      }
-      const trimmed = name.trim();
-      const cleanTarget = roundCurrency(target);
-      if (!trimmed || cleanTarget <= 0) return;
-
-      triggerSuccessHaptic();
-      dispatch({ type: 'ADD_TREAT', name: trimmed, icon, target: cleanTarget });
-      showToast(
-        `Locked "${trimmed}" (${formatPeso(cleanTarget)}) as active treat`,
-        true
-      );
-    },
-    [showToast]
-  );
-
-  const deleteTreat = useCallback(
-    (treatId: string) => {
-      const target = stateRef.current.treats.find((t) => t.id === treatId);
-      if (!target) return;
-      const refundToSavings = target.claimed ? 0 : roundCurrency(target.funded);
-      triggerSuccessHaptic();
-      dispatch({ type: 'DELETE_TREAT', treatId });
-
-      if (refundToSavings > 0) {
-        showToast(
-          `🗑️ Treat deleted. +${formatPeso(refundToSavings)} moved to Savings Jar!`,
-          true
-        );
-      } else {
-        showToast('🗑️ Treat removed from wishlist.', false);
-      }
-    },
-    [showToast]
-  );
-
-  const setActiveTreat = useCallback((treatId: string) => {
-    triggerLightHaptic();
-    dispatch({ type: 'SET_ACTIVE_TREAT', treatId });
-  }, []);
-
-  const undoEntry = useCallback(
-    (entryId: string) => {
-      const current = stateRef.current;
-      const check = canUndoEntry(current, entryId);
-      if (!check.ok) {
-        if (check.reason.includes('claimed')) {
-          triggerLightHaptic();
-          showToast(check.reason, false);
-        }
-        return;
-      }
-      triggerLightHaptic();
-      dispatch({ type: 'UNDO_ENTRY', entryId });
-      showToast('Undid entry', false);
-    },
-    [showToast]
-  );
-
-  const updateBudgetConfig = useCallback(
-    (income: number, bills: number, savings: number) => {
-      triggerLightHaptic();
-      dispatch({ type: 'UPDATE_BUDGET_CONFIG', income, bills, savings });
-    },
-    []
-  );
-
-  const updateSalarySchedule = useCallback(
-    (frequency: 1 | 2, payday1: number, payday2: number) => {
-      triggerLightHaptic();
-      dispatch({ type: 'UPDATE_SALARY_SCHEDULE', frequency, payday1, payday2 });
-    },
-    []
-  );
-
-  const updateBillAmount = useCallback((billId: string, amount: number) => {
-    dispatch({ type: 'UPDATE_BILL_AMOUNT', billId, amount });
-  }, []);
-
-  const updateBillItem = useCallback(
-    (
-      billId: string,
-      name: string,
-      icon: string,
-      amount: number,
-      dueDay?: number
-    ) => {
-      const trimmed = name.trim();
-      const cleanAmount = roundCurrency(Math.max(0, amount));
-      if (!trimmed || cleanAmount <= 0) return;
-
-      triggerSuccessHaptic();
-      dispatch({
-        type: 'UPDATE_BILL_ITEM',
-        billId,
-        name: trimmed,
-        icon,
-        amount: cleanAmount,
-        dueDay,
-      });
-      showToast(`Updated bill: ${trimmed}`, false);
-    },
-    [showToast]
-  );
-
-  const addBillItem = useCallback(
-    (name: string, icon: string, amount: number, dueDay?: number) => {
-      const trimmed = name.trim();
-      const cleanAmount = roundCurrency(Math.max(0, amount));
-      if (!trimmed || cleanAmount <= 0) return;
-
-      triggerSuccessHaptic();
-      dispatch({
-        type: 'ADD_BILL_ITEM',
-        name: trimmed,
-        icon,
-        amount: cleanAmount,
-        dueDay,
-      });
-      showToast(
-        `Added bill: ${trimmed} (${formatPeso(cleanAmount)})`,
-        false
-      );
-    },
-    [showToast]
-  );
-
-  const updateBillDueDay = useCallback((billId: string, dueDay?: number) => {
-    triggerLightHaptic();
-    dispatch({ type: 'UPDATE_BILL_DUE_DAY', billId, dueDay });
-  }, []);
-
-  const markBillPaid = useCallback(
-    (billId: string, paymentSourceId?: string, amountOverride?: number) => {
-      const current = stateRef.current;
-      const bill = current.billItems.find((b) => b.id === billId);
-      if (!bill) return;
-
-      const today = getTodayKey();
-      const monthKey = today.slice(0, 7);
-      if (bill.lastPaidMonth === monthKey) {
-        triggerLightHaptic();
-        showToast(`${bill.name} is already marked paid this month.`, false);
-        return;
-      }
-
-      const paidAmt = roundCurrency(
-        Math.max(0, amountOverride ?? bill.amount)
-      );
-      triggerSuccessHaptic();
-      dispatch({
-        type: 'MARK_BILL_PAID',
-        billId,
-        paymentSourceId,
-        amountOverride: paidAmt,
-        todayKey: today,
-      });
-      showToast(
-        `Paid ${bill.name} (${formatPeso(paidAmt)})`,
-        true
-      );
-    },
-    [showToast]
-  );
-
-  const removeBillItem = useCallback((billId: string) => {
-    triggerLightHaptic();
-    dispatch({ type: 'REMOVE_BILL_ITEM', billId });
-  }, []);
-
-  const depositToWalletAccount = useCallback(
-    (sourceId: string, amount: number, note?: string) => {
-      const cleanAmount = roundCurrency(Math.max(0.01, amount));
-      const current = stateRef.current;
-      const isCash = sourceId === 'cash';
-      const matchedBank = current.banks.find((b) => b.id === sourceId);
-      const matchedCard = current.creditCards.find((c) => c.id === sourceId);
-      if (!isCash && !matchedBank && !matchedCard) return;
-
-      const sourceLabel = isCash
-        ? 'Cash'
-        : matchedBank
-        ? matchedBank.name
-        : matchedCard!.name;
-
-      triggerSuccessHaptic();
-      dispatch({
-        type: 'DEPOSIT_TO_WALLET',
-        sourceId,
-        amount: cleanAmount,
-        note,
-        todayKey: getTodayKey(),
-      });
-      showToast(
-        matchedCard
-          ? `Paid ${formatPeso(cleanAmount)} toward ${sourceLabel}`
-          : `Added ${formatPeso(cleanAmount)} to ${sourceLabel}`,
-        true
-      );
-    },
-    [showToast]
-  );
-
-  const setAccountBalanceWithLog = useCallback(
-    (sourceId: string, newBalance: number, note?: string) => {
-      const cleanBalance = Math.max(0, roundCurrency(newBalance));
-      const current = stateRef.current;
-      const isCash = sourceId === 'cash';
-      const matchedBank = current.banks.find((b) => b.id === sourceId);
-      const matchedCard = current.creditCards.find((c) => c.id === sourceId);
-      if (!isCash && !matchedBank && !matchedCard) return;
-
-      const oldBalance = isCash
-        ? current.cashOnHand
-        : matchedBank
-        ? matchedBank.balance
-        : matchedCard!.used;
-      if (roundCurrency(cleanBalance - oldBalance) === 0) return;
-
-      const sourceLabel = isCash
-        ? 'Cash'
-        : matchedBank
-        ? matchedBank.name
-        : matchedCard!.name;
-
-      triggerLightHaptic();
-      dispatch({
-        type: 'SET_ACCOUNT_BALANCE',
-        sourceId,
-        newBalance: cleanBalance,
-        note,
-        todayKey: getTodayKey(),
-      });
-      showToast(`Updated ${sourceLabel} balance`, false);
-    },
-    [showToast]
-  );
-
-  const transferBetweenAccounts = useCallback(
-    (
-      fromSourceId: string,
-      toSourceId: string,
-      amount: number,
-      note?: string
-    ) => {
-      const cleanAmount = roundCurrency(Math.max(0.01, amount));
-      if (!fromSourceId || !toSourceId || fromSourceId === toSourceId) return;
-      const current = stateRef.current;
-
-      const fromBank = current.banks.find((b) => b.id === fromSourceId);
-      const fromIsCash = fromSourceId === 'cash';
-      if (!fromIsCash && !fromBank) return;
-
-      const toBank = current.banks.find((b) => b.id === toSourceId);
-      const toCard = current.creditCards.find((c) => c.id === toSourceId);
-      const toIsCash = toSourceId === 'cash';
-      if (!toIsCash && !toBank && !toCard) return;
-
-      const fromLabel = fromIsCash ? 'Cash' : fromBank!.name;
-      const toLabel = toIsCash
-        ? 'Cash'
-        : toBank
-        ? toBank.name
-        : toCard!.name;
-
-      triggerSuccessHaptic();
-      dispatch({
-        type: 'TRANSFER_BETWEEN_ACCOUNTS',
-        fromSourceId,
-        toSourceId,
-        amount: cleanAmount,
-        note,
-        todayKey: getTodayKey(),
-      });
-      showToast(
-        toCard
-          ? `Paid ${formatPeso(cleanAmount)} toward ${toLabel} from ${fromLabel}`
-          : `Transferred ${formatPeso(cleanAmount)} (${fromLabel} → ${toLabel})`,
-        true
-      );
-    },
-    [showToast]
-  );
-
-  const editEntry = useCallback(
-    (
-      entryId: string,
-      updates: {
-        amount: number;
-        label: string;
-        category?: SpendCategoryKey;
-        icon?: string;
-      }
-    ) => {
-      const current = stateRef.current;
-      if (!isEditableEntry(current, entryId)) {
-        triggerLightHaptic();
-        showToast('This entry can no longer be edited.', false);
-        return;
-      }
-      const cleanAmount = roundCurrency(Math.max(0.01, updates.amount));
-      const trimmedLabel = updates.label.trim();
-      triggerSuccessHaptic();
-      dispatch({
-        type: 'EDIT_ENTRY',
-        entryId,
-        amount: cleanAmount,
-        label: trimmedLabel || 'Entry',
-        category: updates.category,
-        icon: updates.icon,
-      });
-      showToast('Updated transaction', false);
-    },
-    [showToast]
-  );
-
-  const addBank = useCallback(
-    (name: string, balance: number) => {
-      const trimmed = name.trim();
-      if (!trimmed) return;
-      triggerSuccessHaptic();
-      dispatch({ type: 'ADD_BANK', name: trimmed, balance });
-      showToast(`Added bank: ${trimmed}`, false);
-    },
-    [showToast]
-  );
-
-  const updateBank = useCallback(
-    (bankId: string, name: string) => {
-      const trimmed = name.trim();
-      if (!trimmed) return;
-      triggerSuccessHaptic();
-      dispatch({ type: 'UPDATE_BANK', bankId, name: trimmed });
-      showToast(`Updated bank: ${trimmed}`, false);
-    },
-    [showToast]
-  );
-
-  const removeBank = useCallback((bankId: string) => {
-    triggerLightHaptic();
-    dispatch({ type: 'REMOVE_BANK', bankId });
-  }, []);
-
-  const addCreditCard = useCallback(
-    (name: string, limit: number, used: number, cutoffDay: number) => {
-      const trimmed = name.trim();
-      if (!trimmed || limit <= 0) return;
-      triggerSuccessHaptic();
-      dispatch({
-        type: 'ADD_CREDIT_CARD',
-        name: trimmed,
-        limit,
-        used,
-        cutoffDay,
-      });
-      showToast(`💳 Added ${trimmed}`, false);
-    },
-    [showToast]
-  );
-
-  const updateCreditCard = useCallback(
-    (cardId: string, name: string, limit: number, cutoffDay: number) => {
-      const trimmed = name.trim();
-      if (!trimmed || limit <= 0) return;
-      triggerSuccessHaptic();
-      dispatch({
-        type: 'UPDATE_CREDIT_CARD',
-        cardId,
-        name: trimmed,
-        limit,
-        cutoffDay,
-      });
-      showToast(`Updated card: ${trimmed}`, false);
-    },
-    [showToast]
-  );
-
-  const removeCreditCard = useCallback((cardId: string) => {
-    triggerLightHaptic();
-    dispatch({ type: 'REMOVE_CREDIT_CARD', cardId });
-  }, []);
-
-  const completeOnboarding = useCallback(
-    (params: OnboardingParams) => {
-      triggerCelebrationHaptic();
-      dispatch({ type: 'COMPLETE_ONBOARDING', params });
-      setIsEditingOnboarding(false);
-      setPendingMilestone(null);
-      setSelectedDateKeyState(getTodayKey());
-      showToast(
-        params.preserveExistingData
-          ? 'Updated your budget settings!'
-          : '✨ Welcome to Velvet! Your budget is ready.',
-        true
-      );
-    },
-    [showToast]
-  );
-
-  const reopenOnboarding = useCallback(() => {
-    triggerLightHaptic();
-    setIsEditingOnboarding(true);
-    dispatch({ type: 'REOPEN_ONBOARDING' });
-  }, []);
-
-  const cancelReopenedOnboarding = useCallback(() => {
-    triggerLightHaptic();
-    setIsEditingOnboarding(false);
-    dispatch({ type: 'CANCEL_REOPENED_ONBOARDING' });
-  }, []);
-
-  const completeTutorial = useCallback(() => {
-    triggerLightHaptic();
-    dispatch({ type: 'COMPLETE_TUTORIAL' });
-  }, []);
-
-  const openTutorial = useCallback(() => {
-    triggerLightHaptic();
-    dispatch({ type: 'OPEN_TUTORIAL' });
-  }, []);
-
-  const resetToNewUser = useCallback(() => {
-    triggerLightHaptic();
-    const curr = stateRef.current;
-    if (curr.hasCompletedOnboarding && curr.entries.length > 0) {
-      void runSnapshotCapture(curr, 'before_restore');
-    }
-    const freshToday = getTodayKey();
-    setPendingMilestone(null);
-    dispatch({ type: 'RESET_NEW_USER', todayKey: freshToday });
-    setSelectedDateKeyState(freshToday);
-    showToast('✨ Reset as a new user (₱0 saved)', false);
-  }, [showToast, runSnapshotCapture]);
-
-  const resetDemoState = useCallback(() => {
-    triggerLightHaptic();
-    const curr = stateRef.current;
-    if (curr.hasCompletedOnboarding && curr.entries.length > 0) {
-      void runSnapshotCapture(curr, 'before_restore');
-    }
-    const freshToday = getTodayKey();
-    setPendingMilestone(null);
-    dispatch({ type: 'RESET_DEMO', todayKey: freshToday });
-    setSelectedDateKeyState(freshToday);
-    showToast('Loaded sample demo data', false);
-  }, [showToast, runSnapshotCapture]);
 
   const togglePrivacyMode = useCallback(() => {
     triggerLightHaptic();
@@ -1467,540 +749,32 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
     [showToast]
   );
 
-  const logPaydayCheckIn = useCallback(
-    (
-      amount: number,
-      sourceId: string,
-      savingsAllocation: number,
-      note?: string,
-      refillEnvelopeIds?: string[]
-    ) => {
-      const cleanAmount = roundCurrency(Math.max(0.01, amount));
-      const cleanSavings = roundCurrency(Math.max(0, savingsAllocation));
-      const current = stateRef.current;
-      const matchedBank = current.banks.find((b) => b.id === sourceId);
-      const sourceLabel = matchedBank ? matchedBank.name : 'Cash';
-      const today = getTodayKey();
-
-      triggerCelebrationHaptic();
-      dispatch({
-        type: 'LOG_PAYDAY_CHECKIN',
-        amount: cleanAmount,
-        sourceId,
-        savingsAllocation: cleanSavings,
-        note,
-        todayKey: today,
-        refillEnvelopeIds,
-      });
-
-      const refilledCount = (refillEnvelopeIds || []).length;
-      if (refilledCount > 0) {
-        showToast(
-          `Payday logged to ${sourceLabel} & refilled ${refilledCount} allowance${refilledCount > 1 ? 's' : ''}!`,
-          true
-        );
-      } else {
-        showToast(
-          cleanSavings > 0
-            ? `Payday logged to ${sourceLabel} & +${formatPeso(cleanSavings)} saved!`
-            : `Logged ${formatPeso(cleanAmount)} paycheck to ${sourceLabel}!`,
-          true
-        );
-      }
-    },
-    [showToast]
-  );
-
-  const dismissPaydayPrompt = useCallback((dateKey?: string) => {
-    triggerLightHaptic();
-    dispatch({
-      type: 'DISMISS_PAYDAY_PROMPT',
-      dateKey: dateKey || getTodayKey(),
-    });
-  }, []);
-
-  const addEnvelope = useCallback(
-    (
-      name: string,
-      icon: string,
-      amountPerCycle: number,
-      cadence: EnvelopeCadence,
-      rolloverMode: EnvelopeRolloverMode
-    ) => {
-      const trimmed = name.trim();
-      const cleanAmt = roundCurrency(amountPerCycle);
-      if (!trimmed || cleanAmt <= 0) return;
-      triggerSuccessHaptic();
-      dispatch({
-        type: 'ADD_ENVELOPE',
-        name: trimmed,
-        icon,
-        amountPerCycle: cleanAmt,
-        cadence,
-        rolloverMode,
-      });
-      showToast(
-        `Added ${trimmed} allowance (${formatPeso(cleanAmt)})`,
-        true
-      );
-    },
-    [showToast]
-  );
-
-  const updateEnvelope = useCallback(
-    (
-      id: string,
-      name: string,
-      icon: string,
-      amountPerCycle: number,
-      cadence: EnvelopeCadence,
-      rolloverMode: EnvelopeRolloverMode,
-      balance?: number
-    ) => {
-      const trimmed = name.trim();
-      const cleanAmt = roundCurrency(amountPerCycle);
-      if (!trimmed || cleanAmt <= 0) return;
-      triggerLightHaptic();
-      dispatch({
-        type: 'UPDATE_ENVELOPE',
-        id,
-        name: trimmed,
-        icon,
-        amountPerCycle: cleanAmt,
-        cadence,
-        rolloverMode,
-        balance,
-      });
-      showToast(`Updated ${trimmed}`, false);
-    },
-    [showToast]
-  );
-
-  const deleteEnvelope = useCallback(
-    (id: string) => {
-      const target = (stateRef.current.envelopes || []).find(
-        (e) => e.id === id
-      );
-      triggerLightHaptic();
-      dispatch({ type: 'DELETE_ENVELOPE', id });
-      if (target) {
-        showToast(`Removed ${target.name}`, false);
-      }
-    },
-    [showToast]
-  );
-
-  const spendFromEnvelope = useCallback(
-    (
-      envelopeId: string,
-      amount: number,
-      label: string,
-      icon: string,
-      paymentSourceId?: string,
-      category?: SpendCategoryKey
-    ) => {
-      const current = stateRef.current;
-      const env = (current.envelopes || []).find((e) => e.id === envelopeId);
-      if (!env) return;
-
-      const cleanAmount = roundCurrency(Math.max(0.01, amount));
-      const targetDateKey = selectedDateKeyRef.current;
-
-      let sourceLabel = '';
-      if (paymentSourceId === 'cash') {
-        sourceLabel = ' • Cash';
-      } else if (paymentSourceId && paymentSourceId !== 'none') {
-        const matchedBank = current.banks.find((b) => b.id === paymentSourceId);
-        const matchedCard = current.creditCards.find(
-          (c) => c.id === paymentSourceId
-        );
-        if (matchedBank) sourceLabel = ` • ${matchedBank.name}`;
-        else if (matchedCard) sourceLabel = ` • ${matchedCard.name}`;
-      }
-
-      triggerSuccessHaptic();
-      dispatch({
-        type: 'SPEND_FROM_ENVELOPE',
-        envelopeId,
-        amount: cleanAmount,
-        label,
-        icon,
-        paymentSourceId,
-        category,
-        dateKey: targetDateKey,
-        todayKey: getTodayKey(),
-      });
-      showToast(
-        `${env.name}: -${formatPeso(cleanAmount)}${sourceLabel}`,
-        false
-      );
-    },
-    [showToast]
-  );
-
-  const refillEnvelope = useCallback(
-    (envelopeId: string) => {
-      const env = (stateRef.current.envelopes || []).find(
-        (e) => e.id === envelopeId
-      );
-      if (!env) return;
-      triggerSuccessHaptic();
-      dispatch({
-        type: 'REFILL_ENVELOPE',
-        envelopeId,
-        todayKey: getTodayKey(),
-      });
-      showToast(
-        env.rolloverMode === 'rollover'
-          ? `Added +${formatPeso(env.amountPerCycle)} to ${env.name}`
-          : `Reset ${env.name} to ${formatPeso(env.amountPerCycle)}`,
-        true
-      );
-    },
-    [showToast]
-  );
-
   const formatVisiblePeso = useCallback(
     (amount: number, decimals: number = 2): string =>
       formatPesoDisplay(amount, state.privacyMode, decimals),
     [state.privacyMode]
   );
 
-  const addInstallment = useCallback(
-    (params: {
-      name: string;
-      provider: string;
-      monthlyAmount: number;
-      totalMonths: number;
-      paidMonths: number;
-      includeInBudget: boolean;
-    }) => {
-      const trimmed = params.name.trim();
-      if (!trimmed || params.monthlyAmount <= 0 || params.totalMonths <= 0) {
-        return;
-      }
-      triggerSuccessHaptic();
-      dispatch({ type: 'ADD_INSTALLMENT', params });
-      showToast(`Added installment: ${trimmed}`, false);
-    },
+  const actionDeps = useMemo(
+    () => ({ dispatch, stateRef, selectedDateKeyRef, showToast }),
     [showToast]
   );
-
-  const updateInstallment = useCallback(
-    (
-      id: string,
-      params: {
-        name: string;
-        provider: string;
-        monthlyAmount: number;
-        totalMonths: number;
-        paidMonths: number;
-        includeInBudget: boolean;
-      }
-    ) => {
-      const trimmed = params.name.trim();
-      if (!trimmed || params.monthlyAmount <= 0 || params.totalMonths <= 0) {
-        return;
-      }
-      triggerSuccessHaptic();
-      dispatch({ type: 'UPDATE_INSTALLMENT', id, params });
-      showToast(`Updated installment: ${trimmed}`, false);
-    },
-    [showToast]
-  );
-
-  const markInstallmentMonthPaid = useCallback(
-    (id: string) => {
-      const target = stateRef.current.installments.find((i) => i.id === id);
-      if (!target || target.paidMonths >= target.totalMonths) return;
-
-      const nextPaid = target.paidMonths + 1;
-      const isFinished = nextPaid >= target.totalMonths;
-      if (isFinished) {
-        triggerCelebrationHaptic();
-      } else {
-        triggerSuccessHaptic();
-      }
-
-      dispatch({
-        type: 'MARK_INSTALLMENT_PAID',
-        id,
-        todayKey: getTodayKey(),
-      });
-      showToast(
-        isFinished
-          ? `${target.name} is 100% paid off!`
-          : `Marked ${target.name} (${nextPaid}/${target.totalMonths} mo)`,
-        isFinished
-      );
-    },
-    [showToast]
-  );
-
-  const toggleInstallmentInBudget = useCallback((id: string) => {
-    triggerLightHaptic();
-    dispatch({ type: 'TOGGLE_INSTALLMENT_IN_BUDGET', id });
-  }, []);
-
-  const removeInstallment = useCallback((id: string) => {
-    triggerLightHaptic();
-    dispatch({ type: 'REMOVE_INSTALLMENT', id });
-  }, []);
-
-  const addSinkingFund = useCallback(
-    (name: string, icon: string, target: number, monthsToGoal: number) => {
-      const trimmed = name.trim();
-      const cleanTarget = roundCurrency(target);
-      if (!trimmed || cleanTarget <= 0) return;
-
-      triggerSuccessHaptic();
-      dispatch({
-        type: 'ADD_SINKING_FUND',
-        name: trimmed,
-        icon,
-        target: cleanTarget,
-        monthsToGoal,
-      });
-      showToast(`Added ${trimmed} bucket!`, false);
-    },
-    [showToast]
-  );
-
-  const depositToSinkingFund = useCallback(
-    (id: string, amount: number) => {
-      const cleanAmt = roundCurrency(Math.max(0.01, amount));
-      const target = stateRef.current.sinkingFunds.find((f) => f.id === id);
-      if (!target) return;
-
-      const hitGoal = target.saved + cleanAmt >= target.target;
-      if (hitGoal) triggerCelebrationHaptic();
-      else triggerSuccessHaptic();
-
-      dispatch({
-        type: 'DEPOSIT_TO_SINKING_FUND',
-        id,
-        amount: cleanAmt,
-        todayKey: getTodayKey(),
-      });
-      showToast(
-        hitGoal
-          ? `${target.name} goal reached!`
-          : `Added ${formatPeso(cleanAmt)} to ${target.name}`,
-        hitGoal
-      );
-    },
-    [showToast]
-  );
-
-  const deleteSinkingFund = useCallback(
-    (id: string) => {
-      triggerLightHaptic();
-      const target = stateRef.current.sinkingFunds.find((f) => f.id === id);
-      if (!target) return;
-      const refund = Math.max(0, roundCurrency(target.saved));
-
-      dispatch({ type: 'DELETE_SINKING_FUND', id });
-
-      if (refund > 0) {
-        showToast(
-          `Removed ${target.name}. +${formatPeso(refund)} moved to Savings Jar`,
-          true
-        );
-      } else {
-        showToast(`Removed ${target.name}`, false);
-      }
-    },
-    [showToast]
-  );
-
-  const addDebt = useCallback(
-    (params: {
-      direction: DebtDirection;
-      personName: string;
-      amount: number;
-      note?: string;
-      paymentSourceId?: string;
-      affectsDailyBudget?: boolean;
-    }) => {
-      const trimmedName = params.personName.trim();
-      const cleanAmount = roundCurrency(params.amount);
-      if (!trimmedName || cleanAmount <= 0) return;
-
-      triggerSuccessHaptic();
-      dispatch({
-        type: 'ADD_DEBT',
-        direction: params.direction,
-        personName: trimmedName,
-        amount: cleanAmount,
-        note: params.note,
-        paymentSourceId: params.paymentSourceId,
-        affectsDailyBudget: params.affectsDailyBudget,
-        dateKey: selectedDateKeyRef.current,
-        todayKey: getTodayKey(),
-      });
-      showToast(
-        params.direction === 'i_owe'
-          ? `Added I Owe: ${trimmedName} (${formatPeso(cleanAmount)})`
-          : `Added Owed to Me: ${trimmedName} (${formatPeso(cleanAmount)})`,
-        false
-      );
-    },
-    [showToast]
-  );
-
-  const updateDebt = useCallback(
-    (
-      id: string,
-      params: {
-        direction: DebtDirection;
-        personName: string;
-        amount: number;
-        note?: string;
-      }
-    ) => {
-      const trimmedName = params.personName.trim();
-      const cleanAmount = roundCurrency(params.amount);
-      if (!trimmedName || cleanAmount <= 0) return;
-      triggerLightHaptic();
-      dispatch({
-        type: 'UPDATE_DEBT',
-        id,
-        direction: params.direction,
-        personName: trimmedName,
-        amount: cleanAmount,
-        note: params.note,
-      });
-      showToast(`Updated debt with ${trimmedName}`, false);
-    },
-    [showToast]
-  );
-
-  const deleteDebt = useCallback(
-    (id: string) => {
-      const target = (stateRef.current.debts || []).find((d) => d.id === id);
-      triggerLightHaptic();
-      dispatch({ type: 'DELETE_DEBT', id });
-      showToast(
-        target ? `Removed debt with ${target.personName}` : 'Removed debt',
-        false
-      );
-    },
-    [showToast]
-  );
-
-  const recordDebtPayment = useCallback(
-    (
-      id: string,
-      amount: number,
-      paymentSourceId?: string,
-      affectsDailyBudget?: boolean
-    ) => {
-      const debt = (stateRef.current.debts || []).find((d) => d.id === id);
-      if (!debt) return;
-      const remaining = roundCurrency(Math.max(0, debt.amount - debt.paidAmount));
-      if (remaining <= 0) return;
-
-      const applied = roundCurrency(
-        Math.min(Math.max(0.01, amount), remaining)
-      );
-      const fullySettled = roundCurrency(debt.paidAmount + applied) >= debt.amount;
-
-      if (fullySettled) triggerCelebrationHaptic();
-      else triggerSuccessHaptic();
-
-      dispatch({
-        type: 'RECORD_DEBT_PAYMENT',
-        id,
-        amount: applied,
-        paymentSourceId,
-        affectsDailyBudget,
-        dateKey: selectedDateKeyRef.current,
-        todayKey: getTodayKey(),
-      });
-
-      if (debt.direction === 'i_owe') {
-        showToast(
-          fullySettled
-            ? `Settled debt with ${debt.personName} (${formatPeso(applied)})!`
-            : `Paid ${formatPeso(applied)} to ${debt.personName}`,
-          fullySettled
-        );
-      } else {
-        showToast(
-          fullySettled
-            ? `${debt.personName} paid in full (${formatPeso(applied)})!`
-            : `Received ${formatPeso(applied)} from ${debt.personName}`,
-          true
-        );
-      }
-    },
-    [showToast]
-  );
-
-  const exportBackupJsonString = useCallback(() => {
-    return serializeBackupJson(stateRef.current);
-  }, []);
-
-  const markBackupExported = useCallback(() => {
-    dispatch({
-      type: 'MARK_BACKUP_EXPORTED',
-      exportedAt: new Date().toISOString(),
-    });
-  }, []);
-
-  const importBackupJsonString = useCallback(
-    (raw: string): { ok: boolean; message: string } => {
-      const parsedRes = parseBackupJson(raw);
-      if (!parsedRes.ok) {
-        return { ok: false, message: parsedRes.error };
-      }
-
-      const curr = stateRef.current;
-      if (curr.hasCompletedOnboarding && curr.entries.length > 0) {
-        void runSnapshotCapture(curr, 'before_restore');
-      }
-
-      const d = parsedRes.data as Partial<PersistedBudgetState>;
-      triggerCelebrationHaptic();
-      setIsEditingOnboarding(false);
-      setPendingMilestone(null);
-      dispatch({ type: 'RESTORE_BACKUP', data: d });
-      setSelectedDateKeyState(getTodayKey());
-      showToast('✅ Backup restored successfully!', true);
-      return { ok: true, message: 'Backup restored!' };
-    },
-    [showToast, runSnapshotCapture]
-  );
-
-  const listAutoSnapshots = useCallback(async () => {
-    const list = await listStoredAutoSnapshots();
-    setAutoSnapshotCount(list.length);
-    if (list.length > 0) {
-      setLastAutoSnapshotAt(list[0].savedAt);
-    }
-    return list;
-  }, []);
-
-  const restoreAutoSnapshot = useCallback(
-    async (snapshotId: string): Promise<{ ok: boolean; message: string }> => {
-      const list = await listStoredAutoSnapshots();
-      const found = list.find((s) => s.id === snapshotId);
-      if (!found) {
-        return { ok: false, message: 'Recovery snapshot not found.' };
-      }
-      return importBackupJsonString(found.json);
-    },
-    [importBackupJsonString]
-  );
-
-  const captureAutoSnapshotNow = useCallback(async (): Promise<boolean> => {
-    const ok = await runSnapshotCapture(stateRef.current, 'manual');
-    if (ok) {
-      snapshotDirtyRef.current = false;
-      showToast('Recovery snapshot saved!', true);
-    }
-    return ok;
-  }, [runSnapshotCapture, showToast]);
+  const dailyActions = useDailyActions(actionDeps);
+  const walletActions = useWalletActions(actionDeps);
+  const planActions = usePlanActions(actionDeps);
+  const goalsActions = useGoalsActions(actionDeps);
+  const recoveryActions = useRecoveryActions({
+    dispatch,
+    stateRef,
+    snapshotDirtyRef,
+    showToast,
+    setIsEditingOnboarding,
+    setPendingMilestone,
+    setSelectedDateKeyState,
+    setAutoSnapshotCount,
+    setLastAutoSnapshotAt,
+    runSnapshotCapture,
+  });
 
   const activeTreat = useMemo(() => {
     if (state.treats.length === 0) return null;
@@ -2017,210 +791,234 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
     [state.themeMode, systemColorScheme]
   );
 
-  const value = useMemo<BudgetContextValue>(
+  const systemStatusValue = useMemo<SystemStatusContextValue>(
     () => ({
       isHydrated,
       hasCompletedOnboarding: state.hasCompletedOnboarding,
       isEditingOnboarding,
       hasSeenTutorial: state.hasSeenTutorial,
+      lastBackupAt: state.lastBackupAt,
+      lastAutoSnapshotAt,
+      autoSnapshotCount,
+      storagePersisted,
+    }),
+    [
+      isHydrated,
+      state.hasCompletedOnboarding,
+      isEditingOnboarding,
+      state.hasSeenTutorial,
+      state.lastBackupAt,
+      lastAutoSnapshotAt,
+      autoSnapshotCount,
+      storagePersisted,
+    ]
+  );
+
+  const themePrefsValue = useMemo<ThemePrefsContextValue>(
+    () => ({
+      shade,
+      themeMode: state.themeMode,
+      setThemeMode,
       privacyMode: state.privacyMode,
       togglePrivacyMode,
       formatVisiblePeso,
-      themeMode: state.themeMode,
-      setThemeMode,
-      lastPaydayCheckInKey: state.lastPaydayCheckInKey,
-      lastBackupAt: state.lastBackupAt,
-      markBackupExported,
+    }),
+    [
       shade,
+      state.themeMode,
+      setThemeMode,
+      state.privacyMode,
+      togglePrivacyMode,
+      formatVisiblePeso,
+    ]
+  );
+
+  const actionsValue = useMemo<BudgetActionsContextValue>(
+    () => ({
+      setSelectedDateKey,
+      dismissMilestone,
+      togglePrivacyMode,
+      setThemeMode,
+      ...dailyActions,
+      ...walletActions,
+      ...planActions,
+      ...goalsActions,
+      ...recoveryActions,
+    }),
+    [
+      setSelectedDateKey,
+      dismissMilestone,
+      togglePrivacyMode,
+      setThemeMode,
+      dailyActions,
+      walletActions,
+      planActions,
+      goalsActions,
+      recoveryActions,
+    ]
+  );
+
+  const dailyBudgetValue = useMemo<DailyBudgetContextValue>(
+    () => ({
       settings: state.settings,
       billItems: state.billItems,
-      cashOnHand: state.cashOnHand,
-      banks: state.banks,
-      creditCards: state.creditCards,
-      installments: state.installments,
-      envelopes: state.envelopes || [],
-      sinkingFunds: state.sinkingFunds,
-      debts: state.debts || [],
-      monthlySaved: state.monthlySaved,
+      envelopes,
+      entries: state.entries,
       baseDailyAllowance,
       rolloverBalance: state.rolloverBalance,
       todayKey,
       selectedDateKey,
-      setSelectedDateKey,
       getDaySummary,
       spentOnSelectedDay: selectedDaySummary.spent,
       safeToSpendOnSelectedDay: selectedDaySummary.safeRemaining,
+      lastPaydayCheckInKey: state.lastPaydayCheckInKey,
+    }),
+    [
+      state.settings,
+      state.billItems,
+      envelopes,
+      state.entries,
+      baseDailyAllowance,
+      state.rolloverBalance,
+      todayKey,
+      selectedDateKey,
+      getDaySummary,
+      selectedDaySummary.spent,
+      selectedDaySummary.safeRemaining,
+      state.lastPaydayCheckInKey,
+    ]
+  );
+
+  const walletValue = useMemo<WalletContextValue>(
+    () => ({
+      cashOnHand: state.cashOnHand,
+      banks: state.banks,
+      creditCards: state.creditCards,
+      installments: state.installments,
+      debts,
+      lastPaymentSourceId: state.lastPaymentSourceId,
+    }),
+    [
+      state.cashOnHand,
+      state.banks,
+      state.creditCards,
+      state.installments,
+      debts,
+      state.lastPaymentSourceId,
+    ]
+  );
+
+  const goalsValue = useMemo<GoalsContextValue>(
+    () => ({
+      treats: state.treats,
+      activeTreat,
+      sinkingFunds: state.sinkingFunds,
+      monthlySaved: state.monthlySaved,
+      monthlyArchives: state.monthlyArchives,
       streakDays: state.streakDays,
       bufferShields: state.bufferShields,
       disciplineScore: state.disciplineScore,
       cardTier,
-      treats: state.treats,
-      activeTreat,
-      entries: state.entries,
-      monthlyArchives: state.monthlyArchives,
-      logSpend,
-      fundActiveTreat,
-      saveToJar,
-      bankTodaySurplus,
-      simulateMidnightSplit,
-      claimTreat,
-      addTreat,
-      deleteTreat,
-      setActiveTreat,
-      undoEntry,
-      lastPaymentSourceId: state.lastPaymentSourceId,
-      editEntry,
-      transferBetweenAccounts,
-      updateBudgetConfig,
-      updateSalarySchedule,
-      updateBillAmount,
-      updateBillItem,
-      updateBillDueDay,
-      addBillItem,
-      markBillPaid,
-      removeBillItem,
-      logPaydayCheckIn,
-      dismissPaydayPrompt,
-      addEnvelope,
-      updateEnvelope,
-      deleteEnvelope,
-      spendFromEnvelope,
-      refillEnvelope,
-      depositToWalletAccount,
-      setAccountBalanceWithLog,
-      addBank,
-      updateBank,
-      removeBank,
-      addCreditCard,
-      updateCreditCard,
-      removeCreditCard,
-      completeOnboarding,
-      reopenOnboarding,
-      cancelReopenedOnboarding,
-      completeTutorial,
-      openTutorial,
-      resetToNewUser,
-      resetDemoState,
       unlockedMilestones: state.unlockedMilestones,
       pendingMilestone,
-      dismissMilestone,
-      boostSavingsGoal,
-      addInstallment,
-      updateInstallment,
-      markInstallmentMonthPaid,
-      toggleInstallmentInBudget,
-      removeInstallment,
-      addSinkingFund,
-      depositToSinkingFund,
-      deleteSinkingFund,
-      addDebt,
-      updateDebt,
-      deleteDebt,
-      recordDebtPayment,
-      exportBackupJsonString,
-      importBackupJsonString,
-      lastAutoSnapshotAt,
-      autoSnapshotCount,
-      storagePersisted,
-      listAutoSnapshots,
-      restoreAutoSnapshot,
-      captureAutoSnapshotNow,
     }),
     [
-      isHydrated,
-      state,
-      isEditingOnboarding,
-      togglePrivacyMode,
-      formatVisiblePeso,
-      setThemeMode,
-      markBackupExported,
-      shade,
-      baseDailyAllowance,
-      todayKey,
-      selectedDateKey,
-      setSelectedDateKey,
-      getDaySummary,
-      selectedDaySummary.spent,
-      selectedDaySummary.safeRemaining,
-      cardTier,
+      state.treats,
       activeTreat,
-      logSpend,
-      fundActiveTreat,
-      saveToJar,
-      bankTodaySurplus,
-      simulateMidnightSplit,
-      claimTreat,
-      addTreat,
-      deleteTreat,
-      setActiveTreat,
-      undoEntry,
-      editEntry,
-      transferBetweenAccounts,
-      updateBudgetConfig,
-      updateSalarySchedule,
-      updateBillAmount,
-      updateBillItem,
-      updateBillDueDay,
-      addBillItem,
-      markBillPaid,
-      removeBillItem,
-      logPaydayCheckIn,
-      dismissPaydayPrompt,
-      addEnvelope,
-      updateEnvelope,
-      deleteEnvelope,
-      spendFromEnvelope,
-      refillEnvelope,
-      depositToWalletAccount,
-      setAccountBalanceWithLog,
-      addBank,
-      updateBank,
-      removeBank,
-      addCreditCard,
-      updateCreditCard,
-      removeCreditCard,
-      completeOnboarding,
-      reopenOnboarding,
-      cancelReopenedOnboarding,
-      completeTutorial,
-      openTutorial,
-      resetToNewUser,
-      resetDemoState,
+      state.sinkingFunds,
+      state.monthlySaved,
+      state.monthlyArchives,
+      state.streakDays,
+      state.bufferShields,
+      state.disciplineScore,
+      cardTier,
+      state.unlockedMilestones,
       pendingMilestone,
-      dismissMilestone,
-      boostSavingsGoal,
-      addInstallment,
-      updateInstallment,
-      markInstallmentMonthPaid,
-      toggleInstallmentInBudget,
-      removeInstallment,
-      addSinkingFund,
-      depositToSinkingFund,
-      deleteSinkingFund,
-      addDebt,
-      updateDebt,
-      deleteDebt,
-      recordDebtPayment,
-      exportBackupJsonString,
-      importBackupJsonString,
-      lastAutoSnapshotAt,
-      autoSnapshotCount,
-      storagePersisted,
-      listAutoSnapshots,
-      restoreAutoSnapshot,
-      captureAutoSnapshotNow,
     ]
   );
 
   return (
-    <BudgetContext.Provider value={value}>{children}</BudgetContext.Provider>
+    <SystemStatusContext.Provider value={systemStatusValue}>
+      <ThemePrefsContext.Provider value={themePrefsValue}>
+        <BudgetActionsContext.Provider value={actionsValue}>
+          <DailyBudgetContext.Provider value={dailyBudgetValue}>
+            <WalletContext.Provider value={walletValue}>
+              <GoalsContext.Provider value={goalsValue}>
+                {children}
+              </GoalsContext.Provider>
+            </WalletContext.Provider>
+          </DailyBudgetContext.Provider>
+        </BudgetActionsContext.Provider>
+      </ThemePrefsContext.Provider>
+    </SystemStatusContext.Provider>
   );
 };
 
-export function useBudget(): BudgetContextValue {
-  const ctx = useContext(BudgetContext);
+export function useThemePrefs(): ThemePrefsContextValue {
+  const ctx = useContext(ThemePrefsContext);
   if (!ctx) {
-    throw new Error('useBudget must be used within a BudgetProvider');
+    throw new Error('useThemePrefs must be used within a BudgetProvider');
   }
   return ctx;
+}
+
+export function useBudgetActions(): BudgetActionsContextValue {
+  const ctx = useContext(BudgetActionsContext);
+  if (!ctx) {
+    throw new Error('useBudgetActions must be used within a BudgetProvider');
+  }
+  return ctx;
+}
+
+export function useDailyBudget(): DailyBudgetContextValue {
+  const ctx = useContext(DailyBudgetContext);
+  if (!ctx) {
+    throw new Error('useDailyBudget must be used within a BudgetProvider');
+  }
+  return ctx;
+}
+
+export function useWallet(): WalletContextValue {
+  const ctx = useContext(WalletContext);
+  if (!ctx) {
+    throw new Error('useWallet must be used within a BudgetProvider');
+  }
+  return ctx;
+}
+
+export function useGoals(): GoalsContextValue {
+  const ctx = useContext(GoalsContext);
+  if (!ctx) {
+    throw new Error('useGoals must be used within a BudgetProvider');
+  }
+  return ctx;
+}
+
+export function useSystemStatus(): SystemStatusContextValue {
+  const ctx = useContext(SystemStatusContext);
+  if (!ctx) {
+    throw new Error('useSystemStatus must be used within a BudgetProvider');
+  }
+  return ctx;
+}
+
+export function useBudget(): BudgetContextValue {
+  const themePrefs = useThemePrefs();
+  const actions = useBudgetActions();
+  const dailyBudget = useDailyBudget();
+  const wallet = useWallet();
+  const goals = useGoals();
+  const systemStatus = useSystemStatus();
+
+  return useMemo(
+    () => ({
+      ...systemStatus,
+      ...themePrefs,
+      ...actions,
+      ...dailyBudget,
+      ...wallet,
+      ...goals,
+    }),
+    [systemStatus, themePrefs, actions, dailyBudget, wallet, goals]
+  );
 }
