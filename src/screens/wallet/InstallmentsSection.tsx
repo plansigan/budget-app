@@ -6,7 +6,11 @@ import {
 } from '../../components/AnimatedPrimitives';
 import { AppIcon, IconBadge } from '../../components/AppIcon';
 import { FormModal } from '../../components/FormModal';
-import { useBudget } from '../../context/BudgetContext';
+import {
+  useBudgetActions,
+  useThemePrefs,
+  useWallet,
+} from '../../context/BudgetContext';
 import { InstallmentItem } from '../../types/budget';
 import { triggerLightHaptic } from '../../utils/haptics';
 import {
@@ -31,15 +35,14 @@ export const InstallmentsSection: React.FC<InstallmentsSectionProps> = ({
   onOpenAddModal,
   onRequestConfirm,
 }) => {
+  const { shade, formatVisiblePeso } = useThemePrefs();
+  const { installments } = useWallet();
   const {
-    shade,
-    formatVisiblePeso,
-    installments,
     markInstallmentMonthPaid,
     toggleInstallmentInBudget,
     updateInstallment,
     removeInstallment,
-  } = useBudget();
+  } = useBudgetActions();
 
   const [editingInst, setEditingInst] = useState<InstallmentItem | null>(null);
   const [editName, setEditName] = useState('');

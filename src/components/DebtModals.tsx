@@ -1,6 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { useBudget } from '../context/BudgetContext';
+import {
+  useBudgetActions,
+  useThemePrefs,
+  useWallet,
+} from '../context/BudgetContext';
 import { DebtDirection, DebtItem } from '../types/budget';
 import { triggerLightHaptic } from '../utils/haptics';
 import {
@@ -30,13 +34,8 @@ const DebtAccountingOptions: React.FC<AccountingOptionsProps> = ({
   onToggleDaily,
   showDailyToggle = true,
 }) => {
-  const {
-    shade,
-    formatVisiblePeso,
-    cashOnHand,
-    banks,
-    creditCards,
-  } = useBudget();
+  const { shade, formatVisiblePeso } = useThemePrefs();
+  const { cashOnHand, banks, creditCards } = useWallet();
 
   return (
     <View style={styles.optionsGap}>
@@ -292,7 +291,9 @@ export const AddEditDebtModal: React.FC<AddEditDebtModalProps> = ({
   defaultDirection = 'i_owe',
   onClose,
 }) => {
-  const { shade, creditCards, addDebt, updateDebt } = useBudget();
+  const { shade } = useThemePrefs();
+  const { creditCards } = useWallet();
+  const { addDebt, updateDebt } = useBudgetActions();
 
   const [direction, setDirection] = useState<DebtDirection>(defaultDirection);
   const [personName, setPersonName] = useState('');
@@ -528,7 +529,8 @@ export const DebtPaymentModal: React.FC<DebtPaymentModalProps> = ({
   debt,
   onClose,
 }) => {
-  const { shade, formatVisiblePeso, recordDebtPayment } = useBudget();
+  const { shade, formatVisiblePeso } = useThemePrefs();
+  const { recordDebtPayment } = useBudgetActions();
 
   const [amountText, setAmountText] = useState('');
   const [sourceId, setSourceId] = useState('none');

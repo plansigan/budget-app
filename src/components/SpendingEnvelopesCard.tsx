@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { StyleSheet, Text, TextInput, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { getMonthlyEnvelopeAllocation } from '../state/budgetMath';
 import { ThemeShade } from '../theme/palette';
 import {
@@ -8,19 +8,13 @@ import {
   SpendingEnvelopeItem,
 } from '../types/budget';
 import { triggerLightHaptic } from '../utils/haptics';
-import {
-  formatPeso,
-  formatPesoDisplay,
-  formatPesoInput,
-  formatPesoNumber,
-  parsePesoInput,
-} from '../utils/numberFormat';
+import { formatPeso, formatPesoDisplay } from '../utils/numberFormat';
 import { PopValueText, ScalePressable } from './AnimatedPrimitives';
-import { AppIcon, ENVELOPE_ICON_CHOICES, IconBadge } from './AppIcon';
+import { AppIcon, IconBadge } from './AppIcon';
 import { ConfirmModal } from './ConfirmModal';
-import { FormModal } from './FormModal';
+import { AddEditEnvelopeModal, ENVELOPE_PRESETS } from './EnvelopeModal';
 
-interface SpendingEnvelopesCardProps {
+export interface SpendingEnvelopesCardProps {
   envelopes: SpendingEnvelopeItem[];
   salaryFrequency: 1 | 2;
   shade: ThemeShade;
@@ -48,48 +42,11 @@ interface SpendingEnvelopesCardProps {
   focusSignal?: number;
 }
 
-const ENVELOPE_PRESETS: Array<{
-  name: string;
-  icon: string;
-  amount: number;
-  cadence: EnvelopeCadence;
-  rolloverMode: EnvelopeRolloverMode;
-}> = [
-  {
-    name: 'Date Fund',
-    icon: 'heart',
-    amount: 7500,
-    cadence: 'per_payday',
-    rolloverMode: 'rollover',
-  },
-  {
-    name: 'Dining Out',
-    icon: 'shopping-bag',
-    amount: 2500,
-    cadence: 'per_payday',
-    rolloverMode: 'reset',
-  },
-  {
-    name: 'Personal Fun',
-    icon: 'star',
-    amount: 2000,
-    cadence: 'per_payday',
-    rolloverMode: 'rollover',
-  },
-  {
-    name: 'Coffee & Snacks',
-    icon: 'coffee',
-    amount: 1000,
-    cadence: 'per_payday',
-    rolloverMode: 'reset',
-  },
-];
-
 /**
  * Interactive card in the Budget setup tab for creating and refilling
  * dedicated guilt-free Spending Envelopes (e.g., Date Fund every cutoff).
  */
-export const SpendingEnvelopesCard: React.FC<SpendingEnvelopesCardProps> = ({
+const SpendingEnvelopesCardBase: React.FC<SpendingEnvelopesCardProps> = ({
   envelopes,
   salaryFrequency,
   shade,
@@ -109,17 +66,9 @@ export const SpendingEnvelopesCard: React.FC<SpendingEnvelopesCardProps> = ({
       setExpanded(true);
     }
   }, [focusSignal]);
-  const [modalVisible, setModalVisible] = useState(false);
-  const [editingEnvelope, setEditingEnvelope] =
-    useState<SpendingEnvelopeItem | null>(null);
-  const [formIcon, setFormIcon] = useState('heart');
-  const [formName, setFormName] = useState('');
-  const [formAmountText, setFormAmountText] = useState('');
-  const [formBalanceText, setFormBalanceText] = useState('');
-  const [formCadence, setFormCadence] = useState<EnvelopeCadence>('per_payday');
-  const [formRolloverMode, setFormRolloverMode] =
-    useState<EnvelopeRolloverMode>('rollover');
-  const [formError, setFormError] = useState<string | null>(null);
+  const [envelopeModalState, setEnvelopeModalState] = useState<{
+    envelope: SpendingEnvelopeItem | null;
+  } | null>(null);
   const [pendingDelete, setPendingDelete] =
     useState<SpendingEnvelopeItem | null>(null);
 
@@ -132,66 +81,12 @@ export const SpendingEnvelopesCard: React.FC<SpendingEnvelopesCardProps> = ({
 
   const openCreateModal = () => {
     triggerLightHaptic();
-    setEditingEnvelope(null);
-    setFormIcon('heart');
-    setFormName('');
-    setFormAmountText('');
-    setFormBalanceText('');
-    setFormCadence('per_payday');
-    setFormRolloverMode('rollover');
-    setFormError(null);
-    setModalVisible(true);
+    setEnvelopeModalState({ envelope: null });
   };
 
   const openEditModal = (env: SpendingEnvelopeItem) => {
     triggerLightHaptic();
-    setEditingEnvelope(env);
-    setFormIcon(env.icon);
-    setFormName(env.name);
-    setFormAmountText(formatPesoNumber(env.amountPerCycle));
-    setFormBalanceText(formatPesoNumber(env.balance));
-    setFormCadence(env.cadence);
-    setFormRolloverMode(env.rolloverMode);
-    setFormError(null);
-    setModalVisible(true);
-  };
-
-  const parsedCycleAmt = parsePesoInput(formAmountText);
-  const parsedBalanceAmt = parsePesoInput(formBalanceText);
-  const monthlyPreview =
-    parsedCycleAmt * (formCadence === 'per_payday' ? salaryFrequency : 1);
-  const isFormValid = Boolean(formName.trim()) && parsedCycleAmt > 0;
-
-  const handleSaveModal = () => {
-    if (!formName.trim()) {
-      setFormError('Please enter an allowance name.');
-      return;
-    }
-    if (parsedCycleAmt <= 0) {
-      setFormError('Please enter an amount greater than ₱0.00.');
-      return;
-    }
-    setFormError(null);
-    if (editingEnvelope) {
-      onUpdateEnvelope(
-        editingEnvelope.id,
-        formName.trim(),
-        formIcon,
-        parsedCycleAmt,
-        formCadence,
-        formRolloverMode,
-        parsedBalanceAmt
-      );
-    } else {
-      onAddEnvelope(
-        formName.trim(),
-        formIcon,
-        parsedCycleAmt,
-        formCadence,
-        formRolloverMode
-      );
-    }
-    setModalVisible(false);
+    setEnvelopeModalState({ envelope: env });
   };
 
   return (
@@ -416,296 +311,17 @@ export const SpendingEnvelopesCard: React.FC<SpendingEnvelopesCardProps> = ({
         </View>
       )}
 
-      <FormModal
-        visible={modalVisible}
-        title={editingEnvelope ? 'Edit Allowance' : 'New Allowance'}
-        subtitle="Set aside upfront so spending won't touch your daily budget"
-        icon={formIcon}
-        accentColor={shade.dopamine}
-        onClose={() => {
-          setFormError(null);
-          setModalVisible(false);
-        }}
-      >
-        {!editingEnvelope && collapsible && (
-          <View style={{ gap: 6 }}>
-            <Text style={[styles.modalLabel, { color: shade.muted }]}>
-              Quick Starters (tap to fill)
-            </Text>
-            <View style={styles.presetChips}>
-              {ENVELOPE_PRESETS.map((preset) => (
-                <ScalePressable
-                  key={preset.name}
-                  onPress={() => {
-                    triggerLightHaptic();
-                    setFormName(preset.name);
-                    setFormIcon(preset.icon);
-                    setFormAmountText(formatPesoNumber(preset.amount));
-                    setFormCadence(preset.cadence);
-                    setFormRolloverMode(preset.rolloverMode);
-                    setFormError(null);
-                  }}
-                  style={[styles.presetChip, { backgroundColor: shade.surface }]}
-                >
-                  <AppIcon name={preset.icon} size={12} color={shade.dopamine} />
-                  <Text style={[styles.presetChipText, { color: shade.text }]}>
-                    {preset.name} {formatPeso(preset.amount)}
-                  </Text>
-                </ScalePressable>
-              ))}
-            </View>
-          </View>
-        )}
-        <Text style={[styles.modalLabel, { color: shade.muted }]}>
-          Pick an icon
-        </Text>
-        <View style={styles.iconRow}>
-          {ENVELOPE_ICON_CHOICES.map((iconName) => {
-            const active = formIcon === iconName;
-            return (
-              <ScalePressable
-                key={iconName}
-                onPress={() => {
-                  triggerLightHaptic();
-                  setFormIcon(iconName);
-                }}
-                style={[
-                  styles.iconPill,
-                  {
-                    backgroundColor: active ? shade.dopamine : shade.surface,
-                  },
-                ]}
-              >
-                <AppIcon
-                  name={iconName}
-                  size={16}
-                  color={active ? '#FFFFFF' : shade.text}
-                />
-              </ScalePressable>
-            );
-          })}
-        </View>
-
-        <TextInput
-          value={formName}
-          onChangeText={(t) => {
-            setFormName(t);
-            if (formError) setFormError(null);
-          }}
-          placeholder="Allowance name (e.g., Date Night, Coffee)"
-          placeholderTextColor={shade.muted}
-          style={[
-            styles.nameInput,
-            {
-              backgroundColor: shade.surface,
-              color: shade.text,
-              borderColor: shade.border,
-            },
-          ]}
-        />
-
-        <View
-          style={[
-            styles.newAmountWrap,
-            { backgroundColor: shade.surface, borderColor: shade.border },
-          ]}
-        >
-          <Text style={[styles.pesoSign, { color: shade.dopamine }]}>₱</Text>
-          <TextInput
-            value={formAmountText}
-            onChangeText={(t) => {
-              setFormAmountText(formatPesoInput(t));
-              if (formError) setFormError(null);
-            }}
-            keyboardType="decimal-pad"
-            inputMode="decimal"
-            placeholder={
-              formCadence === 'per_payday'
-                ? 'Amount per cutoff (e.g., 7,500)'
-                : 'Monthly allowance'
-            }
-            placeholderTextColor={shade.muted}
-            style={[styles.newAmountInput, { color: shade.text }]}
-          />
-        </View>
-
-        {editingEnvelope && (
-          <View style={{ gap: 4 }}>
-            <Text style={[styles.modalLabel, { color: shade.muted }]}>
-              Current Available Balance
-            </Text>
-            <View
-              style={[
-                styles.newAmountWrap,
-                { backgroundColor: shade.surface, borderColor: shade.border },
-              ]}
-            >
-              <Text style={[styles.pesoSign, { color: shade.positive }]}>₱</Text>
-              <TextInput
-                value={formBalanceText}
-                onChangeText={(t) => setFormBalanceText(formatPesoInput(t))}
-                keyboardType="decimal-pad"
-                inputMode="decimal"
-                placeholder="0"
-                placeholderTextColor={shade.muted}
-                style={[styles.newAmountInput, { color: shade.text }]}
-              />
-            </View>
-          </View>
-        )}
-
-        <View style={{ gap: 6 }}>
-          <Text style={[styles.modalLabel, { color: shade.muted }]}>
-            Refill Schedule
-          </Text>
-          <View style={styles.segRow}>
-            <ScalePressable
-              onPress={() => {
-                triggerLightHaptic();
-                setFormCadence('per_payday');
-              }}
-              style={[
-                styles.segBtn,
-                {
-                  backgroundColor:
-                    formCadence === 'per_payday' ? shade.accent : shade.surface,
-                },
-              ]}
-            >
-              <Text
-                style={[
-                  styles.segText,
-                  {
-                    color:
-                      formCadence === 'per_payday'
-                        ? shade.accentText
-                        : shade.text,
-                  },
-                ]}
-              >
-                Every Cutoff ({salaryFrequency}x/mo)
-              </Text>
-            </ScalePressable>
-            <ScalePressable
-              onPress={() => {
-                triggerLightHaptic();
-                setFormCadence('monthly');
-              }}
-              style={[
-                styles.segBtn,
-                {
-                  backgroundColor:
-                    formCadence === 'monthly' ? shade.accent : shade.surface,
-                },
-              ]}
-            >
-              <Text
-                style={[
-                  styles.segText,
-                  {
-                    color:
-                      formCadence === 'monthly' ? shade.accentText : shade.text,
-                  },
-                ]}
-              >
-                Once a Month
-              </Text>
-            </ScalePressable>
-          </View>
-        </View>
-
-        <View style={{ gap: 6 }}>
-          <Text style={[styles.modalLabel, { color: shade.muted }]}>
-            Unused Balance on New Cutoff
-          </Text>
-          <View style={styles.segRow}>
-            <ScalePressable
-              onPress={() => {
-                triggerLightHaptic();
-                setFormRolloverMode('rollover');
-              }}
-              style={[
-                styles.segBtn,
-                {
-                  backgroundColor:
-                    formRolloverMode === 'rollover'
-                      ? shade.dopamine
-                      : shade.surface,
-                },
-              ]}
-            >
-              <Text
-                style={[
-                  styles.segText,
-                  {
-                    color:
-                      formRolloverMode === 'rollover' ? '#FFFFFF' : shade.text,
-                  },
-                ]}
-              >
-                Roll over leftover
-              </Text>
-            </ScalePressable>
-            <ScalePressable
-              onPress={() => {
-                triggerLightHaptic();
-                setFormRolloverMode('reset');
-              }}
-              style={[
-                styles.segBtn,
-                {
-                  backgroundColor:
-                    formRolloverMode === 'reset'
-                      ? shade.dopamine
-                      : shade.surface,
-                },
-              ]}
-            >
-              <Text
-                style={[
-                  styles.segText,
-                  {
-                    color:
-                      formRolloverMode === 'reset' ? '#FFFFFF' : shade.text,
-                  },
-                ]}
-              >
-                Reset to cycle amt
-              </Text>
-            </ScalePressable>
-          </View>
-        </View>
-
-        <Text style={[styles.impactHint, { color: shade.muted }]}>
-          Monthly budget impact: {mask(monthlyPreview)}/mo set aside automatically
-        </Text>
-
-        {formError && (
-          <Text style={[styles.formErrorText, { color: shade.warning }]}>
-            {formError}
-          </Text>
-        )}
-
-        <ScalePressable
-          onPress={handleSaveModal}
-          style={[
-            styles.addBtn,
-            {
-              backgroundColor: isFormValid ? shade.dopamine : shade.surface,
-              opacity: isFormValid ? 1 : 0.75,
-            },
-          ]}
-        >
-          <Text
-            style={[
-              styles.addBtnText,
-              { color: isFormValid ? '#FFFFFF' : shade.muted },
-            ]}
-          >
-            {editingEnvelope ? 'Save Allowance' : 'Add Allowance'}
-          </Text>
-        </ScalePressable>
-      </FormModal>
+      <AddEditEnvelopeModal
+        visible={envelopeModalState !== null}
+        editingEnvelope={envelopeModalState?.envelope ?? null}
+        salaryFrequency={salaryFrequency}
+        shade={shade}
+        privacyMode={privacyMode}
+        collapsible={collapsible}
+        onAddEnvelope={onAddEnvelope}
+        onUpdateEnvelope={onUpdateEnvelope}
+        onClose={() => setEnvelopeModalState(null)}
+      />
 
       <ConfirmModal
         visible={pendingDelete !== null}
@@ -728,6 +344,8 @@ export const SpendingEnvelopesCard: React.FC<SpendingEnvelopesCardProps> = ({
     </View>
   );
 };
+
+export const SpendingEnvelopesCard = React.memo(SpendingEnvelopesCardBase);
 
 const styles = StyleSheet.create({
   card: {
@@ -881,82 +499,5 @@ const styles = StyleSheet.create({
   presetChipText: {
     fontSize: 11,
     fontWeight: '700',
-  },
-  modalLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  iconRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 7,
-  },
-  iconPill: {
-    width: 38,
-    height: 38,
-    borderRadius: 11,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  nameInput: {
-    minWidth: 0,
-    borderRadius: 12,
-    borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 14,
-  },
-  newAmountWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 12,
-    borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  pesoSign: {
-    fontSize: 14,
-    fontWeight: '800',
-    marginRight: 5,
-  },
-  newAmountInput: {
-    flex: 1,
-    minWidth: 0,
-    fontSize: 16,
-    fontWeight: '800',
-    paddingVertical: 0,
-  },
-  segRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  segBtn: {
-    flex: 1,
-    paddingVertical: 9,
-    paddingHorizontal: 8,
-    borderRadius: 10,
-    alignItems: 'center',
-  },
-  segText: {
-    fontSize: 11,
-    fontWeight: '800',
-    textAlign: 'center',
-  },
-  impactHint: {
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  formErrorText: {
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  addBtn: {
-    borderRadius: 12,
-    paddingVertical: 13,
-    alignItems: 'center',
-  },
-  addBtnText: {
-    fontSize: 13,
-    fontWeight: '800',
   },
 });

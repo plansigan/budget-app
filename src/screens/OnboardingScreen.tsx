@@ -33,7 +33,12 @@ import {
 import {
   computeBaseDailyAllowance,
   sumBills,
-  useBudget,
+  useBudgetActions,
+  useDailyBudget,
+  useGoals,
+  useSystemStatus,
+  useThemePrefs,
+  useWallet,
 } from '../context/BudgetContext';
 import { BillItem, getNextPaydayLabel } from '../types/budget';
 import {
@@ -49,17 +54,12 @@ const TOTAL_QUESTIONS = 6;
  * user after each answered question before sliding to the next.
  */
 export const OnboardingScreen: React.FC = () => {
-  const {
-    shade,
-    settings,
-    billItems,
-    cashOnHand,
-    disciplineScore,
-    cardTier,
-    isEditingOnboarding,
-    completeOnboarding,
-    cancelReopenedOnboarding,
-  } = useBudget();
+  const { shade } = useThemePrefs();
+  const { settings, billItems } = useDailyBudget();
+  const { cashOnHand } = useWallet();
+  const { disciplineScore, cardTier } = useGoals();
+  const { isEditingOnboarding } = useSystemStatus();
+  const { completeOnboarding, cancelReopenedOnboarding } = useBudgetActions();
 
   const [step, setStep] = useState<number>(1);
   const insets = useSafeAreaInsets();

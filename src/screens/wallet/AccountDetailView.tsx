@@ -1,39 +1,28 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import {
-  FlatList,
-  ListRenderItemInfo,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { FlatList, ListRenderItemInfo, StyleSheet, Text, View } from 'react-native';
 import {
   AnimatedProgressBar,
   FadeSlideIn,
   PopValueText,
   ScalePressable,
 } from '../../components/AnimatedPrimitives';
-import { AppIcon, IconBadge, SPEND_CATEGORIES } from '../../components/AppIcon';
+import { AppIcon, IconBadge } from '../../components/AppIcon';
 import { EditTransactionModal } from '../../components/EditTransactionModal';
-import { FormModal } from '../../components/FormModal';
-import { useBudget } from '../../context/BudgetContext';
-import { isEditableEntryType } from '../../state/budgetReducer';
 import {
-  SpendCategoryKey,
-  TransactionEntry,
-  getDaysUntilDayOfMonth,
-} from '../../types/budget';
+  useBudgetActions,
+  useDailyBudget,
+  useThemePrefs,
+  useWallet,
+} from '../../context/BudgetContext';
+import { TransactionEntry, getDaysUntilDayOfMonth } from '../../types/budget';
 import { triggerLightHaptic } from '../../utils/haptics';
+import { formatOrdinal, formatPeso } from '../../utils/numberFormat';
 import {
-  formatOrdinal,
-  formatPeso,
-  formatPesoInput,
-  formatPesoNumber,
-  parsePesoInput,
-} from '../../utils/numberFormat';
-
-type AccountActionMode = 'deposit' | 'spend' | 'adjust' | null;
+  AccountActionModal,
+  AccountActionMode,
+  EditAccountModal,
+} from './AccountDetailModals';
+import { AccountEntryRow } from './AccountEntryRow';
 
 export interface WalletConfirmRequest {
   title: string;
@@ -57,41 +46,16 @@ export const AccountDetailView: React.FC<AccountDetailViewProps> = ({
   onOpenTransfer,
   onRequestConfirm,
 }) => {
-  const {
-    shade,
-    privacyMode,
-    formatVisiblePeso,
-    cashOnHand,
-    banks,
-    creditCards,
-    entries,
-    depositToWalletAccount,
-    transferBetweenAccounts,
-    setAccountBalanceWithLog,
-    logSpend,
-    updateBank,
-    updateCreditCard,
-    removeBank,
-    removeCreditCard,
-    undoEntry,
-  } = useBudget();
+  const { shade, privacyMode, formatVisiblePeso } = useThemePrefs();
+  const { cashOnHand, banks, creditCards } = useWallet();
+  const { entries } = useDailyBudget();
+  const { removeBank, removeCreditCard, undoEntry } = useBudgetActions();
 
   const [actionMode, setActionMode] = useState<AccountActionMode>(null);
-  const [actionAmountText, setActionAmountText] = useState('');
-  const [actionNote, setActionNote] = useState('');
-  const [actionCategory, setActionCategory] =
-    useState<SpendCategoryKey>('food');
-  const [actionIcon, setActionIcon] = useState<string>('shopping-bag');
-  const [payFromSourceId, setPayFromSourceId] = useState<string>('external');
   const [editingEntry, setEditingEntry] = useState<TransactionEntry | null>(
     null
   );
-
   const [showEditModal, setShowEditModal] = useState(false);
-  const [editName, setEditName] = useState('');
-  const [editLimitText, setEditLimitText] = useState('');
-  const [editCutoffText, setEditCutoffText] = useState('');
-  const [editError, setEditError] = useState<string | null>(null);
 
   const isCash = selectedAccountId === 'cash';
   const selectedBank = banks.find((b) => b.id === selectedAccountId);
@@ -146,120 +110,31 @@ export const AccountDetailView: React.FC<AccountDetailViewProps> = ({
     ? 'briefcase'
     : 'credit-card';
 
-  const numericActionAmt = parsePesoInput(actionAmountText);
-
   const openAccountActionModal = useCallback(
     (mode: Exclude<AccountActionMode, null>) => {
       triggerLightHaptic();
-      setActionAmountText('');
-      setActionNote('');
-      setActionCategory('food');
-      setActionIcon('shopping-bag');
-      if (mode === 'deposit' && selectedCard) {
-        const fundedBank = banks.find((b) => b.balance > 0);
-        if (fundedBank) {
-          setPayFromSourceId(fundedBank.id);
-        } else if (cashOnHand > 0) {
-          setPayFromSourceId('cash');
-        } else {
-          setPayFromSourceId('external');
-        }
-      }
       setActionMode(mode);
     },
-    [selectedCard, banks, cashOnHand]
+    []
   );
-
-  const handleSubmitAccountAction = () => {
-    if (actionMode === 'adjust') {
-      setAccountBalanceWithLog(
-        selectedAccountId,
-        numericActionAmt,
-        actionNote.trim() || undefined
-      );
-    } else if (actionMode === 'deposit') {
-      if (numericActionAmt <= 0) return;
-      if (selectedCard && payFromSourceId !== 'external') {
-        transferBetweenAccounts(
-          payFromSourceId,
-          selectedCard.id,
-          numericActionAmt,
-          actionNote.trim() || undefined
-        );
-      } else {
-        depositToWalletAccount(
-          selectedAccountId,
-          numericActionAmt,
-          actionNote.trim() || undefined
-        );
-      }
-    } else if (actionMode === 'spend') {
-      if (numericActionAmt <= 0) return;
-      const defaultCatLabel =
-        SPEND_CATEGORIES.find((c) => c.key === actionCategory)?.label ||
-        'Wallet Spend';
-      logSpend(
-        numericActionAmt,
-        actionNote.trim() || defaultCatLabel,
-        actionIcon,
-        selectedAccountId,
-        actionCategory
-      );
-    }
-    setActionMode(null);
-    setActionAmountText('');
-    setActionNote('');
-  };
 
   const openEditAccountModal = useCallback(() => {
     if (isCash) return;
     triggerLightHaptic();
-    setEditError(null);
-    if (selectedBank) {
-      setEditName(selectedBank.name);
-      setEditLimitText('');
-      setEditCutoffText('');
-    } else if (selectedCard) {
-      setEditName(selectedCard.name);
-      setEditLimitText(formatPesoNumber(selectedCard.limit));
-      setEditCutoffText(String(selectedCard.cutoffDay));
-    }
     setShowEditModal(true);
-  }, [isCash, selectedBank, selectedCard]);
+  }, [isCash]);
 
-  const handleSaveAccountEdit = () => {
-    const trimmed = editName.trim();
-    if (!trimmed) {
-      setEditError(
-        selectedCard
-          ? 'Please enter a credit card name.'
-          : 'Please enter a bank or e-wallet name.'
-      );
-      return;
-    }
-    if (selectedBank) {
-      updateBank(selectedBank.id, trimmed);
-      setShowEditModal(false);
-      return;
-    }
-    if (selectedCard) {
-      const limit = parsePesoInput(editLimitText);
-      if (limit <= 0) {
-        setEditError('Please enter a credit limit greater than ₱0.');
-        return;
-      }
-      const cutoff = Math.max(
-        1,
-        Math.min(
-          31,
-          parseInt(editCutoffText.replace(/[^0-9]/g, ''), 10) ||
-            selectedCard.cutoffDay
-        )
-      );
-      updateCreditCard(selectedCard.id, trimmed, limit, cutoff);
-      setShowEditModal(false);
-    }
-  };
+  const handleRequestUndo = useCallback(
+    (entry: TransactionEntry, deltaString: string) => {
+      onRequestConfirm({
+        title: 'Delete & Undo Entry?',
+        message: `Remove "${entry.label}" (${deltaString}) and reverse its balance changes?`,
+        confirmLabel: 'Yes, Delete',
+        onConfirm: () => undoEntry(entry.id),
+      });
+    },
+    [onRequestConfirm, undoEntry]
+  );
 
   const currentBalance = isCash
     ? cashOnHand
@@ -285,140 +160,18 @@ export const AccountDetailView: React.FC<AccountDetailViewProps> = ({
     : 0;
 
   const renderAccountEntry = useCallback(
-    ({ item: entry }: ListRenderItemInfo<TransactionEntry>) => {
-      const isDeposit = entry.type === 'wallet_deposit';
-      const isAdjust = entry.type === 'wallet_adjust';
-      const isBillPaid = entry.type === 'bill_paid';
-      const isEnvelopeSpend = entry.type === 'envelope_spend';
-      const isDebtInflow = entry.type === 'debt_inflow';
-      const isDebtOutflow = entry.type === 'debt_outflow';
-      const isTransfer = entry.type === 'wallet_transfer';
-      const isIncomingTransfer =
-        isTransfer && entry.toPaymentSourceId === selectedAccountId;
-      const adjPositive = (entry.signedDelta || 0) >= 0;
-      const editable = isEditableEntryType(entry);
-
-      const deltaColor =
-        isDeposit || isIncomingTransfer || isDebtInflow
-          ? shade.positive
-          : isAdjust
-          ? adjPositive
-            ? shade.positive
-            : shade.warning
-          : shade.text;
-
-      const deltaString = privacyMode
-        ? '₱••••'
-        : isDeposit || isIncomingTransfer || isDebtInflow
-        ? `+${formatPeso(entry.amount)}`
-        : isAdjust
-        ? `${adjPositive ? '+' : '-'}${formatPeso(entry.amount)}`
-        : `-${formatPeso(entry.amount)}`;
-
-      const typeLabel = isIncomingTransfer
-        ? selectedCard
-          ? `Paid from ${entry.paymentSourceLabel || 'Account'}`
-          : `From ${entry.paymentSourceLabel || 'Account'}`
-        : isTransfer
-        ? `To ${entry.toPaymentSourceLabel || 'Account'}`
-        : isDeposit
-        ? selectedCard
-          ? 'Card Payment'
-          : 'Added'
-        : isDebtInflow
-        ? entry.debtAction === 'created'
-          ? 'Borrowed'
-          : 'Debt Received'
-        : isDebtOutflow
-        ? entry.debtAction === 'created'
-          ? 'Lent'
-          : 'Debt Paid'
-        : isAdjust
-        ? 'Updated Balance'
-        : isBillPaid
-        ? 'Bill Paid'
-        : isEnvelopeSpend
-        ? 'Allowance Spend'
-        : 'Spent';
-
-      return (
-        <View
-          style={[
-            styles.logRow,
-            {
-              backgroundColor: shade.card,
-              borderColor:
-                isDeposit || isIncomingTransfer ? shade.positive : shade.border,
-            },
-          ]}
-        >
-          <ScalePressable
-            disabled={!editable}
-            onPress={() => {
-              if (!editable) return;
-              triggerLightHaptic();
-              setEditingEntry(entry);
-            }}
-            style={styles.logTapArea}
-          >
-            <View style={styles.logLeft}>
-              <IconBadge
-                name={entry.icon}
-                size={14}
-                color={deltaColor}
-                bg={shade.surface}
-                boxSize={32}
-              />
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <Text
-                  numberOfLines={1}
-                  style={[styles.logLabel, { color: shade.text }]}
-                >
-                  {entry.label}
-                </Text>
-                <Text
-                  numberOfLines={1}
-                  style={[styles.accountSub, { color: shade.muted }]}
-                >
-                  {entry.dateKey || ''} • {typeLabel}
-                </Text>
-              </View>
-            </View>
-
-            <Text style={[styles.logDelta, { color: deltaColor }]}>
-              {deltaString}
-            </Text>
-          </ScalePressable>
-
-          <ScalePressable
-            onPress={() => {
-              triggerLightHaptic();
-              onRequestConfirm({
-                title: 'Delete & Undo Entry?',
-                message: `Remove "${entry.label}" (${deltaString}) and reverse its balance changes?`,
-                confirmLabel: 'Yes, Delete',
-                onConfirm: () => undoEntry(entry.id),
-              });
-            }}
-            accessibilityLabel={`Undo ${entry.label}`}
-            hitSlop={6}
-            style={[styles.undoMini, { backgroundColor: shade.surface }]}
-          >
-            <Text style={[styles.undoMiniText, { color: shade.muted }]}>
-              Undo
-            </Text>
-          </ScalePressable>
-        </View>
-      );
-    },
-    [
-      selectedAccountId,
-      selectedCard,
-      shade,
-      privacyMode,
-      onRequestConfirm,
-      undoEntry,
-    ]
+    ({ item: entry }: ListRenderItemInfo<TransactionEntry>) => (
+      <AccountEntryRow
+        entry={entry}
+        selectedAccountId={selectedAccountId}
+        isCreditCard={Boolean(selectedCard)}
+        shade={shade}
+        privacyMode={privacyMode}
+        onEdit={setEditingEntry}
+        onRequestUndo={handleRequestUndo}
+      />
+    ),
+    [selectedAccountId, selectedCard, shade, privacyMode, handleRequestUndo]
   );
 
   const listHeader = useMemo(() => {
@@ -817,420 +570,25 @@ export const AccountDetailView: React.FC<AccountDetailViewProps> = ({
         />
       </FadeSlideIn>
 
-      <FormModal
-        visible={actionMode !== null}
-        title={
-          actionMode === 'deposit'
-            ? selectedCard
-              ? `Pay ${accountTitle}`
-              : `Deposit to ${accountTitle}`
-            : actionMode === 'spend'
-            ? `Spend from ${accountTitle}`
-            : `Update ${accountTitle}`
-        }
-        subtitle="Enter exact peso amount"
-        icon={
-          actionMode === 'deposit'
-            ? 'arrow-down-left'
-            : actionMode === 'spend'
-            ? 'arrow-up-right'
-            : 'edit-2'
-        }
-        accentColor={
-          actionMode === 'deposit'
-            ? shade.positive
-            : actionMode === 'adjust'
-            ? shade.dopamine
-            : shade.accent
-        }
+      <AccountActionModal
+        mode={actionMode}
+        selectedAccountId={selectedAccountId}
+        accountTitle={accountTitle}
+        isCreditCard={Boolean(selectedCard)}
         onClose={() => setActionMode(null)}
-      >
-        <View
-          style={[
-            styles.fullAmountBox,
-            { backgroundColor: shade.surface, borderColor: shade.border },
-          ]}
-        >
-          <Text style={[styles.pesoPrefix, { color: shade.accent }]}>₱</Text>
-          <TextInput
-            value={actionAmountText}
-            onChangeText={(t) => setActionAmountText(formatPesoInput(t))}
-            keyboardType="decimal-pad"
-            inputMode="decimal"
-            placeholder="Enter exact amount"
-            placeholderTextColor={shade.muted}
-            autoFocus
-            style={[styles.amountInput, { color: shade.text }]}
-          />
-        </View>
-
-        {actionMode === 'deposit' && selectedCard && (
-          <View style={{ gap: 6 }}>
-            <Text style={[styles.catLabel, { color: shade.muted }]}>
-              PAY FROM ACCOUNT
-            </Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              style={styles.horizontalScroll}
-              contentContainerStyle={styles.payFromScroll}
-            >
-              {banks.map((b) => {
-                const active = payFromSourceId === b.id;
-                return (
-                  <ScalePressable
-                    key={b.id}
-                    onPress={() => {
-                      triggerLightHaptic();
-                      setPayFromSourceId(b.id);
-                    }}
-                    style={[
-                      styles.payFromPill,
-                      {
-                        backgroundColor: active ? shade.positive : shade.surface,
-                      },
-                    ]}
-                  >
-                    <Text
-                      numberOfLines={1}
-                      style={[
-                        styles.payFromTitle,
-                        { color: active ? '#FFFFFF' : shade.text },
-                      ]}
-                    >
-                      {b.name}
-                    </Text>
-                    <Text
-                      style={[
-                        styles.payFromSub,
-                        { color: active ? '#FFFFFF' : shade.muted },
-                      ]}
-                    >
-                      {formatVisiblePeso(b.balance)}
-                    </Text>
-                  </ScalePressable>
-                );
-              })}
-
-              <ScalePressable
-                onPress={() => {
-                  triggerLightHaptic();
-                  setPayFromSourceId('cash');
-                }}
-                style={[
-                  styles.payFromPill,
-                  {
-                    backgroundColor:
-                      payFromSourceId === 'cash' ? shade.positive : shade.surface,
-                  },
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.payFromTitle,
-                    {
-                      color:
-                        payFromSourceId === 'cash' ? '#FFFFFF' : shade.text,
-                    },
-                  ]}
-                >
-                  Cash
-                </Text>
-                <Text
-                  style={[
-                    styles.payFromSub,
-                    {
-                      color:
-                        payFromSourceId === 'cash' ? '#FFFFFF' : shade.muted,
-                    },
-                  ]}
-                >
-                  {formatVisiblePeso(cashOnHand)}
-                </Text>
-              </ScalePressable>
-
-              <ScalePressable
-                onPress={() => {
-                  triggerLightHaptic();
-                  setPayFromSourceId('external');
-                }}
-                style={[
-                  styles.payFromPill,
-                  {
-                    backgroundColor:
-                      payFromSourceId === 'external'
-                        ? shade.accent
-                        : shade.surface,
-                  },
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.payFromTitle,
-                    {
-                      color:
-                        payFromSourceId === 'external'
-                          ? shade.accentText
-                          : shade.text,
-                    },
-                  ]}
-                >
-                  Track Only
-                </Text>
-                <Text
-                  style={[
-                    styles.payFromSub,
-                    {
-                      color:
-                        payFromSourceId === 'external'
-                          ? shade.accentText
-                          : shade.muted,
-                    },
-                  ]}
-                >
-                  External
-                </Text>
-              </ScalePressable>
-            </ScrollView>
-          </View>
-        )}
-
-        {actionMode === 'spend' && (
-          <View style={{ gap: 6 }}>
-            <Text style={[styles.catLabel, { color: shade.muted }]}>
-              CATEGORY
-            </Text>
-            <View style={styles.tagRow}>
-              {SPEND_CATEGORIES.map((cat) => {
-                const active = actionCategory === cat.key;
-                return (
-                  <ScalePressable
-                    key={cat.key}
-                    onPress={() => {
-                      triggerLightHaptic();
-                      setActionCategory(cat.key);
-                      setActionIcon(cat.icon);
-                    }}
-                    style={[
-                      styles.tagPill,
-                      {
-                        backgroundColor: active ? shade.accent : shade.surface,
-                      },
-                    ]}
-                  >
-                    <AppIcon
-                      name={cat.icon}
-                      size={12}
-                      color={active ? shade.accentText : shade.text}
-                    />
-                    <Text
-                      style={[
-                        styles.tagText,
-                        { color: active ? shade.accentText : shade.text },
-                      ]}
-                    >
-                      {cat.label}
-                    </Text>
-                  </ScalePressable>
-                );
-              })}
-            </View>
-          </View>
-        )}
-
-        <TextInput
-          value={actionNote}
-          onChangeText={setActionNote}
-          placeholder={
-            actionMode === 'deposit'
-              ? 'Note (e.g., Payroll, Cash-in)'
-              : actionMode === 'spend'
-              ? 'What did you buy? (e.g., Groceries)'
-              : 'Reason (optional)'
-          }
-          placeholderTextColor={shade.muted}
-          style={[
-            styles.textInput,
-            {
-              backgroundColor: shade.surface,
-              color: shade.text,
-              borderColor: shade.border,
-            },
-          ]}
-        />
-
-        <ScalePressable
-          disabled={actionMode !== 'adjust' && numericActionAmt <= 0}
-          onPress={handleSubmitAccountAction}
-          style={[
-            styles.submitBtn,
-            {
-              backgroundColor:
-                actionMode !== 'adjust' && numericActionAmt <= 0
-                  ? shade.surface
-                  : actionMode === 'deposit'
-                  ? shade.positive
-                  : actionMode === 'spend'
-                  ? shade.accent
-                  : shade.dopamine,
-              opacity:
-                actionMode !== 'adjust' && numericActionAmt <= 0 ? 0.65 : 1,
-            },
-          ]}
-        >
-          <Text
-            style={[
-              styles.submitText,
-              {
-                color:
-                  actionMode !== 'adjust' && numericActionAmt <= 0
-                    ? shade.muted
-                    : actionMode === 'spend'
-                    ? shade.accentText
-                    : '#FFFFFF',
-              },
-            ]}
-          >
-            {actionMode === 'deposit'
-              ? selectedCard
-                ? payFromSourceId !== 'external'
-                  ? 'Confirm Card Payment'
-                  : 'Log Card Payment'
-                : 'Confirm Deposit & Log'
-              : actionMode === 'spend'
-              ? 'Spend & Log Transaction'
-              : 'Save Balance'}
-          </Text>
-        </ScalePressable>
-      </FormModal>
+      />
 
       <EditTransactionModal
         entry={editingEntry}
         onClose={() => setEditingEntry(null)}
       />
 
-      <FormModal
+      <EditAccountModal
         visible={showEditModal}
-        title={selectedCard ? 'Edit Credit Card' : 'Edit Bank Account'}
-        subtitle={
-          selectedCard
-            ? 'Update card name, credit limit, or cut-off date'
-            : 'Rename this bank or e-wallet without losing logs'
-        }
-        icon="edit-2"
-        accentColor={selectedCard ? shade.dopamine : shade.accent}
-        onClose={() => {
-          setEditError(null);
-          setShowEditModal(false);
-        }}
-      >
-        <Text style={[styles.catLabel, { color: shade.muted }]}>
-          ACCOUNT NAME
-        </Text>
-        <TextInput
-          value={editName}
-          onChangeText={(t) => {
-            setEditName(t);
-            if (editError) setEditError(null);
-          }}
-          placeholder={
-            selectedCard ? 'Card name (e.g., BDO Visa)' : 'Bank name (e.g., BPI)'
-          }
-          placeholderTextColor={shade.muted}
-          autoFocus
-          style={[
-            styles.textInput,
-            {
-              backgroundColor: shade.surface,
-              color: shade.text,
-              borderColor: shade.border,
-            },
-          ]}
-        />
-
-        {selectedCard && (
-          <View style={styles.editTwoCols}>
-            <View style={{ flex: 2, minWidth: 0, gap: 4 }}>
-              <Text style={[styles.catLabel, { color: shade.muted }]}>
-                CREDIT LIMIT
-              </Text>
-              <View
-                style={[
-                  styles.fullAmountBox,
-                  { backgroundColor: shade.surface, borderColor: shade.border },
-                ]}
-              >
-                <Text style={[styles.pesoPrefix, { color: shade.dopamine }]}>
-                  ₱
-                </Text>
-                <TextInput
-                  value={editLimitText}
-                  onChangeText={(t) => {
-                    setEditLimitText(formatPesoInput(t));
-                    if (editError) setEditError(null);
-                  }}
-                  keyboardType="decimal-pad"
-                  inputMode="decimal"
-                  placeholder="Limit"
-                  placeholderTextColor={shade.muted}
-                  style={[styles.amountInput, { color: shade.text }]}
-                />
-              </View>
-            </View>
-
-            <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
-              <Text style={[styles.catLabel, { color: shade.muted }]}>
-                CUT-OFF DAY
-              </Text>
-              <TextInput
-                value={editCutoffText}
-                onChangeText={(t) =>
-                  setEditCutoffText(t.replace(/[^0-9]/g, '').slice(0, 2))
-                }
-                keyboardType="numeric"
-                maxLength={2}
-                placeholder="1–31"
-                placeholderTextColor={shade.muted}
-                style={[
-                  styles.textInput,
-                  {
-                    backgroundColor: shade.surface,
-                    color: shade.text,
-                    borderColor: shade.border,
-                    textAlign: 'center',
-                    fontWeight: '800',
-                  },
-                ]}
-              />
-            </View>
-          </View>
-        )}
-
-        {editError && (
-          <Text style={[styles.formErrorText, { color: shade.warning }]}>
-            {editError}
-          </Text>
-        )}
-
-        <ScalePressable
-          onPress={handleSaveAccountEdit}
-          style={[
-            styles.submitBtn,
-            {
-              backgroundColor: selectedCard ? shade.dopamine : shade.accent,
-            },
-          ]}
-        >
-          <Text
-            style={[
-              styles.submitText,
-              { color: selectedCard ? '#FFFFFF' : shade.accentText },
-            ]}
-          >
-            Save Changes
-          </Text>
-        </ScalePressable>
-      </FormModal>
+        selectedBank={selectedBank}
+        selectedCard={selectedCard}
+        onClose={() => setShowEditModal(false)}
+      />
     </View>
   );
 };
@@ -1385,139 +743,5 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     padding: 16,
     alignItems: 'center',
-  },
-  logRow: {
-    borderRadius: 14,
-    borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 11,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-  logTapArea: {
-    flex: 1,
-    minWidth: 0,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-  logLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    flex: 1,
-    minWidth: 0,
-  },
-  logLabel: {
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  logDelta: {
-    fontSize: 13,
-    fontWeight: '800',
-    flexShrink: 0,
-  },
-  horizontalScroll: {
-    width: '100%',
-    flexGrow: 0,
-    flexShrink: 0,
-  },
-  payFromScroll: {
-    gap: 8,
-  },
-  payFromPill: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 12,
-    minWidth: 92,
-  },
-  payFromTitle: {
-    fontSize: 12,
-    fontWeight: '800',
-  },
-  payFromSub: {
-    fontSize: 10,
-    fontWeight: '600',
-    marginTop: 2,
-  },
-  undoMini: {
-    paddingHorizontal: 7,
-    paddingVertical: 4,
-    borderRadius: 7,
-  },
-  undoMiniText: {
-    fontSize: 10,
-    fontWeight: '700',
-  },
-  fullAmountBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-  },
-  pesoPrefix: {
-    fontSize: 14,
-    fontWeight: '800',
-    marginRight: 5,
-  },
-  amountInput: {
-    flex: 1,
-    minWidth: 0,
-    fontSize: 15,
-    fontWeight: '800',
-    paddingVertical: 1,
-  },
-  catLabel: {
-    fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 0.8,
-  },
-  tagRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
-  tagPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    borderRadius: 11,
-  },
-  tagText: {
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  textInput: {
-    minWidth: 0,
-    borderRadius: 12,
-    borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 14,
-  },
-  submitBtn: {
-    paddingVertical: 13,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  submitText: {
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  editTwoCols: {
-    flexDirection: 'row',
-    gap: 8,
-    alignItems: 'flex-end',
-  },
-  formErrorText: {
-    fontSize: 12,
-    fontWeight: '700',
   },
 });

@@ -5,7 +5,11 @@ import {
   ScalePressable,
 } from '../../components/AnimatedPrimitives';
 import { AppIcon } from '../../components/AppIcon';
-import { useBudget } from '../../context/BudgetContext';
+import {
+  useBudgetActions,
+  useThemePrefs,
+  useWallet,
+} from '../../context/BudgetContext';
 import { roundCurrency } from '../../state/budgetMath';
 import { DebtDirection, DebtItem } from '../../types/budget';
 import { triggerLightHaptic } from '../../utils/haptics';
@@ -26,7 +30,9 @@ export const DebtsSection: React.FC<DebtsSectionProps> = ({
   onPayDebt,
   onRequestConfirm,
 }) => {
-  const { shade, formatVisiblePeso, debts, deleteDebt } = useBudget();
+  const { shade, formatVisiblePeso } = useThemePrefs();
+  const { debts } = useWallet();
+  const { deleteDebt } = useBudgetActions();
   const [filter, setFilter] = useState<DebtFilterKey>('all');
   const [showSettled, setShowSettled] = useState(false);
 

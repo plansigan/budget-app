@@ -1,6 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { useBudget } from '../context/BudgetContext';
+import {
+  useBudgetActions,
+  useThemePrefs,
+  useWallet,
+} from '../context/BudgetContext';
 import { triggerLightHaptic } from '../utils/haptics';
 import {
   formatPeso,
@@ -35,14 +39,9 @@ export const TransferModal: React.FC<TransferModalProps> = ({
   initialToId = null,
   onClose,
 }) => {
-  const {
-    shade,
-    formatVisiblePeso,
-    cashOnHand,
-    banks,
-    creditCards,
-    transferBetweenAccounts,
-  } = useBudget();
+  const { shade, formatVisiblePeso } = useThemePrefs();
+  const { cashOnHand, banks, creditCards } = useWallet();
+  const { transferBetweenAccounts } = useBudgetActions();
 
   const [fromId, setFromId] = useState<string>('cash');
   const [toId, setToId] = useState<string>('');

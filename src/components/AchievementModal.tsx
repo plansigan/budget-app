@@ -5,7 +5,11 @@ import {
   Text,
   View,
 } from 'react-native';
-import { useBudget } from '../context/BudgetContext';
+import {
+  useBudgetActions,
+  useGoals,
+  useThemePrefs,
+} from '../context/BudgetContext';
 import { ScalePressable } from './AnimatedPrimitives';
 import { AppIcon } from './AppIcon';
 import { BaseModal } from './BaseModal';
@@ -21,8 +25,9 @@ interface AchievementModalProps {
 export const AchievementModal: React.FC<AchievementModalProps> = ({
   onNavigateTab,
 }) => {
-  const { shade, pendingMilestone, dismissMilestone, boostSavingsGoal } =
-    useBudget();
+  const { shade } = useThemePrefs();
+  const { pendingMilestone } = useGoals();
+  const { dismissMilestone, boostSavingsGoal } = useBudgetActions();
 
   const iconBounce = useRef(new Animated.Value(0.6)).current;
 

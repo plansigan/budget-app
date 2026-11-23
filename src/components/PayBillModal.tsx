@@ -1,6 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { useBudget } from '../context/BudgetContext';
+import {
+  useBudgetActions,
+  useThemePrefs,
+  useWallet,
+} from '../context/BudgetContext';
 import { BillItem } from '../types/budget';
 import { triggerLightHaptic } from '../utils/haptics';
 import {
@@ -24,14 +28,9 @@ interface PayBillModalProps {
  * a Credit Card, or Track Only without double-counting against daily spend.
  */
 export const PayBillModal: React.FC<PayBillModalProps> = ({ bill, onClose }) => {
-  const {
-    shade,
-    formatVisiblePeso,
-    cashOnHand,
-    banks,
-    creditCards,
-    markBillPaid,
-  } = useBudget();
+  const { shade, formatVisiblePeso } = useThemePrefs();
+  const { cashOnHand, banks, creditCards } = useWallet();
+  const { markBillPaid } = useBudgetActions();
 
   const [amountText, setAmountText] = useState('');
   const [sourceId, setSourceId] = useState('cash');

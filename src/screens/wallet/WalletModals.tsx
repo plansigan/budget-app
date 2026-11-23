@@ -3,7 +3,7 @@ import { StyleSheet, Text, TextInput, View } from 'react-native';
 import { ScalePressable } from '../../components/AnimatedPrimitives';
 import { AppIcon } from '../../components/AppIcon';
 import { FormModal } from '../../components/FormModal';
-import { useBudget } from '../../context/BudgetContext';
+import { useBudgetActions, useThemePrefs } from '../../context/BudgetContext';
 import { triggerLightHaptic } from '../../utils/haptics';
 import { formatPesoInput, parsePesoInput } from '../../utils/numberFormat';
 
@@ -26,7 +26,8 @@ export const WalletModals: React.FC<WalletModalsProps> = ({
   showAddInst,
   onCloseAddInst,
 }) => {
-  const { shade, addBank, addCreditCard, addInstallment } = useBudget();
+  const { shade } = useThemePrefs();
+  const { addBank, addCreditCard, addInstallment } = useBudgetActions();
 
   const [bankName, setBankName] = useState('');
   const [bankBalanceText, setBankBalanceText] = useState('');

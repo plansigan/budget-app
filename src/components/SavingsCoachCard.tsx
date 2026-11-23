@@ -1,6 +1,11 @@
 import React, { useMemo, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { useBudget } from '../context/BudgetContext';
+import {
+  useDailyBudget,
+  useGoals,
+  useThemePrefs,
+  useWallet,
+} from '../context/BudgetContext';
 import { triggerLightHaptic } from '../utils/haptics';
 import { generatePersonalizedTips } from '../utils/savingsCoach';
 import { FadeSlideIn, ScalePressable } from './AnimatedPrimitives';
@@ -10,23 +15,18 @@ import { AppIcon } from './AppIcon';
  * Compact minimalist Coach Card on TodayScreen showing live, practical saving
  * tips built from the user's real Philippine Peso budget, bills, and cards.
  */
-export const SavingsCoachCard: React.FC = () => {
+export const SavingsCoachCard: React.FC = React.memo(() => {
+  const { shade, privacyMode } = useThemePrefs();
   const {
-    shade,
-    privacyMode,
     todayKey,
     settings,
-    monthlySaved,
     baseDailyAllowance,
     getDaySummary,
-    cashOnHand,
-    banks,
-    creditCards,
-    treats,
     entries,
-    streakDays,
     billItems,
-  } = useBudget();
+  } = useDailyBudget();
+  const { cashOnHand, banks, creditCards } = useWallet();
+  const { monthlySaved, treats, streakDays } = useGoals();
 
   const [tipIndex, setTipIndex] = useState(0);
 
@@ -144,7 +144,7 @@ export const SavingsCoachCard: React.FC = () => {
       </View>
     </View>
   );
-};
+});
 
 const styles = StyleSheet.create({
   card: {

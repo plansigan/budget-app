@@ -9,7 +9,12 @@ import {
 import { AppIcon, IconBadge } from '../../components/AppIcon';
 import { SavingsCoachCard } from '../../components/SavingsCoachCard';
 import { SpendingBreakdownCard } from '../../components/SpendingBreakdownCard';
-import { useBudget } from '../../context/BudgetContext';
+import {
+  useDailyBudget,
+  useGoals,
+  useThemePrefs,
+  useWallet,
+} from '../../context/BudgetContext';
 import { MonthlyArchiveSnapshot } from '../../types/budget';
 import { triggerLightHaptic } from '../../utils/haptics';
 import { formatMonthKeyLabel } from '../../utils/insightsEngine';
@@ -26,19 +31,16 @@ interface InsightsSectionProps {
 export const InsightsSection: React.FC<InsightsSectionProps> = ({
   onOpenWrap,
 }) => {
+  const { shade, formatVisiblePeso } = useThemePrefs();
+  const { settings, entries } = useDailyBudget();
+  const { cashOnHand, banks } = useWallet();
   const {
-    shade,
-    formatVisiblePeso,
-    settings,
-    cashOnHand,
-    banks,
     monthlySaved,
     monthlyArchives,
-    entries,
     unlockedMilestones,
     disciplineScore,
     cardTier,
-  } = useBudget();
+  } = useGoals();
 
   const [selectedMonthKey, setSelectedMonthKey] = useState<string | null>(null);
   const [showAllActivity, setShowAllActivity] = useState(false);

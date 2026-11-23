@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { useBudget } from '../context/BudgetContext';
+import { useDailyBudget, useThemePrefs } from '../context/BudgetContext';
 import { triggerLightHaptic } from '../utils/haptics';
 import {
   SpendingBreakdownScope,
@@ -29,11 +29,12 @@ interface SpendingBreakdownCardProps {
  * Clean minimalist category spending breakdown card with This Week / This Month
  * and All / Daily / Allowances toggles (or locked historical month view when `monthKey` is provided).
  */
-export const SpendingBreakdownCard: React.FC<SpendingBreakdownCardProps> = ({
+export const SpendingBreakdownCard: React.FC<SpendingBreakdownCardProps> = React.memo(({
   monthKey,
   monthLabel,
 }) => {
-  const { shade, entries, privacyMode } = useBudget();
+  const { shade, privacyMode } = useThemePrefs();
+  const { entries } = useDailyBudget();
   const [range, setRange] = useState<'week' | 'month'>('month');
   const [scope, setScope] = useState<SpendingBreakdownScope>('all');
 
@@ -226,7 +227,7 @@ export const SpendingBreakdownCard: React.FC<SpendingBreakdownCardProps> = ({
       </FadeSlideIn>
     </View>
   );
-};
+});
 
 const styles = StyleSheet.create({
   card: {
