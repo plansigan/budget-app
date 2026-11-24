@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import {
   AnimatedCounter,
@@ -8,11 +8,13 @@ import {
   ScalePressable,
 } from '../../components/AnimatedPrimitives';
 import { AppIcon, IconBadge } from '../../components/AppIcon';
+import { SegmentedTabBar } from '../../components/form/SegmentedTabBar';
 import {
   useDailyBudget,
   useThemePrefs,
   useWallet,
 } from '../../context/BudgetContext';
+import { roundCurrency } from '../../state/budgetMath';
 import {
   DebtDirection,
   DebtItem,
@@ -25,7 +27,8 @@ import { DebtsSection } from './DebtsSection';
 import { InstallmentsSection } from './InstallmentsSection';
 
 interface WalletOverviewProps {
-  focusDebtsKey?: number;
+  subTab: 'accounts' | 'installments' | 'debts';
+  onChangeSubTab: (tab: 'accounts' | 'installments' | 'debts') => void;
   onOpenAccount: (accountId: string) => void;
   onOpenAddBank: () => void;
   onOpenAddCard: () => void;
@@ -38,7 +41,8 @@ interface WalletOverviewProps {
 }
 
 export const WalletOverview: React.FC<WalletOverviewProps> = ({
-  focusDebtsKey = 0,
+  subTab,
+  onChangeSubTab,
   onOpenAccount,
   onOpenAddBank,
   onOpenAddCard,
@@ -53,18 +57,11 @@ export const WalletOverview: React.FC<WalletOverviewProps> = ({
   const { cashOnHand, banks, creditCards, installments, debts } = useWallet();
   const { entries } = useDailyBudget();
 
-  const [subTab, setSubTab] = useState<'accounts' | 'installments' | 'debts'>(
-    focusDebtsKey > 0 ? 'debts' : 'accounts'
-  );
-
-  useEffect(() => {
-    if (focusDebtsKey > 0) {
-      setSubTab('debts');
-    }
-  }, [focusDebtsKey]);
-
   const openDebtsCount = useMemo(
-    () => debts.filter((d) => d.paidAmount < d.amount).length,
+    () =>
+      debts.filter(
+        (d) => roundCurrency(Math.max(0, d.amount - d.paidAmount)) > 0
+      ).length,
     [debts]
   );
 
@@ -123,16 +120,20 @@ export const WalletOverview: React.FC<WalletOverviewProps> = ({
             <View
               style={[styles.countPill, { backgroundColor: shade.heroSurface }]}
             >
-              <AppIcon name="briefcase" size={13} color="#4ADE80" />
-              <Text style={[styles.countText, { color: '#4ADE80' }]}>
+              <AppIcon name="briefcase" size={13} color={shade.heroPositive} />
+              <Text style={[styles.countText, { color: shade.heroPositive }]}>
                 {banks.length} {banks.length === 1 ? 'Bank' : 'Banks'}
               </Text>
             </View>
             <View
               style={[styles.countPill, { backgroundColor: shade.heroSurface }]}
             >
-              <AppIcon name="credit-card" size={13} color="#A5B4FC" />
-              <Text style={[styles.countText, { color: '#A5B4FC' }]}>
+              <AppIcon
+                name="credit-card"
+                size={13}
+                color={shade.heroDopamine}
+              />
+              <Text style={[styles.countText, { color: shade.heroDopamine }]}>
                 {creditCards.length}{' '}
                 {creditCards.length === 1 ? 'Card' : 'Cards'}
               </Text>
@@ -141,15 +142,17 @@ export const WalletOverview: React.FC<WalletOverviewProps> = ({
               <ScalePressable
                 onPress={() => {
                   triggerLightHaptic();
-                  setSubTab('debts');
+                  onChangeSubTab('debts');
                 }}
+                accessibilityRole="button"
+                accessibilityLabel={`Open debts (${openDebtsCount})`}
                 style={[
                   styles.countPill,
                   { backgroundColor: shade.heroSurface },
                 ]}
               >
-                <AppIcon name="users" size={13} color="#FBBF24" />
-                <Text style={[styles.countText, { color: '#FBBF24' }]}>
+                <AppIcon name="users" size={13} color={shade.heroAmber} />
+                <Text style={[styles.countText, { color: shade.heroAmber }]}>
                   {openDebtsCount} {openDebtsCount === 1 ? 'Debt' : 'Debts'}
                 </Text>
               </ScalePressable>
@@ -159,81 +162,23 @@ export const WalletOverview: React.FC<WalletOverviewProps> = ({
       </FadeSlideIn>
 
       {/* Spacious 3-Segment Toggle: Accounts | Installments | Debts */}
-      <View
-        style={[
-          styles.subTabBar,
-          { backgroundColor: shade.surface, borderColor: shade.border },
+      <SegmentedTabBar
+        value={subTab}
+        onChange={onChangeSubTab}
+        shade={shade}
+        variant="card"
+        options={[
+          { key: 'accounts', label: 'Accounts' },
+          {
+            key: 'installments',
+            label: `Installments (${installments.length})`,
+          },
+          {
+            key: 'debts',
+            label: openDebtsCount > 0 ? `Debts (${openDebtsCount})` : 'Debts',
+          },
         ]}
-      >
-        <ScalePressable
-          onPress={() => {
-            triggerLightHaptic();
-            setSubTab('accounts');
-          }}
-          accessibilityRole="tab"
-          accessibilityState={{ selected: subTab === 'accounts' }}
-          style={[
-            styles.subTabBtn,
-            subTab === 'accounts' && { backgroundColor: shade.card },
-          ]}
-        >
-          <Text
-            numberOfLines={1}
-            style={[
-              styles.subTabText,
-              { color: subTab === 'accounts' ? shade.text : shade.muted },
-            ]}
-          >
-            Accounts
-          </Text>
-        </ScalePressable>
-
-        <ScalePressable
-          onPress={() => {
-            triggerLightHaptic();
-            setSubTab('installments');
-          }}
-          accessibilityRole="tab"
-          accessibilityState={{ selected: subTab === 'installments' }}
-          style={[
-            styles.subTabBtn,
-            subTab === 'installments' && { backgroundColor: shade.card },
-          ]}
-        >
-          <Text
-            numberOfLines={1}
-            style={[
-              styles.subTabText,
-              { color: subTab === 'installments' ? shade.text : shade.muted },
-            ]}
-          >
-            Installments ({installments.length})
-          </Text>
-        </ScalePressable>
-
-        <ScalePressable
-          onPress={() => {
-            triggerLightHaptic();
-            setSubTab('debts');
-          }}
-          accessibilityRole="tab"
-          accessibilityState={{ selected: subTab === 'debts' }}
-          style={[
-            styles.subTabBtn,
-            subTab === 'debts' && { backgroundColor: shade.card },
-          ]}
-        >
-          <Text
-            numberOfLines={1}
-            style={[
-              styles.subTabText,
-              { color: subTab === 'debts' ? shade.text : shade.muted },
-            ]}
-          >
-            {openDebtsCount > 0 ? `Debts (${openDebtsCount})` : 'Debts'}
-          </Text>
-        </ScalePressable>
-      </View>
+      />
 
       {subTab === 'accounts' ? (
         <View style={styles.tabContentGap}>
@@ -575,24 +520,6 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   countText: {
-    fontSize: 12,
-    fontWeight: '800',
-  },
-  subTabBar: {
-    flexDirection: 'row',
-    borderRadius: 15,
-    borderWidth: 1,
-    padding: 4,
-    gap: 4,
-  },
-  subTabBtn: {
-    flex: 1,
-    paddingVertical: 10,
-    paddingHorizontal: 4,
-    borderRadius: 11,
-    alignItems: 'center',
-  },
-  subTabText: {
     fontSize: 12,
     fontWeight: '800',
   },

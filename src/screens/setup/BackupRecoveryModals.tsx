@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Platform, StyleSheet, Text, TextInput, View } from 'react-native';
 import { ScalePressable } from '../../components/AnimatedPrimitives';
 import { AppIcon } from '../../components/AppIcon';
+import { ConfirmModal } from '../../components/ConfirmModal';
 import { FormModal } from '../../components/FormModal';
 import { useBudgetActions, useThemePrefs } from '../../context/BudgetContext';
 import {
@@ -13,7 +14,6 @@ import {
   summarizeBackupJson,
 } from '../../utils/backupExport';
 import { triggerLightHaptic } from '../../utils/haptics';
-import { formatPeso } from '../../utils/numberFormat';
 
 const SNAPSHOT_REASON_LABEL: Record<AutoBackupSnapshot['reason'], string> = {
   auto_interval: '10-min auto',
@@ -30,18 +30,28 @@ interface AutoSnapshotsModalProps {
 const AutoSnapshotsModalContent: React.FC<
   Omit<AutoSnapshotsModalProps, 'visible'>
 > = ({ onClose, onRestored }) => {
-  const { shade } = useThemePrefs();
+  const { shade, formatVisiblePeso } = useThemePrefs();
   const { listAutoSnapshots, restoreAutoSnapshot } = useBudgetActions();
 
   const [snapshots, setSnapshots] = useState<AutoBackupSnapshot[]>([]);
   const [loadingSnapshots, setLoadingSnapshots] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [restoringId, setRestoringId] = useState<string | null>(null);
+  const [pendingRestoreSnap, setPendingRestoreSnap] =
+    useState<AutoBackupSnapshot | null>(null);
 
   useEffect(() => {
     let active = true;
     setLoadingSnapshots(true);
+    setLoadError(null);
     void listAutoSnapshots()
       .then((list) => {
         if (active) setSnapshots(list);
+      })
+      .catch(() => {
+        if (active) {
+          setLoadError('Could not load saved snapshots. Try again shortly.');
+        }
       })
       .finally(() => {
         if (active) setLoadingSnapshots(false);
@@ -51,80 +61,134 @@ const AutoSnapshotsModalContent: React.FC<
     };
   }, [listAutoSnapshots]);
 
-  const handleRestoreSnapshot = async (snap: AutoBackupSnapshot) => {
-    triggerLightHaptic();
-    const res = await restoreAutoSnapshot(snap.id);
-    onRestored({ ok: res.ok, text: res.message });
-    if (res.ok) {
-      onClose();
+  const confirmRestoreSnapshot = async (snap: AutoBackupSnapshot) => {
+    if (restoringId) return;
+    setRestoringId(snap.id);
+    try {
+      const res = await restoreAutoSnapshot(snap.id);
+      onRestored({ ok: res.ok, text: res.message });
+      if (res.ok) {
+        onClose();
+      } else {
+        setLoadError(res.message);
+      }
+    } catch {
+      const errMsg = 'Could not restore this snapshot.';
+      setLoadError(errMsg);
+      onRestored({ ok: false, text: errMsg });
+    } finally {
+      setRestoringId(null);
     }
   };
 
   return (
-    <FormModal
-      visible
-      title="Auto-Recovery Snapshots"
-      subtitle="Captured automatically every 10 mins & before resets"
-      icon="rotate-ccw"
-      accentColor={shade.dopamine}
-      onClose={onClose}
-    >
-      {loadingSnapshots ? (
-        <Text style={[styles.snapshotEmptyText, { color: shade.muted }]}>
-          Loading saved recovery points...
-        </Text>
-      ) : snapshots.length === 0 ? (
-        <Text style={[styles.snapshotEmptyText, { color: shade.muted }]}>
-          No snapshots yet. Tap Save Now or log activity to create your first
-          recovery point.
-        </Text>
-      ) : (
-        <View style={{ gap: 10 }}>
-          {snapshots.map((snap) => (
-            <View
-              key={snap.id}
-              style={[
-                styles.snapshotRow,
-                {
-                  backgroundColor: shade.surface,
-                  borderColor: shade.border,
-                },
-              ]}
-            >
-              <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-                <Text style={[styles.snapshotTime, { color: shade.text }]}>
-                  {new Date(snap.savedAt).toLocaleString()} (
-                  {formatSnapshotAgeLabel(snap.savedAt)})
-                </Text>
-                <Text style={[styles.snapshotMeta, { color: shade.muted }]}>
-                  {SNAPSHOT_REASON_LABEL[snap.reason]} • {snap.entriesCount}{' '}
-                  logs • {snap.accountsCount} accts • Income{' '}
-                  {formatPeso(snap.monthlyIncome)}
-                </Text>
-              </View>
-              <ScalePressable
-                onPress={() => {
-                  void handleRestoreSnapshot(snap);
-                }}
-                style={[
-                  styles.snapshotRestoreBtn,
-                  { backgroundColor: shade.accent },
-                ]}
-              >
-                <Text
+    <>
+      <FormModal
+        visible={pendingRestoreSnap === null}
+        title="Auto-Recovery Snapshots"
+        subtitle="Captured automatically every 10 mins & before resets"
+        icon="rotate-ccw"
+        accentColor={shade.dopamine}
+        onClose={onClose}
+      >
+        {loadingSnapshots ? (
+          <Text style={[styles.snapshotEmptyText, { color: shade.muted }]}>
+            Loading saved recovery points...
+          </Text>
+        ) : loadError ? (
+          <Text style={[styles.restoreErrorText, { color: shade.warning }]}>
+            {loadError}
+          </Text>
+        ) : snapshots.length === 0 ? (
+          <Text style={[styles.snapshotEmptyText, { color: shade.muted }]}>
+            No snapshots yet. Tap Save Now or log activity to create your first
+            recovery point.
+          </Text>
+        ) : (
+          <View style={{ gap: 10 }}>
+            {snapshots.map((snap) => {
+              const busy = restoringId === snap.id;
+              return (
+                <View
+                  key={snap.id}
                   style={[
-                    styles.snapshotRestoreText,
-                    { color: shade.accentText },
+                    styles.snapshotRow,
+                    {
+                      backgroundColor: shade.surface,
+                      borderColor: shade.border,
+                    },
                   ]}
                 >
-                  Restore
-                </Text>
-              </ScalePressable>
-            </View>
-          ))}
-        </View>
-      )}
-    </FormModal>
+                  <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+                    <Text style={[styles.snapshotTime, { color: shade.text }]}>
+                      {new Date(snap.savedAt).toLocaleString()} (
+                      {formatSnapshotAgeLabel(snap.savedAt)})
+                    </Text>
+                    <Text style={[styles.snapshotMeta, { color: shade.muted }]}>
+                      {SNAPSHOT_REASON_LABEL[snap.reason]} • {snap.entriesCount}{' '}
+                      logs • {snap.accountsCount} accts • Income{' '}
+                      {formatVisiblePeso(snap.monthlyIncome)}
+                    </Text>
+                  </View>
+                  <ScalePressable
+                    disabled={restoringId !== null}
+                    onPress={() => {
+                      triggerLightHaptic();
+                      setPendingRestoreSnap(snap);
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Restore snapshot from ${new Date(
+                      snap.savedAt
+                    ).toLocaleString()}`}
+                    style={[
+                      styles.snapshotRestoreBtn,
+                      {
+                        backgroundColor: shade.accent,
+                        opacity: restoringId !== null && !busy ? 0.6 : 1,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.snapshotRestoreText,
+                        { color: shade.accentText },
+                      ]}
+                    >
+                      {busy ? 'Restoring...' : 'Restore'}
+                    </Text>
+                  </ScalePressable>
+                </View>
+              );
+            })}
+          </View>
+        )}
+      </FormModal>
+
+      <ConfirmModal
+        visible={pendingRestoreSnap !== null}
+        title="Restore This Snapshot?"
+        message={
+          pendingRestoreSnap
+            ? `Replace your current budget state with the checkpoint from ${new Date(
+                pendingRestoreSnap.savedAt
+              ).toLocaleString()} (${
+                pendingRestoreSnap.entriesCount
+              } logs)? A safety snapshot of your current state is saved first.`
+            : ''
+        }
+        confirmLabel="Restore Snapshot"
+        destructive
+        icon="rotate-ccw"
+        onCancel={() => setPendingRestoreSnap(null)}
+        onConfirm={() => {
+          const snap = pendingRestoreSnap;
+          setPendingRestoreSnap(null);
+          if (snap) {
+            void confirmRestoreSnapshot(snap);
+          }
+        }}
+      />
+    </>
   );
 };
 
@@ -149,7 +213,7 @@ interface RestoreBackupModalProps {
 const RestoreBackupModalContent: React.FC<
   Omit<RestoreBackupModalProps, 'visible'>
 > = ({ onClose, onRestored }) => {
-  const { shade } = useThemePrefs();
+  const { shade, formatVisiblePeso } = useThemePrefs();
   const { importBackupJsonString } = useBudgetActions();
 
   const [restoreText, setRestoreText] = useState('');
@@ -189,7 +253,11 @@ const RestoreBackupModalContent: React.FC<
     <FormModal
       visible
       title="Restore Backup"
-      subtitle="Load a .json backup file or paste exported JSON below"
+      subtitle={
+        Platform.OS === 'web'
+          ? 'Load a .json backup file or paste exported JSON below'
+          : 'Paste exported JSON backup below'
+      }
       icon="upload"
       onClose={onClose}
     >
@@ -198,6 +266,8 @@ const RestoreBackupModalContent: React.FC<
           onPress={() => {
             void handlePickBackupFile();
           }}
+          accessibilityRole="button"
+          accessibilityLabel="Choose JSON backup file"
           style={[
             styles.filePickBtn,
             { backgroundColor: shade.surface, borderColor: shade.accent },
@@ -220,6 +290,7 @@ const RestoreBackupModalContent: React.FC<
         multiline
         placeholder='{"version":6,"data":{...}}'
         placeholderTextColor={shade.muted}
+        accessibilityLabel="Backup JSON input"
         style={[
           styles.restoreInput,
           {
@@ -252,7 +323,7 @@ const RestoreBackupModalContent: React.FC<
                   restorePreview.summary.exportedAt
                 ).toLocaleDateString()} • `
               : ''}
-            Income {formatPeso(restorePreview.summary.monthlyIncome)} •{' '}
+            Income {formatVisiblePeso(restorePreview.summary.monthlyIncome)} •{' '}
             {restorePreview.summary.entriesCount} logs •{' '}
             {restorePreview.summary.banksCount +
               restorePreview.summary.creditCardsCount}{' '}
@@ -271,6 +342,7 @@ const RestoreBackupModalContent: React.FC<
       <ScalePressable
         disabled={!restorePreview?.ok}
         onPress={handleRestoreJson}
+        accessibilityRole="button"
         style={[
           styles.restoreConfirm,
           {

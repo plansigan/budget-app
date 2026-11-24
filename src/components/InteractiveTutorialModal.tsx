@@ -1,19 +1,19 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { Animated, StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useBudgetActions, useThemePrefs } from '../context/BudgetContext';
 import {
   triggerCelebrationHaptic,
   triggerLightHaptic,
 } from '../utils/haptics';
+import { FadeSlideIn, ScalePressable } from './AnimatedPrimitives';
+import { BaseModal } from './BaseModal';
 import {
-  AnimatedProgressBar,
-  FadeSlideIn,
-  ScalePressable,
-} from './AnimatedPrimitives';
-import { AppIcon } from './AppIcon';
+  TutorialSlideKey,
+  TutorialSlidePreview,
+} from './tutorial/TutorialSlidePreview';
 
 interface GuideSlide {
-  key: 'daily' | 'spend' | 'treat' | 'coach';
+  key: TutorialSlideKey;
   title: string;
   body: string;
 }
@@ -42,7 +42,7 @@ const GUIDE_SLIDES: GuideSlide[] = [
 ];
 
 /**
- * Clean, visual Quick Guide with 1 clear primary button per slide and animated mini previews.
+ * Accessible visual Quick Guide built on BaseModal with animated slide previews.
  */
 export const InteractiveTutorialModal: React.FC = () => {
   const { shade } = useThemePrefs();
@@ -50,32 +50,6 @@ export const InteractiveTutorialModal: React.FC = () => {
   const [stepIdx, setStepIdx] = useState(0);
   const [direction, setDirection] = useState<'right' | 'left'>('right');
   const [treatDemoPct, setTreatDemoPct] = useState(38);
-
-  const backdropOpacity = useRef(new Animated.Value(0)).current;
-  const modalScale = useRef(new Animated.Value(0.92)).current;
-  const modalY = useRef(new Animated.Value(16)).current;
-
-  useEffect(() => {
-    Animated.parallel([
-      Animated.timing(backdropOpacity, {
-        toValue: 1,
-        duration: 180,
-        useNativeDriver: true,
-      }),
-      Animated.spring(modalScale, {
-        toValue: 1,
-        speed: 26,
-        bounciness: 7,
-        useNativeDriver: true,
-      }),
-      Animated.spring(modalY, {
-        toValue: 0,
-        speed: 26,
-        bounciness: 6,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  }, [backdropOpacity, modalScale, modalY]);
 
   useEffect(() => {
     if (stepIdx !== 2) {
@@ -95,156 +69,23 @@ export const InteractiveTutorialModal: React.FC = () => {
     setStepIdx(next);
   };
 
-  const renderVisualPreview = () => {
-    if (slide.key === 'daily') {
-      return (
-        <View style={[styles.mockHero, { backgroundColor: shade.heroBg }]}>
-          <Text style={[styles.mockHeroLabel, { color: shade.heroMuted }]}>
-            Safe to Spend Today
-          </Text>
-          <Text style={[styles.mockHeroVal, { color: shade.heroText }]}>
-            ₱500.00
-          </Text>
-          <View style={styles.mockWeekRow}>
-            {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d, i) => {
-              const active = i === 3;
-              return (
-                <View
-                  key={i}
-                  style={[
-                    styles.mockDayDot,
-                    {
-                      backgroundColor: active
-                        ? shade.heroText
-                        : shade.heroSurface,
-                    },
-                  ]}
-                >
-                  <Text
-                    style={{
-                      fontSize: 10,
-                      fontWeight: '800',
-                      color: active ? shade.heroBg : shade.heroMuted,
-                    }}
-                  >
-                    {d}
-                  </Text>
-                </View>
-              );
-            })}
-          </View>
-        </View>
-      );
-    }
-
-    if (slide.key === 'spend') {
-      return (
-        <View
-          style={[
-            styles.mockCard,
-            { backgroundColor: shade.surface, borderColor: shade.border },
-          ]}
-        >
-          <View style={[styles.mockSpendPill, { backgroundColor: shade.heroBg }]}>
-            <Text style={[styles.mockSpendText, { color: shade.heroText }]}>
-              Spend!
-            </Text>
-          </View>
-          <View
-            style={[
-              styles.mockEntryRow,
-              { backgroundColor: shade.card, borderColor: shade.border },
-            ]}
-          >
-            <View style={styles.mockIconRow}>
-              <AppIcon name="coffee" size={13} color={shade.text} />
-              <Text style={[styles.mockEntryLeft, { color: shade.text }]}>
-                Lunch • via Cash
-              </Text>
-            </View>
-            <Text style={[styles.mockEntryVal, { color: shade.text }]}>
-              -₱120
-            </Text>
-          </View>
-        </View>
-      );
-    }
-
-    if (slide.key === 'treat') {
-      return (
-        <View
-          style={[
-            styles.mockCard,
-            { backgroundColor: shade.surface, borderColor: shade.border },
-          ]}
-        >
-          <View style={styles.mockBetween}>
-            <View style={styles.mockIconRow}>
-              <AppIcon name="headphones" size={13} color={shade.dopamine} />
-              <Text style={[styles.mockKicker, { color: shade.dopamine }]}>
-                NEW HEADPHONES
-              </Text>
-            </View>
-            <Text style={[styles.mockKicker, { color: shade.dopamine }]}>
-              +₱150 Funded!
-            </Text>
-          </View>
-          <AnimatedProgressBar
-            percentage={treatDemoPct}
-            trackColor={shade.card}
-            fillColor={shade.dopamine}
-            height={10}
-          />
-          <Text style={[styles.mockHint, { color: shade.muted }]}>
-            Locked goals keep your treat spending guilt-free
-          </Text>
-        </View>
-      );
-    }
-
-    return (
-      <View
-        style={[
-          styles.mockCard,
-          { backgroundColor: shade.surface, borderColor: shade.border },
-        ]}
-      >
-        <View style={styles.mockBetween}>
-          <View style={styles.mockIconRow}>
-            <AppIcon name="briefcase" size={13} color={shade.positive} />
-            <Text style={[styles.mockKicker, { color: shade.positive }]}>
-              SAVINGS JAR
-            </Text>
-          </View>
-          <View
-            style={[styles.mockTipBadge, { backgroundColor: shade.positiveSoft }]}
-          >
-            <Text style={[styles.mockTipBadgeText, { color: shade.positive }]}>
-              +20% Habit
-            </Text>
-          </View>
-        </View>
-        <View style={styles.mockIconRow}>
-          <AppIcon name="sun" size={14} color={shade.positive} />
-          <Text style={[styles.mockTipCopy, { color: shade.text }]}>
-            Saving ₱150/day adds up to ₱4,500 a month.
-          </Text>
-        </View>
-      </View>
-    );
-  };
-
   return (
-    <Animated.View style={[styles.backdrop, { opacity: backdropOpacity }]}>
-      <Animated.View
-        style={[
-          styles.card,
-          {
-            backgroundColor: shade.card,
-            borderColor: shade.border,
-            transform: [{ scale: modalScale }, { translateY: modalY }],
-          },
-        ]}
+    <BaseModal
+      visible
+      avoidKeyboard={false}
+      onClose={() => {
+        triggerLightHaptic();
+        completeTutorial();
+      }}
+      dismissLabel="Close quick guide"
+      cardStyle={[
+        styles.card,
+        { backgroundColor: shade.card, borderColor: shade.border },
+      ]}
+    >
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
       >
         <View style={styles.topRow}>
           <Text style={[styles.kicker, { color: shade.muted }]}>
@@ -255,6 +96,9 @@ export const InteractiveTutorialModal: React.FC = () => {
               triggerLightHaptic();
               completeTutorial();
             }}
+            accessibilityRole="button"
+            accessibilityLabel="Skip quick guide"
+            hitSlop={8}
             style={[styles.skipBtn, { backgroundColor: shade.surface }]}
           >
             <Text style={[styles.skipText, { color: shade.muted }]}>Skip</Text>
@@ -267,7 +111,11 @@ export const InteractiveTutorialModal: React.FC = () => {
           distance={18}
           style={styles.slideBody}
         >
-          {renderVisualPreview()}
+          <TutorialSlidePreview
+            slideKey={slide.key}
+            treatDemoPct={treatDemoPct}
+            shade={shade}
+          />
 
           <View style={styles.textBlock}>
             <Text style={[styles.title, { color: shade.text }]}>
@@ -279,7 +127,6 @@ export const InteractiveTutorialModal: React.FC = () => {
           </View>
         </FadeSlideIn>
 
-        {/* Clean Expanding Dots */}
         <View style={styles.dotsRow}>
           {GUIDE_SLIDES.map((s, i) => {
             const active = i === stepIdx;
@@ -298,19 +145,18 @@ export const InteractiveTutorialModal: React.FC = () => {
           })}
         </View>
 
-        {/* Single Clear Action Row */}
         <View style={styles.footerRow}>
           {stepIdx > 0 && (
             <ScalePressable
               onPress={() => goStep(stepIdx - 1, 'left')}
+              accessibilityRole="button"
+              accessibilityLabel="Previous guide slide"
               style={[
                 styles.backBtn,
                 { backgroundColor: shade.surface, borderColor: shade.border },
               ]}
             >
-              <Text style={[styles.backText, { color: shade.text }]}>
-                Back
-              </Text>
+              <Text style={[styles.backText, { color: shade.text }]}>Back</Text>
             </ScalePressable>
           )}
 
@@ -323,45 +169,44 @@ export const InteractiveTutorialModal: React.FC = () => {
                 goStep(stepIdx + 1, 'right');
               }
             }}
-            style={[styles.nextBtn, { backgroundColor: shade.accent }]}
+            accessibilityRole="button"
+            accessibilityLabel={isLast ? 'Finish quick guide' : 'Next guide slide'}
+            style={[
+              styles.nextBtn,
+              {
+                backgroundColor: isLast ? shade.dopamineBtnBg : shade.accent,
+              },
+            ]}
           >
-            <Text style={[styles.nextText, { color: shade.accentText }]}>
+            <Text
+              style={[
+                styles.nextText,
+                { color: isLast ? '#FFFFFF' : shade.accentText },
+              ]}
+            >
               {isLast ? 'Get Started' : 'Next'}
             </Text>
           </ScalePressable>
         </View>
-      </Animated.View>
-    </Animated.View>
+      </ScrollView>
+    </BaseModal>
   );
 };
 
 const styles = StyleSheet.create({
-  backdrop: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    bottom: 0,
-    left: 0,
-    zIndex: 50,
-    backgroundColor: 'rgba(17, 24, 39, 0.45)',
-    justifyContent: 'center',
-    paddingHorizontal: 20,
-  },
   card: {
     borderRadius: 26,
-    borderWidth: 1,
     padding: 20,
+    maxHeight: '88%',
+  },
+  scrollContent: {
     gap: 16,
-    shadowColor: '#111318',
-    shadowOpacity: 0.14,
-    shadowRadius: 20,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 10,
   },
   topRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: 8,
   },
   kicker: {
     fontSize: 10,
@@ -370,7 +215,7 @@ const styles = StyleSheet.create({
   },
   skipBtn: {
     paddingHorizontal: 12,
-    paddingVertical: 5,
+    paddingVertical: 6,
     borderRadius: 999,
   },
   skipText: {
@@ -379,98 +224,6 @@ const styles = StyleSheet.create({
   },
   slideBody: {
     gap: 16,
-  },
-  mockHero: {
-    borderRadius: 18,
-    padding: 16,
-    gap: 8,
-  },
-  mockHeroLabel: {
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  mockHeroVal: {
-    fontSize: 28,
-    fontWeight: '800',
-    letterSpacing: -0.6,
-    fontVariant: ['tabular-nums'],
-  },
-  mockWeekRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingTop: 4,
-  },
-  mockDayDot: {
-    width: 26,
-    height: 26,
-    borderRadius: 9,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  mockCard: {
-    borderRadius: 18,
-    borderWidth: 1,
-    padding: 15,
-    gap: 10,
-  },
-  mockSpendPill: {
-    borderRadius: 12,
-    paddingVertical: 10,
-    alignItems: 'center',
-  },
-  mockSpendText: {
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  mockEntryRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-  },
-  mockEntryLeft: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  mockEntryVal: {
-    fontSize: 12,
-    fontWeight: '800',
-  },
-  mockBetween: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  mockIconRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  mockKicker: {
-    fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 0.6,
-  },
-  mockHint: {
-    fontSize: 11,
-    fontWeight: '500',
-  },
-  mockTipBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 999,
-  },
-  mockTipBadgeText: {
-    fontSize: 10,
-    fontWeight: '800',
-  },
-  mockTipCopy: {
-    fontSize: 13,
-    fontWeight: '700',
-    lineHeight: 19,
   },
   textBlock: {
     gap: 5,

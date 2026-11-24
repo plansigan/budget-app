@@ -6,17 +6,19 @@ import {
   EnvelopeRolloverMode,
   SpendingEnvelopeItem,
 } from '../types/budget';
-import { triggerLightHaptic } from '../utils/haptics';
 import {
   formatPeso,
   formatPesoDisplay,
-  formatPesoInput,
   formatPesoNumber,
   parsePesoInput,
 } from '../utils/numberFormat';
 import { ScalePressable } from './AnimatedPrimitives';
-import { AppIcon, ENVELOPE_ICON_CHOICES } from './AppIcon';
+import { ENVELOPE_ICON_CHOICES } from './AppIcon';
 import { FormModal } from './FormModal';
+import { IconPickerGrid } from './form/IconPickerGrid';
+import { PesoAmountInput } from './form/PesoAmountInput';
+import { QuickPresetChips } from './form/QuickPresetChips';
+import { SegmentedTabBar } from './form/SegmentedTabBar';
 
 export const ENVELOPE_PRESETS: Array<{
   name: string;
@@ -121,8 +123,14 @@ const AddEditEnvelopeModalContent: React.FC<
     parsedCycleAmt * (formCadence === 'per_payday' ? salaryFrequency : 1);
   const isFormValid = Boolean(formName.trim()) && parsedCycleAmt > 0;
 
+  const presetItems = ENVELOPE_PRESETS.map((p) => ({
+    ...p,
+    label: `${p.name} ${formatPeso(p.amount)}`,
+  }));
+
   const handleSaveModal = () => {
-    if (!formName.trim()) {
+    const trimmed = formName.trim();
+    if (!trimmed) {
       setFormError('Please enter an allowance name.');
       return;
     }
@@ -134,7 +142,7 @@ const AddEditEnvelopeModalContent: React.FC<
     if (editingEnvelope) {
       onUpdateEnvelope(
         editingEnvelope.id,
-        formName.trim(),
+        trimmed,
         formIcon,
         parsedCycleAmt,
         formCadence,
@@ -143,7 +151,7 @@ const AddEditEnvelopeModalContent: React.FC<
       );
     } else {
       onAddEnvelope(
-        formName.trim(),
+        trimmed,
         formIcon,
         parsedCycleAmt,
         formCadence,
@@ -163,63 +171,31 @@ const AddEditEnvelopeModalContent: React.FC<
       onClose={onClose}
     >
       {!editingEnvelope && collapsible && (
-        <View style={{ gap: 6 }}>
-          <Text style={[styles.modalLabel, { color: shade.muted }]}>
-            Quick Starters (tap to fill)
-          </Text>
-          <View style={styles.presetChips}>
-            {ENVELOPE_PRESETS.map((preset) => (
-              <ScalePressable
-                key={preset.name}
-                onPress={() => {
-                  triggerLightHaptic();
-                  setFormName(preset.name);
-                  setFormIcon(preset.icon);
-                  setFormAmountText(formatPesoNumber(preset.amount));
-                  setFormCadence(preset.cadence);
-                  setFormRolloverMode(preset.rolloverMode);
-                  setFormError(null);
-                }}
-                style={[styles.presetChip, { backgroundColor: shade.surface }]}
-              >
-                <AppIcon name={preset.icon} size={12} color={shade.dopamine} />
-                <Text style={[styles.presetChipText, { color: shade.text }]}>
-                  {preset.name} {formatPeso(preset.amount)}
-                </Text>
-              </ScalePressable>
-            ))}
-          </View>
-        </View>
+        <QuickPresetChips
+          label="Quick Starters (tap to fill)"
+          presets={presetItems}
+          shade={shade}
+          accentColor={shade.dopamine}
+          onSelect={(preset) => {
+            setFormName(preset.name);
+            setFormIcon(preset.icon);
+            setFormAmountText(formatPesoNumber(preset.amount));
+            setFormCadence(preset.cadence);
+            setFormRolloverMode(preset.rolloverMode);
+            setFormError(null);
+          }}
+        />
       )}
-      <Text style={[styles.modalLabel, { color: shade.muted }]}>
-        Pick an icon
-      </Text>
-      <View style={styles.iconRow}>
-        {ENVELOPE_ICON_CHOICES.map((iconName) => {
-          const active = formIcon === iconName;
-          return (
-            <ScalePressable
-              key={iconName}
-              onPress={() => {
-                triggerLightHaptic();
-                setFormIcon(iconName);
-              }}
-              style={[
-                styles.iconPill,
-                {
-                  backgroundColor: active ? shade.dopamine : shade.surface,
-                },
-              ]}
-            >
-              <AppIcon
-                name={iconName}
-                size={16}
-                color={active ? '#FFFFFF' : shade.text}
-              />
-            </ScalePressable>
-          );
-        })}
-      </View>
+
+      <IconPickerGrid
+        label="Pick an icon"
+        icons={ENVELOPE_ICON_CHOICES}
+        selected={formIcon}
+        onSelect={setFormIcon}
+        shade={shade}
+        activeBg={shade.dopamineBtnBg}
+        activeFg="#FFFFFF"
+      />
 
       <TextInput
         value={formName}
@@ -229,6 +205,7 @@ const AddEditEnvelopeModalContent: React.FC<
         }}
         placeholder="Allowance name (e.g., Date Night, Coffee)"
         placeholderTextColor={shade.muted}
+        accessibilityLabel="Allowance name"
         style={[
           styles.nameInput,
           {
@@ -239,53 +216,35 @@ const AddEditEnvelopeModalContent: React.FC<
         ]}
       />
 
-      <View
-        style={[
-          styles.newAmountWrap,
-          { backgroundColor: shade.surface, borderColor: shade.border },
-        ]}
-      >
-        <Text style={[styles.pesoSign, { color: shade.dopamine }]}>₱</Text>
-        <TextInput
-          value={formAmountText}
-          onChangeText={(t) => {
-            setFormAmountText(formatPesoInput(t));
-            if (formError) setFormError(null);
-          }}
-          keyboardType="decimal-pad"
-          inputMode="decimal"
-          placeholder={
-            formCadence === 'per_payday'
-              ? 'Amount per cutoff (e.g., 7,500)'
-              : 'Monthly allowance'
-          }
-          placeholderTextColor={shade.muted}
-          style={[styles.newAmountInput, { color: shade.text }]}
-        />
-      </View>
+      <PesoAmountInput
+        value={formAmountText}
+        onChangeText={(formatted) => {
+          setFormAmountText(formatted);
+          if (formError) setFormError(null);
+        }}
+        shade={shade}
+        accentColor={shade.dopamine}
+        placeholder={
+          formCadence === 'per_payday'
+            ? 'Amount per cutoff (e.g., 7,500)'
+            : 'Monthly allowance'
+        }
+        inputAccessibilityLabel="Allowance cycle amount"
+      />
 
       {editingEnvelope && (
         <View style={{ gap: 4 }}>
           <Text style={[styles.modalLabel, { color: shade.muted }]}>
             Current Available Balance
           </Text>
-          <View
-            style={[
-              styles.newAmountWrap,
-              { backgroundColor: shade.surface, borderColor: shade.border },
-            ]}
-          >
-            <Text style={[styles.pesoSign, { color: shade.positive }]}>₱</Text>
-            <TextInput
-              value={formBalanceText}
-              onChangeText={(t) => setFormBalanceText(formatPesoInput(t))}
-              keyboardType="decimal-pad"
-              inputMode="decimal"
-              placeholder="0"
-              placeholderTextColor={shade.muted}
-              style={[styles.newAmountInput, { color: shade.text }]}
-            />
-          </View>
+          <PesoAmountInput
+            value={formBalanceText}
+            onChangeText={setFormBalanceText}
+            shade={shade}
+            accentColor={shade.positive}
+            placeholder="0"
+            inputAccessibilityLabel="Current available allowance balance"
+          />
         </View>
       )}
 
@@ -293,139 +252,62 @@ const AddEditEnvelopeModalContent: React.FC<
         <Text style={[styles.modalLabel, { color: shade.muted }]}>
           Refill Schedule
         </Text>
-        <View style={styles.segRow}>
-          <ScalePressable
-            onPress={() => {
-              triggerLightHaptic();
-              setFormCadence('per_payday');
-            }}
-            style={[
-              styles.segBtn,
-              {
-                backgroundColor:
-                  formCadence === 'per_payday' ? shade.accent : shade.surface,
-              },
-            ]}
-          >
-            <Text
-              style={[
-                styles.segText,
-                {
-                  color:
-                    formCadence === 'per_payday'
-                      ? shade.accentText
-                      : shade.text,
-                },
-              ]}
-            >
-              Every Cutoff ({salaryFrequency}x/mo)
-            </Text>
-          </ScalePressable>
-          <ScalePressable
-            onPress={() => {
-              triggerLightHaptic();
-              setFormCadence('monthly');
-            }}
-            style={[
-              styles.segBtn,
-              {
-                backgroundColor:
-                  formCadence === 'monthly' ? shade.accent : shade.surface,
-              },
-            ]}
-          >
-            <Text
-              style={[
-                styles.segText,
-                {
-                  color:
-                    formCadence === 'monthly' ? shade.accentText : shade.text,
-                },
-              ]}
-            >
-              Once a Month
-            </Text>
-          </ScalePressable>
-        </View>
+        <SegmentedTabBar
+          value={formCadence}
+          onChange={setFormCadence}
+          shade={shade}
+          variant="accent"
+          withBorder={false}
+          options={[
+            {
+              key: 'per_payday',
+              label: `Every Cutoff (${salaryFrequency}x/mo)`,
+            },
+            { key: 'monthly', label: 'Once a Month' },
+          ]}
+        />
       </View>
 
       <View style={{ gap: 6 }}>
         <Text style={[styles.modalLabel, { color: shade.muted }]}>
-          Unused Balance on New Cutoff
+          {formCadence === 'monthly'
+            ? 'Unused Balance on New Month'
+            : 'Unused Balance on Payday'}
         </Text>
-        <View style={styles.segRow}>
-          <ScalePressable
-            onPress={() => {
-              triggerLightHaptic();
-              setFormRolloverMode('rollover');
-            }}
-            style={[
-              styles.segBtn,
-              {
-                backgroundColor:
-                  formRolloverMode === 'rollover'
-                    ? shade.dopamine
-                    : shade.surface,
-              },
-            ]}
-          >
-            <Text
-              style={[
-                styles.segText,
-                {
-                  color:
-                    formRolloverMode === 'rollover' ? '#FFFFFF' : shade.text,
-                },
-              ]}
-            >
-              Roll over leftover
-            </Text>
-          </ScalePressable>
-          <ScalePressable
-            onPress={() => {
-              triggerLightHaptic();
-              setFormRolloverMode('reset');
-            }}
-            style={[
-              styles.segBtn,
-              {
-                backgroundColor:
-                  formRolloverMode === 'reset'
-                    ? shade.dopamine
-                    : shade.surface,
-              },
-            ]}
-          >
-            <Text
-              style={[
-                styles.segText,
-                {
-                  color: formRolloverMode === 'reset' ? '#FFFFFF' : shade.text,
-                },
-              ]}
-            >
-              Reset to cycle amt
-            </Text>
-          </ScalePressable>
-        </View>
+        <SegmentedTabBar
+          value={formRolloverMode}
+          onChange={setFormRolloverMode}
+          shade={shade}
+          variant="accent"
+          withBorder={false}
+          activeBgColor={shade.dopamineBtnBg}
+          activeTextColor="#FFFFFF"
+          options={[
+            { key: 'rollover', label: 'Roll over leftover' },
+            { key: 'reset', label: 'Reset to cycle amt' },
+          ]}
+        />
       </View>
 
       <Text style={[styles.impactHint, { color: shade.muted }]}>
         Monthly budget impact: {mask(monthlyPreview)}/mo set aside automatically
       </Text>
 
-      {formError && (
+      {formError ? (
         <Text style={[styles.formErrorText, { color: shade.warning }]}>
           {formError}
         </Text>
-      )}
+      ) : null}
 
       <ScalePressable
         onPress={handleSaveModal}
+        accessibilityRole="button"
         style={[
           styles.addBtn,
           {
-            backgroundColor: isFormValid ? shade.dopamine : shade.surface,
+            backgroundColor: isFormValid
+              ? shade.dopamineBtnBg
+              : shade.surface,
             opacity: isFormValid ? 1 : 0.75,
           },
         ]}
@@ -459,38 +341,9 @@ export const AddEditEnvelopeModal: React.FC<AddEditEnvelopeModalProps> = ({
 };
 
 const styles = StyleSheet.create({
-  presetChips: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
-  presetChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 9,
-    paddingVertical: 6,
-    borderRadius: 9,
-  },
-  presetChipText: {
-    fontSize: 11,
-    fontWeight: '700',
-  },
   modalLabel: {
     fontSize: 11,
     fontWeight: '700',
-  },
-  iconRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 7,
-  },
-  iconPill: {
-    width: 38,
-    height: 38,
-    borderRadius: 11,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   nameInput: {
     minWidth: 0,
@@ -500,57 +353,22 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     fontSize: 14,
   },
-  newAmountWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 12,
-    borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  pesoSign: {
-    fontSize: 14,
-    fontWeight: '800',
-    marginRight: 5,
-  },
-  newAmountInput: {
-    flex: 1,
-    minWidth: 0,
-    fontSize: 16,
-    fontWeight: '800',
-    paddingVertical: 0,
-  },
-  segRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  segBtn: {
-    flex: 1,
-    paddingVertical: 9,
-    paddingHorizontal: 8,
-    borderRadius: 10,
-    alignItems: 'center',
-  },
-  segText: {
-    fontSize: 11,
-    fontWeight: '800',
-    textAlign: 'center',
-  },
   impactHint: {
     fontSize: 11,
     fontWeight: '600',
   },
-  formErrorText: {
-    fontSize: 12,
-    fontWeight: '700',
-  },
   addBtn: {
-    borderRadius: 12,
-    paddingVertical: 13,
+    borderRadius: 13,
+    paddingVertical: 14,
     alignItems: 'center',
+    marginTop: 2,
   },
   addBtnText: {
     fontSize: 13,
     fontWeight: '800',
+  },
+  formErrorText: {
+    fontSize: 12,
+    fontWeight: '700',
   },
 });

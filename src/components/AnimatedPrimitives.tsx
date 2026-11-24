@@ -73,7 +73,7 @@ export const ScalePressable: React.FC<ScalePressableProps> = ({
       accessibilityRole={accessibilityRole}
       accessibilityLabel={accessibilityLabel}
       accessibilityHint={accessibilityHint}
-      accessibilityState={accessibilityState}
+      accessibilityState={{ disabled, ...accessibilityState }}
       hitSlop={hitSlop}
       style={[style, { transform: [{ scale }] }]}
     >
@@ -209,7 +209,8 @@ export const AnimatedProgressBar: React.FC<AnimatedProgressBarProps> = ({
   fillColor,
   height = 8,
 }) => {
-  const clamped = Math.max(0, Math.min(100, percentage));
+  const safePct = Number.isFinite(percentage) ? percentage : 0;
+  const clamped = Math.max(0, Math.min(100, safePct));
   const widthAnim = useRef(new Animated.Value(clamped)).current;
 
   useEffect(() => {
@@ -230,6 +231,8 @@ export const AnimatedProgressBar: React.FC<AnimatedProgressBarProps> = ({
 
   return (
     <View
+      accessibilityRole="progressbar"
+      accessibilityValue={{ min: 0, max: 100, now: Math.round(clamped) }}
       style={[
         styles.progressTrack,
         { backgroundColor: trackColor, height },
@@ -284,6 +287,7 @@ export const AnimatedCounter: React.FC<AnimatedCounterProps> = ({
   const lastTickRef = useRef<number>(0);
 
   useEffect(() => {
+    if (masked) return;
     const listenerId = animVal.addListener(({ value: v }) => {
       const now = Date.now();
       const formatted = formatVal(v);
@@ -299,10 +303,16 @@ export const AnimatedCounter: React.FC<AnimatedCounterProps> = ({
     return () => {
       animVal.removeListener(listenerId);
     };
-  }, [animVal, formatVal]);
+  }, [animVal, formatVal, masked]);
 
   useEffect(() => {
     animVal.stopAnimation();
+    if (masked) {
+      animVal.setValue(safeTarget);
+      lastFormattedRef.current = formatVal(safeTarget);
+      setDisplayValue(safeTarget);
+      return;
+    }
     const anim = Animated.timing(animVal, {
       toValue: safeTarget,
       duration: 360,
@@ -316,9 +326,16 @@ export const AnimatedCounter: React.FC<AnimatedCounterProps> = ({
       }
     });
     return () => anim.stop();
-  }, [safeTarget, animVal, formatVal]);
+  }, [safeTarget, animVal, formatVal, masked]);
+
+  const factor = 10 ** decimals;
 
   if (masked) {
+    const roundedTarget = Number.isFinite(safeTarget)
+      ? Math.round(safeTarget * factor) / factor
+      : 0;
+    const maskedSign =
+      roundedTarget < 0 && Math.abs(roundedTarget) > 0 ? '-' : '';
     return (
       <Text
         numberOfLines={1}
@@ -326,12 +343,12 @@ export const AnimatedCounter: React.FC<AnimatedCounterProps> = ({
         minimumFontScale={0.75}
         style={[{ fontVariant: ['tabular-nums'] }, style]}
       >
+        {maskedSign}
         {prefix}••••{suffix}
       </Text>
     );
   }
 
-  const factor = 10 ** decimals;
   const safeDisplay = Number.isFinite(displayValue)
     ? Math.round(displayValue * factor) / factor
     : 0;

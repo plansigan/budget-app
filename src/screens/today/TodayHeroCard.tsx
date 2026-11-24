@@ -18,7 +18,7 @@ interface TodayHeroCardProps {
   safeToSpendOnSelectedDay: number;
   baseDailyAllowance: number;
   rolloverBalance: number;
-  isOver: boolean;
+  hasEndedDay: boolean;
   isPaydayPromptVisible: boolean;
   expectedPay: number;
   onOpenSpend: () => void;
@@ -36,7 +36,7 @@ export const TodayHeroCard: React.FC<TodayHeroCardProps> = React.memo(
     safeToSpendOnSelectedDay,
     baseDailyAllowance,
     rolloverBalance,
-    isOver,
+    hasEndedDay,
     isPaydayPromptVisible,
     expectedPay,
     onOpenSpend,
@@ -45,6 +45,16 @@ export const TodayHeroCard: React.FC<TodayHeroCardProps> = React.memo(
     onDismissPaydayPrompt,
   }) => {
     const { shade, privacyMode, formatVisiblePeso } = useThemePrefs();
+
+    const isOverspent = safeToSpendOnSelectedDay < 0;
+    const canEndDay = !hasEndedDay && safeToSpendOnSelectedDay > 0;
+    const endDayLabel = hasEndedDay
+      ? '✓ Day Ended'
+      : isOverspent
+      ? 'Over Budget'
+      : safeToSpendOnSelectedDay <= 0
+      ? '₱0 Left'
+      : 'End Day & Save';
 
     return (
       <>
@@ -70,15 +80,16 @@ export const TodayHeroCard: React.FC<TodayHeroCardProps> = React.memo(
                   triggerLightHaptic();
                   onOpenPaydayModal();
                 }}
+                accessibilityRole="button"
                 accessibilityLabel="Open Payday Check-In"
-                hitSlop={4}
+                hitSlop={6}
                 style={[
                   styles.paydayPill,
                   { backgroundColor: shade.heroSurface },
                 ]}
               >
-                <AppIcon name="calendar" size={12} color="#4ADE80" />
-                <Text style={[styles.paydayText, { color: '#4ADE80' }]}>
+                <AppIcon name="calendar" size={12} color={shade.heroPositive} />
+                <Text style={[styles.paydayText, { color: shade.heroPositive }]}>
                   {paydayLabel}
                 </Text>
               </ScalePressable>
@@ -87,12 +98,12 @@ export const TodayHeroCard: React.FC<TodayHeroCardProps> = React.memo(
             <View style={styles.balanceBlock}>
               <PopValueText valueTrigger={safeToSpendOnSelectedDay}>
                 <AnimatedCounter
-                  value={Math.max(0, safeToSpendOnSelectedDay)}
+                  value={safeToSpendOnSelectedDay}
                   decimals={2}
                   masked={privacyMode}
                   style={[
                     styles.bigBalance,
-                    { color: isOver ? '#F87171' : shade.heroText },
+                    { color: isOverspent ? shade.heroWarning : shade.heroText },
                   ]}
                 />
               </PopValueText>
@@ -102,12 +113,19 @@ export const TodayHeroCard: React.FC<TodayHeroCardProps> = React.memo(
                 {isTodaySelected && rolloverBalance > 0
                   ? ` • +${formatVisiblePeso(rolloverBalance)} rollover`
                   : ''}
+                {isOverspent
+                  ? ' • Over budget'
+                  : hasEndedDay
+                  ? ' • Day ended'
+                  : ''}
               </Text>
             </View>
 
             <View style={styles.primaryActionsRow}>
               <ScalePressable
                 onPress={onOpenSpend}
+                accessibilityRole="button"
+                accessibilityLabel="Log a spend"
                 scaleTo={0.96}
                 style={[styles.spendPrimaryBtn, { backgroundColor: '#FFFFFF' }]}
               >
@@ -117,24 +135,44 @@ export const TodayHeroCard: React.FC<TodayHeroCardProps> = React.memo(
               </ScalePressable>
 
               <ScalePressable
+                disabled={!canEndDay}
                 onPress={onBankSurplus}
+                accessibilityRole="button"
+                accessibilityLabel={
+                  hasEndedDay
+                    ? 'Day already ended'
+                    : isOverspent
+                    ? 'Over budget today'
+                    : safeToSpendOnSelectedDay <= 0
+                    ? 'Zero balance left today'
+                    : 'End day and save remaining balance'
+                }
                 scaleTo={0.96}
                 style={[
                   styles.bankBtn,
                   {
-                    backgroundColor: isOver
-                      ? shade.heroSurface
-                      : shade.positive,
+                    backgroundColor: canEndDay
+                      ? shade.positiveBtnBg
+                      : shade.heroSurface,
+                    opacity: canEndDay ? 1 : 0.78,
                   },
                 ]}
               >
                 <Text
                   style={[
                     styles.bankBtnText,
-                    { color: isOver ? shade.heroMuted : '#FFFFFF' },
+                    {
+                      color: canEndDay
+                        ? '#FFFFFF'
+                        : hasEndedDay
+                        ? shade.heroPositive
+                        : isOverspent
+                        ? shade.heroWarning
+                        : shade.heroMuted,
+                    },
                   ]}
                 >
-                  {isOver ? '✓ Day Ended' : 'End Day & Save'}
+                  {endDayLabel}
                 </Text>
               </ScalePressable>
             </View>
@@ -157,7 +195,7 @@ export const TodayHeroCard: React.FC<TodayHeroCardProps> = React.memo(
                   bg={shade.positiveSoft}
                   boxSize={38}
                 />
-                <View style={{ flex: 1 }}>
+                <View style={{ flex: 1, minWidth: 0 }}>
                   <Text
                     style={[styles.paydayBannerTitle, { color: shade.text }]}
                   >
@@ -176,17 +214,20 @@ export const TodayHeroCard: React.FC<TodayHeroCardProps> = React.memo(
                     triggerLightHaptic();
                     onOpenPaydayModal();
                   }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Complete Payday Check-In"
                   style={[
                     styles.paydayCheckInBtn,
-                    { backgroundColor: shade.positive },
+                    { backgroundColor: shade.positiveBtnBg },
                   ]}
                 >
                   <Text style={styles.paydayCheckInText}>Check In</Text>
                 </ScalePressable>
                 <ScalePressable
                   onPress={() => onDismissPaydayPrompt(todayKey)}
+                  accessibilityRole="button"
                   accessibilityLabel="Dismiss payday reminder"
-                  hitSlop={6}
+                  hitSlop={8}
                   style={[
                     styles.paydayDismissBtn,
                     { backgroundColor: shade.surface },
@@ -292,6 +333,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
     flex: 1,
+    minWidth: 0,
   },
   paydayBannerTitle: {
     fontSize: 14,

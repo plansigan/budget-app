@@ -50,6 +50,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
             triggerLightHaptic();
             onCancel();
           }}
+          accessibilityLabel={cancelLabel}
           style={[
             styles.btn,
             { backgroundColor: shade.surface, borderColor: shade.border },
@@ -61,7 +62,11 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
         </ScalePressable>
 
         <ScalePressable
-          onPress={onConfirm}
+          onPress={() => {
+            triggerLightHaptic();
+            onConfirm();
+          }}
+          accessibilityLabel={confirmLabel}
           style={[styles.btn, styles.confirmBtn, { backgroundColor: accent }]}
         >
           <Text

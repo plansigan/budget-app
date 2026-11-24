@@ -1,7 +1,7 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { ScalePressable } from '../../components/AnimatedPrimitives';
-import { IconBadge } from '../../components/AppIcon';
+import { AppIcon, IconBadge } from '../../components/AppIcon';
 import { isEditableEntryType } from '../../state/budgetReducer';
 import { ThemeShade } from '../../theme/palette';
 import { TransactionEntry } from '../../types/budget';
@@ -12,6 +12,7 @@ interface AccountEntryRowProps {
   entry: TransactionEntry;
   selectedAccountId: string;
   isCreditCard: boolean;
+  undoable: boolean;
   shade: ThemeShade;
   privacyMode: boolean;
   onEdit: (entry: TransactionEntry) => void;
@@ -23,6 +24,7 @@ export const AccountEntryRow: React.FC<AccountEntryRowProps> = React.memo(
     entry,
     selectedAccountId,
     isCreditCard,
+    undoable,
     shade,
     privacyMode,
     onEdit,
@@ -101,6 +103,7 @@ export const AccountEntryRow: React.FC<AccountEntryRowProps> = React.memo(
             triggerLightHaptic();
             onEdit(entry);
           }}
+          accessibilityLabel={editable ? `Edit ${entry.label}` : undefined}
           style={styles.logTapArea}
         >
           <View style={styles.logLeft}>
@@ -112,12 +115,17 @@ export const AccountEntryRow: React.FC<AccountEntryRowProps> = React.memo(
               boxSize={32}
             />
             <View style={{ flex: 1, minWidth: 0 }}>
-              <Text
-                numberOfLines={1}
-                style={[styles.logLabel, { color: shade.text }]}
-              >
-                {entry.label}
-              </Text>
+              <View style={styles.labelRow}>
+                <Text
+                  numberOfLines={1}
+                  style={[styles.logLabel, { color: shade.text }]}
+                >
+                  {entry.label}
+                </Text>
+                {editable && (
+                  <AppIcon name="edit-2" size={10} color={shade.muted} />
+                )}
+              </View>
               <Text
                 numberOfLines={1}
                 style={[styles.accountSub, { color: shade.muted }]}
@@ -132,19 +140,29 @@ export const AccountEntryRow: React.FC<AccountEntryRowProps> = React.memo(
           </Text>
         </ScalePressable>
 
-        <ScalePressable
-          onPress={() => {
-            triggerLightHaptic();
-            onRequestUndo(entry, deltaString);
-          }}
-          accessibilityLabel={`Undo ${entry.label}`}
-          hitSlop={6}
-          style={[styles.undoMini, { backgroundColor: shade.surface }]}
-        >
-          <Text style={[styles.undoMiniText, { color: shade.muted }]}>
-            Undo
-          </Text>
-        </ScalePressable>
+        {undoable ? (
+          <ScalePressable
+            onPress={() => {
+              triggerLightHaptic();
+              onRequestUndo(entry, deltaString);
+            }}
+            accessibilityLabel={`Undo ${entry.label}`}
+            hitSlop={6}
+            style={[styles.undoMini, { backgroundColor: shade.surface }]}
+          >
+            <Text style={[styles.undoMiniText, { color: shade.muted }]}>
+              Undo
+            </Text>
+          </ScalePressable>
+        ) : (
+          <View
+            style={[styles.undoMini, { backgroundColor: shade.surface }]}
+          >
+            <Text style={[styles.undoMiniText, { color: shade.muted }]}>
+              Locked
+            </Text>
+          </View>
+        )}
       </View>
     );
   }
@@ -176,9 +194,15 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
   },
+  labelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
   logLabel: {
     fontSize: 13,
     fontWeight: '700',
+    flexShrink: 1,
   },
   accountSub: {
     fontSize: 11,
@@ -187,6 +211,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '800',
     flexShrink: 0,
+    fontVariant: ['tabular-nums'],
   },
   undoMini: {
     paddingHorizontal: 7,

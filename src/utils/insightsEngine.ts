@@ -5,13 +5,18 @@ import {
   SinkingFundItem,
   SpendCategoryKey,
   TransactionEntry,
-  TreatVaultItem,
 } from '../types/budget';
 import { formatPeso } from './numberFormat';
 import {
   formatEntryDateLocal,
   formatLocalDateKey,
 } from './transactionDisplay';
+
+function round2(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  const r = Math.round(value * 100) / 100;
+  return r === 0 ? 0 : r;
+}
 
 export interface SpendCategorySlice {
   key: string;
@@ -170,7 +175,7 @@ export function classifySpendCategory(entry: TransactionEntry): {
     return CATEGORY_META.shop;
   }
   if (
-    entry.icon === 'heart' ||
+    (entry.icon === 'heart' && entry.type !== 'envelope_spend') ||
     /\b(health|med|meds|medicine|gym|doctor|pharmacy|clinic|dental)\b/.test(
       txt
     )
@@ -200,58 +205,65 @@ export function computeSpendingBreakdown(
   monthKey?: string,
   scope: SpendingBreakdownScope = 'all'
 ): SpendingBreakdownResult {
-  const todayMidnight = new Date(
-    now.getFullYear(),
-    now.getMonth(),
-    now.getDate()
-  );
-  const dow = todayMidnight.getDay();
-  const diffToMon = dow === 0 ? -6 : 1 - dow;
-  const monday = new Date(todayMidnight);
-  monday.setDate(todayMidnight.getDate() + diffToMon);
-  const mondayKey = formatLocalDateKey(monday);
+  let mondayKey = '';
+  let sundayKey = '';
+  let monthPrefix = '';
 
-  const sunday = new Date(monday);
-  sunday.setDate(monday.getDate() + 6);
-  const sundayKey = formatLocalDateKey(sunday);
+  if (range === 'week') {
+    const todayMidnight = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate()
+    );
+    const dow = todayMidnight.getDay();
+    const diffToMon = dow === 0 ? -6 : 1 - dow;
+    const monday = new Date(todayMidnight);
+    monday.setDate(todayMidnight.getDate() + diffToMon);
+    mondayKey = formatLocalDateKey(monday);
 
-  const monthPrefix =
-    monthKey && /^\d{4}-\d{2}$/.test(monthKey)
-      ? monthKey
-      : `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-
-  const filtered = entries.filter((e) => {
-    if (scope === 'daily') {
-      if (e.type !== 'spend') return false;
-    } else if (scope === 'envelopes') {
-      if (e.type !== 'envelope_spend') return false;
-    } else if (e.type !== 'spend' && e.type !== 'envelope_spend') {
-      return false;
-    }
-    const key = getEntryDateKey(e);
-    if (range === 'week') {
-      return key >= mondayKey && key <= sundayKey;
-    }
-    return key.startsWith(monthPrefix);
-  });
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6);
+    sundayKey = formatLocalDateKey(sunday);
+  } else {
+    monthPrefix =
+      monthKey && /^\d{4}-\d{2}$/.test(monthKey)
+        ? monthKey
+        : `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  }
 
   const bucketMap = new Map<string, SpendCategorySlice>();
   let totalSpent = 0;
+  let matchCount = 0;
 
-  for (const entry of filtered) {
-    const amt = Math.max(0, entry.amount);
-    totalSpent += amt;
-    const cat = classifySpendCategory(entry);
+  for (const e of entries) {
+    if (scope === 'daily') {
+      if (e.type !== 'spend') continue;
+    } else if (scope === 'envelopes') {
+      if (e.type !== 'envelope_spend') continue;
+    } else if (e.type !== 'spend' && e.type !== 'envelope_spend') {
+      continue;
+    }
+    const key = getEntryDateKey(e);
+    if (range === 'week') {
+      if (key < mondayKey || key > sundayKey) continue;
+    } else if (!key.startsWith(monthPrefix)) {
+      continue;
+    }
+
+    matchCount += 1;
+    const amt = Math.max(0, Number.isFinite(e.amount) ? e.amount : 0);
+    totalSpent = round2(totalSpent + amt);
+    const cat = classifySpendCategory(e);
     const existing = bucketMap.get(cat.key);
     if (existing) {
-      existing.amount += amt;
+      existing.amount = round2(existing.amount + amt);
       existing.count += 1;
     } else {
       bucketMap.set(cat.key, {
         key: cat.key,
         icon: cat.icon,
         label: cat.label,
-        amount: amt,
+        amount: round2(amt),
         pct: 0,
         count: 1,
       });
@@ -263,14 +275,15 @@ export function computeSpendingBreakdown(
     .sort((a, b) => b.amount - a.amount)
     .map((s) => ({
       ...s,
+      amount: round2(s.amount),
       pct: totalSpent > 0 ? Math.round((s.amount / safeTotal) * 100) : 0,
     }));
 
   return {
-    totalSpent: Math.round(totalSpent * 100) / 100,
+    totalSpent: round2(totalSpent),
     slices,
     topSlice: slices.length > 0 ? slices[0] : null,
-    count: filtered.length,
+    count: matchCount,
   };
 }
 
@@ -314,9 +327,9 @@ export function computeInstallmentSummary(
 
   return {
     activeCount: active.length,
-    totalMonthlyCommitted: Math.round(totalMonthlyCommitted * 100) / 100,
-    budgetedMonthlyTotal: Math.round(budgetedMonthlyTotal * 100) / 100,
-    totalRemainingBalance: Math.round(totalRemainingBalance * 100) / 100,
+    totalMonthlyCommitted: round2(totalMonthlyCommitted),
+    budgetedMonthlyTotal: round2(budgetedMonthlyTotal),
+    totalRemainingBalance: round2(totalRemainingBalance),
     debtFreeLabel:
       active.length === 0 || maxRemainingMonths === 0
         ? 'Debt-Free!'
@@ -333,7 +346,7 @@ export function computeSinkingFundPace(
 ): SinkingFundPace {
   const target = Math.max(0, fund.target);
   const saved = Math.max(0, fund.saved);
-  const remaining = Math.max(0, Math.round((target - saved) * 100) / 100);
+  const remaining = Math.max(0, round2(target - saved));
   const pct =
     target > 0
       ? Math.min(100, Math.round((saved / Math.max(0.01, target)) * 100))
@@ -351,6 +364,44 @@ export function computeSinkingFundPace(
   };
 }
 
+function buildWrapUpShareText(params: {
+  monthName: string;
+  grade: MonthlyWrapUpReport['grade'];
+  totalSaved: number;
+  totalSpent: number;
+  savingsRatePct: number;
+  streakDays: number;
+  disciplineScore: number;
+  topCategoryLabel: string;
+  privacyMode?: boolean;
+}): string {
+  const {
+    monthName,
+    grade,
+    totalSaved,
+    totalSpent,
+    savingsRatePct,
+    streakDays,
+    disciplineScore,
+    topCategoryLabel,
+    privacyMode,
+  } = params;
+  return privacyMode
+    ? [
+        `My ${monthName} Velvet Budget Wrap-Up (Grade: ${grade})`,
+        `Savings Rate: ${savingsRatePct}% of income`,
+        `Streak: ${streakDays} days • Score: ${disciplineScore}`,
+        `Top category: ${topCategoryLabel}`,
+      ].join('\n')
+    : [
+        `My ${monthName} Velvet Budget Wrap-Up (Grade: ${grade})`,
+        `Saved: ${formatPeso(totalSaved)} (${savingsRatePct}% of income)`,
+        `Spent: ${formatPeso(totalSpent)}`,
+        `Streak: ${streakDays} days • Score: ${disciplineScore}`,
+        `Top category: ${topCategoryLabel}`,
+      ].join('\n');
+}
+
 /**
  * Generates the monthly wrap-up report card metrics, grade, and shareable summary text.
  */
@@ -360,8 +411,6 @@ export function computeMonthlyWrapUp(params: {
   entries: TransactionEntry[];
   streakDays: number;
   disciplineScore: number;
-  treats: TreatVaultItem[];
-  sinkingFunds: SinkingFundItem[];
   monthKey?: string;
   now?: Date;
   privacyMode?: boolean;
@@ -376,30 +425,41 @@ export function computeMonthlyWrapUp(params: {
   const monthName = MONTH_FULL[monthIdx] || MONTH_FULL[now.getMonth()];
   const monthTitle = `${monthName.toUpperCase()} ${yearStr} WRAP-UP`;
 
-  const breakdown = computeSpendingBreakdown(
-    params.entries,
-    'month',
-    now,
-    monthPrefix
-  );
-
-  const monthEntries = params.entries.filter((e) =>
-    getEntryDateKey(e).startsWith(monthPrefix)
-  );
-
-  // Count most used wallet payment source
   const sourceCounts = new Map<string, number>();
-  for (const e of monthEntries) {
-    if (
-      (e.type === 'spend' || e.type === 'envelope_spend') &&
-      e.paymentSourceLabel
-    ) {
-      sourceCounts.set(
-        e.paymentSourceLabel,
-        (sourceCounts.get(e.paymentSourceLabel) || 0) + 1
+  const categoryTotals = new Map<string, { label: string; amount: number }>();
+  let totalSpent = 0;
+  let spendCount = 0;
+  let sinkingDepositedThisMonth = 0;
+  let txCount = 0;
+
+  for (const e of params.entries) {
+    if (!getEntryDateKey(e).startsWith(monthPrefix)) continue;
+    txCount += 1;
+
+    if (e.type === 'spend' || e.type === 'envelope_spend') {
+      const amt = Math.max(0, Number.isFinite(e.amount) ? e.amount : 0);
+      totalSpent = round2(totalSpent + amt);
+      spendCount += 1;
+      const cat = classifySpendCategory(e);
+      const existing = categoryTotals.get(cat.key);
+      if (existing) {
+        existing.amount = round2(existing.amount + amt);
+      } else {
+        categoryTotals.set(cat.key, { label: cat.label, amount: round2(amt) });
+      }
+      if (e.paymentSourceLabel) {
+        sourceCounts.set(
+          e.paymentSourceLabel,
+          (sourceCounts.get(e.paymentSourceLabel) || 0) + 1
+        );
+      }
+    } else if (e.type === 'sinking_fund') {
+      sinkingDepositedThisMonth = round2(
+        sinkingDepositedThisMonth + Math.max(0, e.amount)
       );
     }
   }
+
   let topSourceLabel = 'Cash';
   let topSourceMax = 0;
   for (const [src, count] of sourceCounts.entries()) {
@@ -412,13 +472,18 @@ export function computeMonthlyWrapUp(params: {
     topSourceLabel = 'None logged yet';
   }
 
-  const sinkingDepositedThisMonth = monthEntries
-    .filter((e) => e.type === 'sinking_fund')
-    .reduce((sum, e) => sum + Math.max(0, e.amount), 0);
-  const totalSaved =
-    Math.round(
-      (Math.max(0, params.monthlySaved) + sinkingDepositedThisMonth) * 100
-    ) / 100;
+  let topCategoryLabel = 'No spends yet';
+  let topCategoryAmount = 0;
+  for (const slice of categoryTotals.values()) {
+    if (slice.amount > topCategoryAmount) {
+      topCategoryAmount = round2(slice.amount);
+      topCategoryLabel = slice.label;
+    }
+  }
+
+  const totalSaved = round2(
+    Math.max(0, params.monthlySaved) + sinkingDepositedThisMonth
+  );
   const safeIncome = Math.max(0.01, params.settings.monthlyIncome);
   const savingsRatePct =
     params.settings.monthlyIncome > 0
@@ -433,7 +498,7 @@ export function computeMonthlyWrapUp(params: {
   if (savingsRatePct >= 25 || goalPct >= 1) grade = 'A+';
   else if (savingsRatePct >= 18 || goalPct >= 0.75) grade = 'A';
   else if (savingsRatePct >= 10 || goalPct >= 0.45) grade = 'B+';
-  else if (totalSaved > 0 || breakdown.count > 0) grade = 'B';
+  else if (totalSaved > 0 || spendCount > 0) grade = 'B';
 
   const headline =
     grade === 'A+'
@@ -446,29 +511,21 @@ export function computeMonthlyWrapUp(params: {
       ? 'Good momentum! Keep tracking daily spends and ending days strong.'
       : 'Fresh start! Log daily spends and save small amounts to build your score.';
 
-  const topCategoryLabel = breakdown.topSlice
-    ? breakdown.topSlice.label
-    : 'No spends yet';
-  const topCategoryAmount = breakdown.topSlice ? breakdown.topSlice.amount : 0;
-
-  const shareText = params.privacyMode
-    ? [
-        `My ${monthName} Velvet Budget Wrap-Up (Grade: ${grade})`,
-        `Savings Rate: ${savingsRatePct}% of income`,
-        `Streak: ${params.streakDays} days • Score: ${params.disciplineScore}`,
-        `Top category: ${topCategoryLabel}`,
-      ].join('\n')
-    : [
-        `My ${monthName} Velvet Budget Wrap-Up (Grade: ${grade})`,
-        `Saved: ${formatPeso(totalSaved)} (${savingsRatePct}% of income)`,
-        `Spent: ${formatPeso(breakdown.totalSpent)}`,
-        `Streak: ${params.streakDays} days • Score: ${params.disciplineScore}`,
-        `Top category: ${topCategoryLabel}`,
-      ].join('\n');
+  const shareText = buildWrapUpShareText({
+    monthName,
+    grade,
+    totalSaved,
+    totalSpent,
+    savingsRatePct,
+    streakDays: params.streakDays,
+    disciplineScore: params.disciplineScore,
+    topCategoryLabel,
+    privacyMode: params.privacyMode,
+  });
 
   return {
     monthTitle,
-    totalSpent: breakdown.totalSpent,
+    totalSpent,
     totalSaved,
     savingsRatePct,
     streakDays: params.streakDays,
@@ -476,7 +533,7 @@ export function computeMonthlyWrapUp(params: {
     topCategoryLabel,
     topCategoryAmount,
     topSourceLabel,
-    txCount: monthEntries.length,
+    txCount,
     grade,
     headline,
     shareText,
@@ -507,20 +564,17 @@ export function buildWrapUpFromArchive(
   const monthIdx = match ? Math.max(0, Math.min(11, parseInt(match[2], 10) - 1)) : 0;
   const monthName = MONTH_FULL[monthIdx] || snapshot.monthTitle;
 
-  const shareText = privacyMode
-    ? [
-        `My ${monthName} Velvet Budget Wrap-Up (Grade: ${snapshot.grade})`,
-        `Savings Rate: ${snapshot.savingsRatePct}% of income`,
-        `Streak: ${snapshot.streakDays} days • Score: ${snapshot.disciplineScore}`,
-        `Top category: ${snapshot.topCategoryLabel}`,
-      ].join('\n')
-    : [
-        `My ${monthName} Velvet Budget Wrap-Up (Grade: ${snapshot.grade})`,
-        `Saved: ${formatPeso(snapshot.totalSaved)} (${snapshot.savingsRatePct}% of income)`,
-        `Spent: ${formatPeso(snapshot.totalSpent)}`,
-        `Streak: ${snapshot.streakDays} days • Score: ${snapshot.disciplineScore}`,
-        `Top category: ${snapshot.topCategoryLabel}`,
-      ].join('\n');
+  const shareText = buildWrapUpShareText({
+    monthName,
+    grade: snapshot.grade,
+    totalSaved: snapshot.totalSaved,
+    totalSpent: snapshot.totalSpent,
+    savingsRatePct: snapshot.savingsRatePct,
+    streakDays: snapshot.streakDays,
+    disciplineScore: snapshot.disciplineScore,
+    topCategoryLabel: snapshot.topCategoryLabel,
+    privacyMode,
+  });
 
   return {
     monthTitle: snapshot.monthTitle,

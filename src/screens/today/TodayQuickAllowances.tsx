@@ -44,6 +44,16 @@ export const TodayQuickAllowances: React.FC<TodayQuickAllowancesProps> =
     }) => {
       const { shade, formatVisiblePeso } = useThemePrefs();
 
+      const handleTreatBodyPress = () => {
+        if (!activeTreat || activeTreat.claimed) {
+          onOpenVault();
+        } else if (treatReady) {
+          onClaimTreat(activeTreat.id);
+        } else {
+          onOpenModal('treat');
+        }
+      };
+
       return (
         <>
           {envelopes.length > 0 && (
@@ -58,7 +68,9 @@ export const TodayQuickAllowances: React.FC<TodayQuickAllowancesProps> =
                       triggerLightHaptic();
                       onOpenAllowances();
                     }}
-                    hitSlop={6}
+                    accessibilityRole="button"
+                    accessibilityLabel="Manage spending allowances"
+                    hitSlop={8}
                   >
                     <Text
                       style={[
@@ -91,6 +103,10 @@ export const TodayQuickAllowances: React.FC<TodayQuickAllowancesProps> =
                       <ScalePressable
                         key={env.id}
                         onPress={() => onOpenModal('spend', env.id)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Spend from ${env.name}: ${formatVisiblePeso(
+                          env.balance
+                        )} left`}
                         style={[
                           styles.envPillCard,
                           {
@@ -143,6 +159,8 @@ export const TodayQuickAllowances: React.FC<TodayQuickAllowancesProps> =
             <View style={styles.dualRow}>
               <ScalePressable
                 onPress={() => onOpenModal('save')}
+                accessibilityRole="button"
+                accessibilityLabel="Save to Monthly Jar"
                 style={[
                   styles.bucketCard,
                   { backgroundColor: shade.card, borderColor: shade.border },
@@ -188,21 +206,12 @@ export const TodayQuickAllowances: React.FC<TodayQuickAllowancesProps> =
                   fillColor={shade.positive}
                   height={7}
                 />
-                <Text
-                  style={[styles.bucketTapHint, { color: shade.positive }]}
-                >
+                <Text style={[styles.bucketTapHint, { color: shade.positive }]}>
                   + Save to Jar
                 </Text>
               </ScalePressable>
 
-              <ScalePressable
-                onPress={() =>
-                  treatReady && activeTreat
-                    ? onClaimTreat(activeTreat.id)
-                    : activeTreat
-                    ? onOpenModal('treat')
-                    : onOpenVault()
-                }
+              <View
                 style={[
                   styles.bucketCard,
                   { backgroundColor: shade.card, borderColor: shade.border },
@@ -214,67 +223,106 @@ export const TodayQuickAllowances: React.FC<TodayQuickAllowancesProps> =
                   >
                     TREAT ({treats.length}/3)
                   </Text>
-                  <ScalePressable onPress={onOpenVault} hitSlop={8}>
+                  <ScalePressable
+                    onPress={() => {
+                      triggerLightHaptic();
+                      onOpenVault();
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Open Goals tab"
+                    hitSlop={8}
+                  >
                     <Text style={[styles.bucketPct, { color: shade.dopamine }]}>
                       {activeTreat ? `${treatPct}% ›` : 'Open ›'}
                     </Text>
                   </ScalePressable>
                 </View>
 
-                {activeTreat ? (
-                  <>
-                    <View style={{ gap: 2 }}>
+                <ScalePressable
+                  onPress={handleTreatBodyPress}
+                  accessibilityRole="button"
+                  accessibilityLabel={
+                    activeTreat
+                      ? activeTreat.claimed
+                        ? `${activeTreat.name} claimed, open Goals`
+                        : treatReady
+                        ? `Claim ${activeTreat.name}`
+                        : `Fund ${activeTreat.name}`
+                      : 'Add Treat Goal'
+                  }
+                  style={styles.treatBodyPress}
+                >
+                  {activeTreat ? (
+                    <>
+                      <View style={{ gap: 2 }}>
+                        <Text
+                          numberOfLines={1}
+                          adjustsFontSizeToFit
+                          minimumFontScale={0.78}
+                          style={[
+                            styles.bucketValue,
+                            { color: shade.text, fontVariant: ['tabular-nums'] },
+                          ]}
+                        >
+                          {formatVisiblePeso(activeTreat.funded)}
+                        </Text>
+                        <Text
+                          numberOfLines={1}
+                          style={{
+                            fontSize: 11,
+                            color: shade.muted,
+                            fontWeight: '600',
+                            fontVariant: ['tabular-nums'],
+                          }}
+                        >
+                          of {formatVisiblePeso(activeTreat.target)}
+                        </Text>
+                      </View>
+                      <AnimatedProgressBar
+                        percentage={treatPct}
+                        trackColor={shade.surface}
+                        fillColor={
+                          activeTreat.claimed ? shade.positive : shade.dopamine
+                        }
+                        height={7}
+                      />
                       <Text
                         numberOfLines={1}
-                        adjustsFontSizeToFit
-                        minimumFontScale={0.78}
                         style={[
-                          styles.bucketValue,
-                          { color: shade.text, fontVariant: ['tabular-nums'] },
+                          styles.bucketTapHint,
+                          {
+                            color: activeTreat.claimed
+                              ? shade.positive
+                              : shade.dopamine,
+                          },
                         ]}
                       >
-                        {formatVisiblePeso(activeTreat.funded)}
+                        {activeTreat.claimed
+                          ? 'Claimed ✓ • Open Goals'
+                          : treatReady
+                          ? `Claim ${activeTreat.name}`
+                          : `+ Fund ${activeTreat.name}`}
+                      </Text>
+                    </>
+                  ) : (
+                    <>
+                      <Text
+                        style={[styles.emptyTreatVal, { color: shade.muted }]}
+                      >
+                        No treats yet
                       </Text>
                       <Text
-                        numberOfLines={1}
-                        style={{
-                          fontSize: 11,
-                          color: shade.muted,
-                          fontWeight: '600',
-                          fontVariant: ['tabular-nums'],
-                        }}
+                        style={[
+                          styles.bucketTapHint,
+                          { color: shade.dopamine },
+                        ]}
                       >
-                        of {formatVisiblePeso(activeTreat.target)}
+                        + Add Treat Goal
                       </Text>
-                    </View>
-                    <AnimatedProgressBar
-                      percentage={treatPct}
-                      trackColor={shade.surface}
-                      fillColor={shade.dopamine}
-                      height={7}
-                    />
-                    <Text
-                      numberOfLines={1}
-                      style={[styles.bucketTapHint, { color: shade.dopamine }]}
-                    >
-                      {treatReady
-                        ? `Claim ${activeTreat.name}`
-                        : `+ Fund ${activeTreat.name}`}
-                    </Text>
-                  </>
-                ) : (
-                  <>
-                    <Text style={[styles.emptyTreatVal, { color: shade.muted }]}>
-                      No treats yet
-                    </Text>
-                    <Text
-                      style={[styles.bucketTapHint, { color: shade.dopamine }]}
-                    >
-                      + Add Treat Goal
-                    </Text>
-                  </>
-                )}
-              </ScalePressable>
+                    </>
+                  )}
+                </ScalePressable>
+              </View>
             </View>
           </FadeSlideIn>
         </>
@@ -333,6 +381,7 @@ const styles = StyleSheet.create({
   },
   bucketCard: {
     flex: 1,
+    minWidth: 0,
     borderRadius: 20,
     borderWidth: 1,
     padding: 16,
@@ -343,6 +392,11 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 3 },
     elevation: 2,
+  },
+  treatBodyPress: {
+    flex: 1,
+    justifyContent: 'space-between',
+    gap: 10,
   },
   bucketKicker: {
     fontSize: 11,

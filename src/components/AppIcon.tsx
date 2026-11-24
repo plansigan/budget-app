@@ -42,6 +42,7 @@ const VALID_FEATHER_SET = new Set<AppIconName>([
   'help-circle',
   'home',
   'layers',
+  'list',
   'lock',
   'monitor',
   'moon',
@@ -241,6 +242,8 @@ export const AppIcon: React.FC<AppIconProps> = ({
   if (name === 'peso' || name === 'dollar-sign') {
     return (
       <Text
+        accessible={false}
+        importantForAccessibility="no"
         style={[
           styles.pesoGlyph,
           {

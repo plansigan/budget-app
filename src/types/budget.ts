@@ -17,6 +17,7 @@ export interface DebtItem {
 export type TransactionType =
   | 'spend'
   | 'treat_direct'
+  /** @deprecated Legacy entry type retained only for backwards compatibility on read/undo/display. */
   | 'impulse_skipped'
   | 'midnight_split'
   | 'save_direct'
@@ -75,6 +76,8 @@ export interface TransactionEntry {
   previousBillPaidMonth?: string;
   envelopeId?: string;
   previousEnvelopeBalance?: number;
+  /** Exact delta deducted from the envelope for lossless out-of-order Undo/Edit. */
+  appliedEnvelopeDelta?: number;
   previousEnvelopeRefillKey?: string;
   refilledEnvelopeSnapshots?: Array<{
     id: string;
@@ -88,6 +91,8 @@ export interface TransactionEntry {
   /** True when created by the Payday Check-In flow. */
   isPaydayCheckIn?: boolean;
   previousPaydayCheckInKey?: string;
+  /** Explicit marker for credit-card payment deposits (preferred over note heuristics). */
+  isCardPayment?: boolean;
 }
 
 export interface MonthlyArchiveSnapshot {
@@ -269,12 +274,18 @@ export function getPaydayMatchKey(
   return null;
 }
 
+function roundPeso(val: number): number {
+  if (!Number.isFinite(val)) return 0;
+  const r = Math.round(val * 100) / 100;
+  return r === 0 ? 0 : r;
+}
+
 /**
  * Returns the expected net amount per paycheck based on salary frequency (1x or 2x/mo).
  */
 export function getExpectedPaycheckAmount(settings: BudgetSettings): number {
   const divisor = settings.salaryFrequency === 2 ? 2 : 1;
-  return Math.round((Math.max(0, settings.monthlyIncome) / divisor) * 100) / 100;
+  return roundPeso(Math.max(0, settings.monthlyIncome) / divisor);
 }
 
 /**
@@ -282,7 +293,5 @@ export function getExpectedPaycheckAmount(settings: BudgetSettings): number {
  */
 export function getExpectedPaycheckSavingsSlice(settings: BudgetSettings): number {
   const divisor = settings.salaryFrequency === 2 ? 2 : 1;
-  return (
-    Math.round((Math.max(0, settings.monthlySavingsGoal) / divisor) * 100) / 100
-  );
+  return roundPeso(Math.max(0, settings.monthlySavingsGoal) / divisor);
 }

@@ -39,6 +39,7 @@ import { TodayUpcomingAndDebts } from './today/TodayUpcomingAndDebts';
 interface TodayScreenProps {
   onOpenVault: () => void;
   onOpenBudgetSetup?: () => void;
+  onOpenBills?: () => void;
   onOpenAllowances?: () => void;
   onOpenDebts?: () => void;
 }
@@ -50,10 +51,11 @@ interface TodayScreenProps {
 export const TodayScreen: React.FC<TodayScreenProps> = ({
   onOpenVault,
   onOpenBudgetSetup,
+  onOpenBills,
   onOpenAllowances,
   onOpenDebts,
 }) => {
-  const { shade, privacyMode } = useThemePrefs();
+  const { shade, privacyMode, formatVisiblePeso } = useThemePrefs();
   const {
     settings,
     billItems,
@@ -65,6 +67,7 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
     selectedDateKey,
     safeToSpendOnSelectedDay,
     entries,
+    getDayEntries,
   } = useDailyBudget();
   const { debts } = useWallet();
   const { monthlySaved, treats, activeTreat } = useGoals();
@@ -78,6 +81,7 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
   const [billToPay, setBillToPay] = useState<BillItem | null>(null);
   const [debtToPay, setDebtToPay] = useState<DebtItem | null>(null);
   const [showAllActivity, setShowAllActivity] = useState(false);
+  const [showEndDayConfirm, setShowEndDayConfirm] = useState(false);
   const [editingEntry, setEditingEntry] = useState<TransactionEntry | null>(
     null
   );
@@ -101,9 +105,12 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
     () => (onOpenAllowances || onOpenBudgetSetup)?.(),
     [onOpenAllowances, onOpenBudgetSetup]
   );
+  const handleOpenBills = useCallback(
+    () => (onOpenBills || onOpenBudgetSetup)?.(),
+    [onOpenBills, onOpenBudgetSetup]
+  );
 
   const isTodaySelected = selectedDateKey === todayKey;
-  const isOver = safeToSpendOnSelectedDay <= 0;
   const todayDateObj = useMemo(() => parseDateKeyLocal(todayKey), [todayKey]);
   const currentMonthKey = todayKey.slice(0, 7);
   const paydayLabel = getNextPaydayLabel(settings, todayDateObj);
@@ -112,7 +119,7 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
     lastPaydayCheckInKey !== todayKey;
   const expectedPay = getExpectedPaycheckAmount(settings);
 
-  const upcomingUnpaidBills = useMemo(
+  const allUpcomingUnpaidBills = useMemo(
     () =>
       billItems
         .filter(
@@ -124,8 +131,7 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
           daysLeft: getDaysUntilDayOfMonth(b.dueDay!, todayDateObj),
         }))
         .filter((item) => item.daysLeft <= 5)
-        .sort((a, b) => a.daysLeft - b.daysLeft)
-        .slice(0, 3),
+        .sort((a, b) => a.daysLeft - b.daysLeft),
     [billItems, currentMonthKey, todayDateObj]
   );
 
@@ -170,9 +176,20 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
     !activeTreat!.claimed;
 
   const selectedDayEntries = useMemo(
-    () => entries.filter((e) => (e.dateKey || todayKey) === selectedDateKey),
-    [entries, selectedDateKey, todayKey]
+    () => getDayEntries(selectedDateKey),
+    [getDayEntries, selectedDateKey]
   );
+  const hasEndedSelectedDay = selectedDayEntries.some(
+    (e) => e.type === 'midnight_split'
+  );
+
+  const leftoverPos = Math.max(0, roundCurrency(safeToSpendOnSelectedDay));
+  const endDayRolloverHalf = roundCurrency(leftoverPos / 2);
+  const endDaySavedHalf = roundCurrency(leftoverPos - endDayRolloverHalf);
+  const activeUnclaimedTreat =
+    activeTreat && !activeTreat.claimed
+      ? activeTreat
+      : treats.find((t) => !t.claimed) || null;
 
   return (
     <ScrollView
@@ -192,11 +209,11 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
           safeToSpendOnSelectedDay={safeToSpendOnSelectedDay}
           baseDailyAllowance={baseDailyAllowance}
           rolloverBalance={rolloverBalance}
-          isOver={isOver}
+          hasEndedDay={hasEndedSelectedDay}
           isPaydayPromptVisible={isPaydayPromptVisible}
           expectedPay={expectedPay}
           onOpenSpend={handleOpenSpend}
-          onBankSurplus={bankTodaySurplus}
+          onBankSurplus={() => setShowEndDayConfirm(true)}
           onOpenPaydayModal={handleOpenPaydayModal}
           onDismissPaydayPrompt={dismissPaydayPrompt}
         />
@@ -217,13 +234,15 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
         />
 
         <TodayUpcomingAndDebts
-          upcomingUnpaidBills={upcomingUnpaidBills}
+          upcomingUnpaidBills={allUpcomingUnpaidBills.slice(0, 3)}
+          totalUpcomingBillsCount={allUpcomingUnpaidBills.length}
           openDebtsCount={openDebts.length}
           iOweTotal={iOweTotal}
           owedToMeTotal={owedToMeTotal}
           previewDebts={previewDebts}
           onPayBill={setBillToPay}
           onPayDebt={setDebtToPay}
+          onOpenBills={handleOpenBills}
           onOpenDebts={onOpenDebts}
         />
 
@@ -233,10 +252,10 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
           selectedDayEntries={selectedDayEntries}
           totalEntriesCount={entries.length}
           treats={treats}
+          debts={debts}
           onOpenAllActivity={handleOpenAllActivity}
           onEditEntry={setEditingEntry}
           onRequestUndo={setPendingUndoEntry}
-          onDirectUndo={undoEntry}
         />
       </View>
 
@@ -273,6 +292,31 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
       <EditTransactionModal
         entry={editingEntry}
         onClose={() => setEditingEntry(null)}
+      />
+
+      <ConfirmModal
+        visible={showEndDayConfirm}
+        title="End Day & Save 50/50?"
+        message={`Split ${formatVisiblePeso(
+          leftoverPos
+        )} leftover in half: ${formatVisiblePeso(
+          endDayRolloverHalf
+        )} rolls into tomorrow, and ${formatVisiblePeso(
+          endDaySavedHalf
+        )} goes to ${
+          activeUnclaimedTreat
+            ? `"${activeUnclaimedTreat.name}"`
+            : 'your Savings Jar'
+        }.`}
+        confirmLabel="End Day & Save"
+        cancelLabel="Keep Spending"
+        destructive={false}
+        icon="moon"
+        onCancel={() => setShowEndDayConfirm(false)}
+        onConfirm={() => {
+          setShowEndDayConfirm(false);
+          bankTodaySurplus();
+        }}
       />
 
       <ConfirmModal

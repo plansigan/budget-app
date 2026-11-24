@@ -6,7 +6,7 @@ import {
   computeSpendingBreakdown,
 } from '../utils/insightsEngine';
 import { formatEntryDateLocal, formatLocalDateKey } from '../utils/transactionDisplay';
-import { TransactionEntry } from '../types/budget';
+import { getDaysUntilDayOfMonth, TransactionEntry } from '../types/budget';
 
 describe('insightsEngine & transactionDisplay', () => {
   it('formats local date keys accurately around UTC+8 midnight and honors explicit dateKey', () => {
@@ -140,8 +140,6 @@ describe('insightsEngine & transactionDisplay', () => {
       entries,
       streakDays: 9,
       disciplineScore: 840,
-      treats: [],
-      sinkingFunds: [],
       monthKey: '2026-04',
       privacyMode: false,
     });
@@ -163,13 +161,28 @@ describe('insightsEngine & transactionDisplay', () => {
       entries,
       streakDays: 9,
       disciplineScore: 840,
-      treats: [],
-      sinkingFunds: [],
       monthKey: '2026-04',
       privacyMode: true,
     });
     expect(wrapPrivate.shareText).not.toContain('₱10,500.00');
     expect(wrapPrivate.shareText).not.toContain('₱1,200.00');
     expect(wrapPrivate.shareText).toContain('Savings Rate:');
+  });
+
+  it('computes cross-month upcoming bill countdown and chronological ordering across month-end', () => {
+    const april29 = new Date(2026, 3, 29, 9, 0, 0);
+    const bills = [
+      { name: 'May 2 Rent', dueDay: 2 },
+      { name: 'Apr 30 Net', dueDay: 30 },
+      { name: 'Apr 29 Power', dueDay: 29 },
+    ]
+      .map((b) => ({ ...b, daysLeft: getDaysUntilDayOfMonth(b.dueDay, april29) }))
+      .sort((a, b) => a.daysLeft - b.daysLeft);
+
+    expect(bills).toEqual([
+      { name: 'Apr 29 Power', dueDay: 29, daysLeft: 0 },
+      { name: 'Apr 30 Net', dueDay: 30, daysLeft: 1 },
+      { name: 'May 2 Rent', dueDay: 2, daysLeft: 3 },
+    ]);
   });
 });

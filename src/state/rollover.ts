@@ -9,6 +9,7 @@ import {
   roundCurrency,
 } from './budgetMath';
 import { PersistedBudgetState } from './defaults';
+import { allocateToTreatWithSpill, makeUid } from './reducers/helpers';
 
 /**
  * Shared midnight 50/50 split helper used on real calendar rollover and demo testing.
@@ -54,7 +55,9 @@ export function applyMidnightRollover(
   let nextStreak = prev.streakDays;
   let nextShields = prev.bufferShields;
 
-  if (currentSafe > 0 || prev.checkedInToday) {
+  if (prev.checkedInToday) {
+    // Daytime first action already incremented streakDays & awarded any 7-day buffer shield.
+  } else if (currentSafe > 0) {
     nextStreak += 1;
     if (nextStreak % 7 === 0) {
       nextShields += 1;
@@ -76,43 +79,37 @@ export function applyMidnightRollover(
   }
 
   const nextScore = Math.min(999, prev.disciplineScore + (unspent > 0 ? 10 : 0));
-  const activeTreat = prev.treats.find(
-    (t) => t.id === prev.activeTreatId && !t.claimed
+  const treatAllocation = allocateToTreatWithSpill(
+    prev.treats,
+    prev.activeTreatId,
+    vaultAdded,
+    'fromRollovers'
   );
+  const nextTreats = treatAllocation.nextTreats;
+  const treatAdded = treatAllocation.treatAdded;
+  const spillToSavings = treatAllocation.spillToSavings;
+  const targetTreatId = treatAllocation.targetTreatId;
+  let nextMonthlySaved = roundCurrency(prev.monthlySaved + spillToSavings);
 
-  let nextTreats = prev.treats;
-  let nextMonthlySaved = prev.monthlySaved;
-
-  if (vaultAdded > 0) {
-    if (activeTreat) {
-      nextTreats = prev.treats.map((t) =>
-        t.id === activeTreat.id
-          ? {
-              ...t,
-              funded: roundCurrency(t.funded + vaultAdded),
-              fromRollovers: roundCurrency(t.fromRollovers + vaultAdded),
-            }
-          : t
-      );
-    } else {
-      nextMonthlySaved = roundCurrency(prev.monthlySaved + vaultAdded);
-    }
-  }
+  const splitLabel =
+    treatAdded > 0 && spillToSavings > 0
+      ? 'Midnight 50/50 (Treat + Jar)'
+      : treatAdded > 0
+      ? 'Midnight 50/50 Unspent Split'
+      : 'Midnight 50/50 to Savings Jar';
 
   const newEntry: TransactionEntry | null =
     vaultAdded > 0 || rolloverNext > 0
       ? {
-          id: `split-${Date.now()}`,
+          id: makeUid('split'),
           type: 'midnight_split',
-          amount: activeTreat ? vaultAdded : 0,
-          label: activeTreat
-            ? 'Midnight 50/50 Unspent Split'
-            : 'Midnight 50/50 to Savings Jar',
+          amount: treatAdded,
+          label: splitLabel,
           icon: 'moon',
           timestamp: new Date().toISOString(),
           dateKey: prevKey,
-          treatId: activeTreat ? activeTreat.id : undefined,
-          savingsDelta: activeTreat ? 0 : vaultAdded,
+          treatId: treatAdded > 0 ? targetTreatId : undefined,
+          savingsDelta: spillToSavings,
           rolloverDelta: rolloverNext,
           isAutoRollover: true,
         }
@@ -132,8 +129,6 @@ export function applyMidnightRollover(
       entries: nextEntries,
       streakDays: nextStreak,
       disciplineScore: nextScore,
-      treats: nextTreats,
-      sinkingFunds: prev.sinkingFunds,
       monthKey: prevMonthKey,
       now: prevDateObj,
     });

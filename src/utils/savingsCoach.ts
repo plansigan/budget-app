@@ -68,18 +68,26 @@ export interface BudgetHealthMetrics {
   emergencyTarget6Mo: number;
 }
 
+function round2(val: number): number {
+  if (!Number.isFinite(val)) return 0;
+  const r = Math.round(val * 100) / 100;
+  return r === 0 ? 0 : r;
+}
+
 /**
  * Calculates 50/30/20 style allocation percentages and Emergency Fund targets
  * using safe guards against zero monthly income.
  */
 export function computeBudgetHealth(
-  settings: BudgetSettings
+  settings: BudgetSettings,
+  extraMonthlyCommitments: number = 0
 ): BudgetHealthMetrics {
   const income = Math.max(0, settings.monthlyIncome);
-  const bills = Math.max(0, settings.fixedBills);
+  const bills =
+    Math.max(0, settings.fixedBills) + Math.max(0, extraMonthlyCommitments);
   const savings = Math.max(0, settings.monthlySavingsGoal);
-  const emergencyTarget3Mo = Math.round(bills * 3 * 100) / 100;
-  const emergencyTarget6Mo = Math.round(bills * 6 * 100) / 100;
+  const emergencyTarget3Mo = round2(bills * 3);
+  const emergencyTarget6Mo = round2(bills * 6);
 
   if (income <= 0) {
     return {
@@ -195,19 +203,23 @@ const CURATED_HABIT_TIPS: CoachTip[] = [
  * Builds prioritized personalized advice using real Philippine Peso numbers first,
  * followed by practical saving habits.
  */
-export function generatePersonalizedTips(input: CoachStateInput): CoachTip[] {
+export function generatePersonalizedTips(
+  input: CoachStateInput,
+  now: Date = new Date()
+): CoachTip[] {
   const tips: CoachTip[] = [];
   const health = computeBudgetHealth(input.settings);
   const peso = (amt: number) =>
     formatPesoDisplay(amt, Boolean(input.privacyMode));
-  const liquidTotal =
+  const liquidTotal = round2(
     Math.max(0, input.cashOnHand) +
-    input.banks.reduce((sum, b) => sum + Math.max(0, b.balance), 0);
+      input.banks.reduce((sum, b) => sum + Math.max(0, b.balance), 0)
+  );
 
   // 1. Urgent credit card cut-off alerts (within 5 days)
   for (const card of input.creditCards) {
     if (card.used > 0) {
-      const daysLeft = getDaysUntilDayOfMonth(card.cutoffDay);
+      const daysLeft = getDaysUntilDayOfMonth(card.cutoffDay, now);
       if (daysLeft <= 5) {
         tips.push({
           id: `card-cutoff-${card.id}`,
@@ -238,17 +250,26 @@ export function generatePersonalizedTips(input: CoachStateInput): CoachTip[] {
     }
   }
 
-  // 2b. Upcoming unpaid fixed bills due within 5 days
-  const now = new Date();
+  // 2b. Upcoming unpaid fixed bills due within 5 days (handles cross-month wraps cleanly)
+  const year = now.getFullYear();
+  const monthIdx = now.getMonth();
+  const todayDay = now.getDate();
+  const daysInThisMonth = new Date(year, monthIdx + 1, 0).getDate();
+  const nextMonthDate = new Date(year, monthIdx + 1, 1);
+  const nextMonthKey = `${nextMonthDate.getFullYear()}-${String(nextMonthDate.getMonth() + 1).padStart(2, '0')}`;
   const activeMonthKey =
     input.currentMonthKey ||
-    `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    `${year}-${String(monthIdx + 1).padStart(2, '0')}`;
+
   for (const bill of input.billItems || []) {
-    if (
-      typeof bill.dueDay === 'number' &&
-      bill.lastPaidMonth !== activeMonthKey
-    ) {
-      const daysLeft = getDaysUntilDayOfMonth(bill.dueDay);
+    if (typeof bill.dueDay !== 'number') continue;
+    const clampedTarget = Math.max(1, Math.min(31, Math.round(bill.dueDay)));
+    const effectiveThisMonth = Math.min(clampedTarget, daysInThisMonth);
+    const targetMonthKey =
+      effectiveThisMonth >= todayDay ? activeMonthKey : nextMonthKey;
+
+    if (bill.lastPaidMonth !== targetMonthKey) {
+      const daysLeft = getDaysUntilDayOfMonth(bill.dueDay, now);
       if (daysLeft <= 5) {
         tips.push({
           id: `bill-due-${bill.id}`,
@@ -264,7 +285,7 @@ export function generatePersonalizedTips(input: CoachStateInput): CoachTip[] {
 
   // 3. Daily pacing projection
   if (input.safeToSpendToday > 0) {
-    const projectedMonth = Math.round(input.safeToSpendToday * 30 * 100) / 100;
+    const projectedMonth = round2(input.safeToSpendToday * 30);
     tips.push({
       id: 'daily-pace-positive',
       category: 'Daily Pace',
@@ -287,8 +308,7 @@ export function generatePersonalizedTips(input: CoachStateInput): CoachTip[] {
   // 4. Budget Health (50/30/20 check)
   if (input.settings.monthlyIncome > 0) {
     if (health.savingsPct < 20) {
-      const target20 =
-        Math.round(input.settings.monthlyIncome * 0.2 * 100) / 100;
+      const target20 = round2(input.settings.monthlyIncome * 0.2);
       tips.push({
         id: 'health-savings-boost',
         category: 'Budget Health',
@@ -464,10 +484,15 @@ export const ALL_MILESTONES: MilestoneDefinition[] = [
   },
 ];
 
+export type MilestoneCoachInput = Pick<
+  CoachStateInput,
+  'settings' | 'monthlySaved' | 'entries' | 'treats' | 'streakDays'
+>;
+
 /**
  * Returns every milestone ID whose condition is currently satisfied.
  */
-export function evaluateMilestones(input: CoachStateInput): string[] {
+export function evaluateMilestones(input: MilestoneCoachInput): string[] {
   const earned: string[] = [];
   const goal = input.settings.monthlySavingsGoal;
 
@@ -497,7 +522,7 @@ export function evaluateMilestones(input: CoachStateInput): string[] {
  * Returns the next newly achieved milestone not yet in `alreadyUnlocked`.
  */
 export function detectNextUnlockedMilestone(
-  input: CoachStateInput,
+  input: MilestoneCoachInput,
   alreadyUnlocked: string[]
 ): MilestoneDefinition | null {
   const earnedSet = new Set(evaluateMilestones(input));

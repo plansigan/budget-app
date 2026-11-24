@@ -34,6 +34,21 @@ interface RecoveryActionDeps {
   ) => Promise<boolean>;
 }
 
+function hasConfiguredUserData(curr: PersistedBudgetState): boolean {
+  if (!curr.hasCompletedOnboarding) return false;
+  return (
+    curr.entries.length > 0 ||
+    curr.billItems.length > 0 ||
+    (curr.envelopes || []).length > 0 ||
+    curr.banks.length > 0 ||
+    curr.creditCards.length > 0 ||
+    curr.treats.length > 0 ||
+    curr.sinkingFunds.length > 0 ||
+    curr.installments.length > 0 ||
+    (curr.debts || []).length > 0
+  );
+}
+
 export function useRecoveryActions({
   dispatch,
   stateRef,
@@ -91,11 +106,11 @@ export function useRecoveryActions({
     dispatch({ type: 'OPEN_TUTORIAL' });
   }, [dispatch]);
 
-  const resetToNewUser = useCallback(() => {
+  const resetToNewUser = useCallback(async () => {
     triggerLightHaptic();
     const curr = stateRef.current;
-    if (curr.hasCompletedOnboarding && curr.entries.length > 0) {
-      void runSnapshotCapture(curr, 'before_restore');
+    if (hasConfiguredUserData(curr)) {
+      await runSnapshotCapture(curr, 'before_restore');
     }
     const freshToday = getTodayKey();
     setPendingMilestone(null);
@@ -111,11 +126,11 @@ export function useRecoveryActions({
     showToast,
   ]);
 
-  const resetDemoState = useCallback(() => {
+  const resetDemoState = useCallback(async () => {
     triggerLightHaptic();
     const curr = stateRef.current;
-    if (curr.hasCompletedOnboarding && curr.entries.length > 0) {
-      void runSnapshotCapture(curr, 'before_restore');
+    if (hasConfiguredUserData(curr)) {
+      await runSnapshotCapture(curr, 'before_restore');
     }
     const freshToday = getTodayKey();
     setPendingMilestone(null);
@@ -150,7 +165,7 @@ export function useRecoveryActions({
       }
 
       const curr = stateRef.current;
-      if (curr.hasCompletedOnboarding && curr.entries.length > 0) {
+      if (hasConfiguredUserData(curr)) {
         void runSnapshotCapture(curr, 'before_restore');
       }
 
@@ -177,9 +192,7 @@ export function useRecoveryActions({
   const listAutoSnapshots = useCallback(async () => {
     const list = await listStoredAutoSnapshots();
     setAutoSnapshotCount(list.length);
-    if (list.length > 0) {
-      setLastAutoSnapshotAt(list[0].savedAt);
-    }
+    setLastAutoSnapshotAt(list.length > 0 ? list[0].savedAt : undefined);
     return list;
   }, [setAutoSnapshotCount, setLastAutoSnapshotAt]);
 
@@ -190,9 +203,34 @@ export function useRecoveryActions({
       if (!found) {
         return { ok: false, message: 'Recovery snapshot not found.' };
       }
-      return importBackupJsonString(found.json);
+      const parsedRes = parseBackupJson(found.json);
+      if (!parsedRes.ok) {
+        return { ok: false, message: parsedRes.error };
+      }
+
+      const curr = stateRef.current;
+      if (hasConfiguredUserData(curr)) {
+        await runSnapshotCapture(curr, 'before_restore');
+      }
+
+      const d = parsedRes.data as Partial<PersistedBudgetState>;
+      triggerCelebrationHaptic();
+      setIsEditingOnboarding(false);
+      setPendingMilestone(null);
+      dispatch({ type: 'RESTORE_BACKUP', data: d });
+      setSelectedDateKeyState(getTodayKey());
+      showToast('✅ Recovery snapshot restored!', true);
+      return { ok: true, message: 'Backup restored!' };
     },
-    [importBackupJsonString]
+    [
+      dispatch,
+      stateRef,
+      runSnapshotCapture,
+      setIsEditingOnboarding,
+      setPendingMilestone,
+      setSelectedDateKeyState,
+      showToast,
+    ]
   );
 
   const captureAutoSnapshotNow = useCallback(async (): Promise<boolean> => {

@@ -100,6 +100,10 @@ export const SpendingBreakdownCard: React.FC<SpendingBreakdownCardProps> = React
                 triggerLightHaptic();
                 setRange('week');
               }}
+              accessibilityRole="tab"
+              accessibilityLabel="This week breakdown"
+              accessibilityState={{ selected: range === 'week' }}
+              hitSlop={6}
               style={[
                 styles.segBtn,
                 range === 'week' && { backgroundColor: shade.card },
@@ -120,6 +124,10 @@ export const SpendingBreakdownCard: React.FC<SpendingBreakdownCardProps> = React
                 triggerLightHaptic();
                 setRange('month');
               }}
+              accessibilityRole="tab"
+              accessibilityLabel="This month breakdown"
+              accessibilityState={{ selected: range === 'month' }}
+              hitSlop={6}
               style={[
                 styles.segBtn,
                 range === 'month' && { backgroundColor: shade.card },
@@ -148,6 +156,10 @@ export const SpendingBreakdownCard: React.FC<SpendingBreakdownCardProps> = React
                 triggerLightHaptic();
                 setScope(opt.key);
               }}
+              accessibilityRole="tab"
+              accessibilityLabel={`Show ${opt.label} spending breakdown`}
+              accessibilityState={{ selected: active }}
+              hitSlop={6}
               style={[
                 styles.scopeBtn,
                 active && { backgroundColor: shade.card },

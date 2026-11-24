@@ -5,7 +5,7 @@ import {
   TransactionEntry,
 } from '../../types/budget';
 import { getTodayKey, roundCurrency } from '../budgetMath';
-import { applyOptionalDebtWalletMovement, makeUid } from './helpers';
+import { applyDaytimeCheckIn, applyWalletDelta, makeUid } from './helpers';
 import { SliceReducer } from './types';
 
 export const handleInstallmentsAndDebtsAction: SliceReducer = (
@@ -16,16 +16,25 @@ export const handleInstallmentsAndDebtsAction: SliceReducer = (
     case 'ADD_INSTALLMENT': {
       const { params } = action;
       const trimmed = params.name.trim();
-      if (!trimmed || params.monthlyAmount <= 0 || params.totalMonths <= 0) {
+      if (
+        !trimmed ||
+        !Number.isFinite(params.monthlyAmount) ||
+        !Number.isFinite(params.totalMonths) ||
+        !Number.isFinite(params.paidMonths)
+      ) {
         return state;
       }
-      const totalM = Math.max(1, Math.round(params.totalMonths));
+      const cleanMonthly = roundCurrency(params.monthlyAmount);
+      if (cleanMonthly <= 0 || params.totalMonths <= 0) {
+        return state;
+      }
+      const totalM = Math.max(1, Math.min(360, Math.round(params.totalMonths)));
       const paidM = Math.max(0, Math.min(totalM, Math.round(params.paidMonths)));
       const newItem: InstallmentItem = {
         id: makeUid('inst'),
         name: trimmed,
         provider: params.provider.trim() || 'Installment',
-        monthlyAmount: roundCurrency(params.monthlyAmount),
+        monthlyAmount: cleanMonthly,
         totalMonths: totalM,
         paidMonths: paidM,
         includeInBudget: params.includeInBudget,
@@ -36,10 +45,19 @@ export const handleInstallmentsAndDebtsAction: SliceReducer = (
     case 'UPDATE_INSTALLMENT': {
       const { params } = action;
       const trimmed = params.name.trim();
-      if (!trimmed || params.monthlyAmount <= 0 || params.totalMonths <= 0) {
+      if (
+        !trimmed ||
+        !Number.isFinite(params.monthlyAmount) ||
+        !Number.isFinite(params.totalMonths) ||
+        !Number.isFinite(params.paidMonths)
+      ) {
         return state;
       }
-      const totalM = Math.max(1, Math.round(params.totalMonths));
+      const cleanMonthly = roundCurrency(params.monthlyAmount);
+      if (cleanMonthly <= 0 || params.totalMonths <= 0) {
+        return state;
+      }
+      const totalM = Math.max(1, Math.min(360, Math.round(params.totalMonths)));
       const paidM = Math.max(0, Math.min(totalM, Math.round(params.paidMonths)));
       return {
         ...state,
@@ -49,7 +67,7 @@ export const handleInstallmentsAndDebtsAction: SliceReducer = (
                 ...item,
                 name: trimmed,
                 provider: params.provider.trim() || 'Installment',
-                monthlyAmount: roundCurrency(params.monthlyAmount),
+                monthlyAmount: cleanMonthly,
                 totalMonths: totalM,
                 paidMonths: paidM,
                 includeInBudget: params.includeInBudget,
@@ -102,8 +120,9 @@ export const handleInstallmentsAndDebtsAction: SliceReducer = (
 
     case 'ADD_DEBT': {
       const trimmedName = action.personName.trim();
+      if (!trimmedName || !Number.isFinite(action.amount)) return state;
       const cleanAmount = roundCurrency(action.amount);
-      if (!trimmedName || cleanAmount <= 0) return state;
+      if (cleanAmount <= 0) return state;
 
       const trimmedNote = action.note?.trim() || undefined;
       const nowIso = new Date().toISOString();
@@ -121,14 +140,13 @@ export const handleInstallmentsAndDebtsAction: SliceReducer = (
       };
 
       const isOutflow = direction === 'owed_to_me';
-      const movement = applyOptionalDebtWalletMovement({
-        isOutflow,
-        amount: cleanAmount,
-        sourceId: action.paymentSourceId,
-        cashOnHand: state.cashOnHand,
-        banks: state.banks,
-        creditCards: state.creditCards,
-      });
+      const movement = applyWalletDelta(
+        state,
+        action.paymentSourceId,
+        isOutflow ? 'outflow' : 'inflow',
+        cleanAmount,
+        { allowCardInflow: false }
+      );
 
       const affectsDailyBudget =
         direction === 'owed_to_me' && Boolean(action.affectsDailyBudget);
@@ -144,6 +162,10 @@ export const handleInstallmentsAndDebtsAction: SliceReducer = (
 
       const todayKey = action.todayKey || getTodayKey();
       const targetDateKey = action.dateKey || todayKey;
+      const checkIn = applyDaytimeCheckIn(
+        state,
+        affectsDailyBudget && targetDateKey === todayKey
+      );
       const entry: TransactionEntry = {
         id: makeUid('debt-log'),
         type: isOutflow ? 'debt_outflow' : 'debt_inflow',
@@ -156,7 +178,7 @@ export const handleInstallmentsAndDebtsAction: SliceReducer = (
         dateKey: targetDateKey,
         paymentSourceId: movement.effectiveSourceId,
         paymentSourceLabel: movement.sourceLabel,
-        appliedWalletDelta: movement.appliedWalletDelta,
+        appliedWalletDelta: movement.appliedDelta,
         debtId,
         debtAction: 'created',
         affectsDailyBudget,
@@ -164,9 +186,14 @@ export const handleInstallmentsAndDebtsAction: SliceReducer = (
 
       return {
         ...state,
-        cashOnHand: movement.nextCash,
-        banks: movement.nextBanks,
-        creditCards: movement.nextCards,
+        cashOnHand: movement.cashOnHand,
+        banks: movement.banks,
+        creditCards: movement.creditCards,
+        lastPaymentSourceId:
+          movement.effectiveSourceId || state.lastPaymentSourceId,
+        checkedInToday: checkIn.checkedInToday,
+        streakDays: checkIn.streakDays,
+        bufferShields: checkIn.bufferShields,
         debts: [newDebt, ...(state.debts || [])],
         entries: [entry, ...state.entries],
       };
@@ -174,8 +201,9 @@ export const handleInstallmentsAndDebtsAction: SliceReducer = (
 
     case 'UPDATE_DEBT': {
       const trimmedName = action.personName.trim();
+      if (!trimmedName || !Number.isFinite(action.amount)) return state;
       const cleanAmount = roundCurrency(action.amount);
-      if (!trimmedName || cleanAmount <= 0) return state;
+      if (cleanAmount <= 0) return state;
       const trimmedNote = action.note?.trim() || undefined;
       const nowIso = new Date().toISOString();
 
@@ -206,6 +234,7 @@ export const handleInstallmentsAndDebtsAction: SliceReducer = (
       };
 
     case 'RECORD_DEBT_PAYMENT': {
+      if (!Number.isFinite(action.amount) || action.amount <= 0) return state;
       const debt = (state.debts || []).find((d) => d.id === action.id);
       if (!debt) return state;
       const remaining = roundCurrency(
@@ -220,18 +249,21 @@ export const handleInstallmentsAndDebtsAction: SliceReducer = (
       const nowIso = new Date().toISOString();
       const isOutflow = debt.direction === 'i_owe';
 
-      const movement = applyOptionalDebtWalletMovement({
-        isOutflow,
-        amount: appliedAmount,
-        sourceId: action.paymentSourceId,
-        cashOnHand: state.cashOnHand,
-        banks: state.banks,
-        creditCards: state.creditCards,
-      });
+      const movement = applyWalletDelta(
+        state,
+        action.paymentSourceId,
+        isOutflow ? 'outflow' : 'inflow',
+        appliedAmount,
+        { allowCardInflow: false }
+      );
 
       const todayKey = action.todayKey || getTodayKey();
       const targetDateKey = action.dateKey || todayKey;
       const affectsDailyBudget = Boolean(action.affectsDailyBudget);
+      const checkIn = applyDaytimeCheckIn(
+        state,
+        affectsDailyBudget && targetDateKey === todayKey
+      );
       const entry: TransactionEntry = {
         id: makeUid('debt-pay'),
         type: isOutflow ? 'debt_outflow' : 'debt_inflow',
@@ -244,7 +276,7 @@ export const handleInstallmentsAndDebtsAction: SliceReducer = (
         dateKey: targetDateKey,
         paymentSourceId: movement.effectiveSourceId,
         paymentSourceLabel: movement.sourceLabel,
-        appliedWalletDelta: movement.appliedWalletDelta,
+        appliedWalletDelta: movement.appliedDelta,
         debtId: debt.id,
         debtAction: 'payment',
         affectsDailyBudget,
@@ -252,9 +284,14 @@ export const handleInstallmentsAndDebtsAction: SliceReducer = (
 
       return {
         ...state,
-        cashOnHand: movement.nextCash,
-        banks: movement.nextBanks,
-        creditCards: movement.nextCards,
+        cashOnHand: movement.cashOnHand,
+        banks: movement.banks,
+        creditCards: movement.creditCards,
+        lastPaymentSourceId:
+          movement.effectiveSourceId || state.lastPaymentSourceId,
+        checkedInToday: checkIn.checkedInToday,
+        streakDays: checkIn.streakDays,
+        bufferShields: checkIn.bufferShields,
         debts: (state.debts || []).map((d) =>
           d.id === debt.id
             ? {

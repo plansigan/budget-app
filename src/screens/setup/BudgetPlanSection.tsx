@@ -18,10 +18,11 @@ import { BillItem } from '../../types/budget';
 interface BudgetPlanSectionProps {
   focusAllowancesKey: number;
   onRequestPayBill: (bill: BillItem) => void;
+  onAllowancesLayout?: (y: number) => void;
 }
 
 export const BudgetPlanSection: React.FC<BudgetPlanSectionProps> = React.memo(
-  ({ focusAllowancesKey, onRequestPayBill }) => {
+  ({ focusAllowancesKey, onRequestPayBill, onAllowancesLayout }) => {
     const { shade, privacyMode, formatVisiblePeso } = useThemePrefs();
     const { todayKey, settings, billItems, envelopes, baseDailyAllowance } =
       useDailyBudget();
@@ -55,14 +56,14 @@ export const BudgetPlanSection: React.FC<BudgetPlanSectionProps> = React.memo(
               DAILY BUDGET FORMULA
             </Text>
             <Text style={[styles.formulaSub, { color: shade.heroText }]}>
-              {formatVisiblePeso(settings.monthlyIncome)} in − Bills, Env &{' '}
+              {formatVisiblePeso(settings.monthlyIncome)} in − Bills, Allowances &{' '}
               {formatVisiblePeso(settings.monthlySavingsGoal)} save
             </Text>
           </View>
           <PopValueText valueTrigger={baseDailyAllowance}>
             <Text
               numberOfLines={1}
-              style={[styles.formulaResult, { color: '#4ADE80' }]}
+              style={[styles.formulaResult, { color: shade.heroPositive }]}
             >
               {formatVisiblePeso(baseDailyAllowance)}/day
             </Text>
@@ -74,6 +75,7 @@ export const BudgetPlanSection: React.FC<BudgetPlanSectionProps> = React.memo(
           hint="How much you take home"
           value={settings.monthlyIncome}
           shade={shade}
+          privacyMode={privacyMode}
           onChange={(val) =>
             updateBudgetConfig(
               val,
@@ -107,25 +109,28 @@ export const BudgetPlanSection: React.FC<BudgetPlanSectionProps> = React.memo(
           onRequestPayBill={onRequestPayBill}
         />
 
-        <SpendingEnvelopesCard
-          envelopes={envelopes}
-          salaryFrequency={settings.salaryFrequency}
-          shade={shade}
-          privacyMode={privacyMode}
-          collapsible
-          defaultExpanded={false}
-          focusSignal={focusAllowancesKey}
-          onAddEnvelope={addEnvelope}
-          onUpdateEnvelope={updateEnvelope}
-          onDeleteEnvelope={deleteEnvelope}
-          onRefillEnvelope={refillEnvelope}
-        />
+        <View onLayout={(e) => onAllowancesLayout?.(e.nativeEvent.layout.y)}>
+          <SpendingEnvelopesCard
+            envelopes={envelopes}
+            salaryFrequency={settings.salaryFrequency}
+            shade={shade}
+            privacyMode={privacyMode}
+            collapsible
+            defaultExpanded={false}
+            focusSignal={focusAllowancesKey}
+            onAddEnvelope={addEnvelope}
+            onUpdateEnvelope={updateEnvelope}
+            onDeleteEnvelope={deleteEnvelope}
+            onRefillEnvelope={refillEnvelope}
+          />
+        </View>
 
         <BudgetStepperRow
           label="Monthly Savings Goal"
           hint="Set aside first each month"
           value={settings.monthlySavingsGoal}
           shade={shade}
+          privacyMode={privacyMode}
           onChange={(val) =>
             updateBudgetConfig(settings.monthlyIncome, settings.fixedBills, val)
           }

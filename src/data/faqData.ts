@@ -46,21 +46,21 @@ export const FAQ_ITEMS: FaqItem[] = [
     id: 'spend-vs-skip-vs-save',
     category: 'today',
     question:
-      'What is the difference between Spend!, Skip & Save, and Save?',
+      'What is the difference between Spend!, Save to Jar, and Fund Treat?',
     summary:
-      'Spend! logs money spent; Skip & Save logs resisted impulse buys; Save locks daily allowance into Savings or a Treat.',
+      'Spend! logs money spent; Save to Jar locks daily allowance into Savings; Fund Treat boosts your active Treat goal.',
     answer:
-      'Tap Spend! when money actually leaves your budget—it reduces Today’s Safe-to-Spend (or a chosen Spending Allowance) and optionally updates Cash, Bank, or Card. Tap Skip & Save when you talked yourself out of a purchase: it boosts your savings or Treat goal without reducing your Safe-to-Spend allowance. Saving directly moves part of today’s budget into Savings or a Treat.',
-    tags: ['spend', 'skip', 'save', 'impulse', 'today'],
+      'Tap Spend! when money actually leaves your budget—it reduces Today’s Safe-to-Spend (or a chosen Spending Allowance) and optionally updates Cash, Bank, or Card. Tap Save on Today (Save to Monthly Jar) to move part of today’s budget straight into your Monthly Savings Jar. Tap Treat (Fund Treat) to allocate part of today’s budget directly toward your active Treat goal.',
+    tags: ['spend', 'save', 'fund treat', 'treat', 'skip', 'impulse', 'today'],
   },
   {
     id: 'midnight-split',
     category: 'today',
     question: 'How does End Day & Save (50/50 Midnight Split) work?',
     summary:
-      'Splits leftover positive Safe-to-Spend in half: 50% rolls into tomorrow and 50% goes to Savings or a Treat.',
+      'Splits leftover positive Safe-to-Spend in half: 50% rolls into tomorrow and 50% goes to your Treat or Savings Jar.',
     answer:
-      'When you tap End Day & Save (or on an automatic day rollover), any positive leftover allowance from that day is divided 50/50 between tomorrow’s Rollover balance and your Monthly Saved / active Treat jar. If today ended over budget, rollover does not carry negative penalty unless recorded as overspent habits.',
+      'When you tap End Day & Save (or on an automatic day rollover), any positive leftover allowance from that day is divided 50/50 between tomorrow’s Rollover balance and your active unclaimed Treat (with any excess above its target spilling straight into your Savings Jar) or your Monthly Savings Jar. If today ended overspent (negative), rollover simply resets to ₱0 with no negative penalty carried into tomorrow.',
     tags: ['end day', 'midnight split', 'rollover', 'tomorrow', 'unused'],
   },
   {
@@ -103,7 +103,7 @@ export const FAQ_ITEMS: FaqItem[] = [
     summary:
       'No—only tap Spend Here for brand-new card purchases, not bills you already budgeted monthly.',
     answer:
-      'Items in Monthly Bills are already subtracted from your monthly pool so they do not shrink your daily Safe-to-Spend again when due. On a Credit Card in Wallet, Spend Here records a NEW charge (increasing Card Used and reducing Today’s Safe-to-Spend or an envelope). To pay down your credit card balance from Cash or Bank without counting as new daily spending, use Transfer / Pay Card instead.',
+      'Items in Monthly Bills are already subtracted from your monthly pool so they do not shrink your daily Safe-to-Spend again when due. On a Credit Card in Wallet, Spend Here records a NEW charge (increasing Card Used and reducing Today’s Safe-to-Spend or a Spending Allowance). To pay down your credit card balance from Cash or Bank without counting as new daily spending, use Transfer / Pay Card instead.',
     tags: ['credit card', 'spend here', 'monthly bills', 'pay card', 'double count'],
   },
   {
@@ -130,11 +130,11 @@ export const FAQ_ITEMS: FaqItem[] = [
     id: 'spending-allowances',
     category: 'wallet',
     question:
-      'How do Spending Allowances (Envelopes) differ from general Safe-to-Spend?',
+      'How do Spending Allowances differ from general Safe-to-Spend?',
     summary:
-      'Allowances ring-fence recurring categories like Groceries or Commute away from your everyday discretionary budget.',
+      'Allowances ring-fence recurring categories like Date Night or Coffee away from your everyday discretionary budget.',
     answer:
-      'Set up Spending Allowances in Budget -> Plan with either Monthly or Per-Payday cadence. Their monthly budget is carved out up front like fixed bills. When you log an expense under an allowance, it deducts from that envelope’s remaining funds (and your selected Wallet account) without shrinking Today’s general Safe-to-Spend.',
+      'Set up Spending Allowances in Budget -> Plan with either Once a Month or Every Cutoff cadence. Their monthly allocation is carved out up front like fixed bills. When you log an expense under an allowance, it deducts from that allowance’s remaining funds (and your selected Wallet account) without shrinking Today’s general Safe-to-Spend.',
     tags: ['envelope', 'allowance', 'groceries', 'transport', 'budget'],
   },
   {
@@ -144,18 +144,18 @@ export const FAQ_ITEMS: FaqItem[] = [
     summary:
       'Tracks fixed-term monthly amortizations (e.g., 6/12 months) and optionally reserves them in your monthly budget.',
     answer:
-      'Add installment plans under Wallet -> Accounts -> Installments. Turning on Include in Monthly Budget sets aside the monthly payment alongside Monthly Bills when computing Safe-to-Spend. Tapping Pay Month advances the paid months counter, updates an optional Cash/Bank source, and logs an undoable entry.',
+      'Add installment plans under Wallet -> Installments. Turning on Included in Daily Budget math sets aside the monthly payment alongside Monthly Bills when computing Safe-to-Spend. Tapping Paid 1 Mo confirms advancing paid months by 1 and logs an undoable entry without changing Cash or Bank balances (use Spend! or Transfer if you also want to debit an account).',
     tags: ['installment', 'amortization', 'monthly payment', 'months'],
   },
   {
     id: 'transfers-vs-adjust',
     category: 'wallet',
-    question: 'When should I use Transfer vs. Adjust Balance?',
+    question: 'When should I use Transfer vs. Set Balance?',
     summary:
-      'Transfer moves money between Cash, Banks, or pays off a Card; Adjust Balance corrects a mismatched number.',
+      'Transfer moves money between Cash, Banks, or pays off a Card; Set Balance (or Set Used) corrects a mismatched number.',
     answer:
-      'Use Transfer when moving pesos from Bank to Cash (ATM withdrawal), Bank to Bank, or paying a Credit Card from Cash/Bank—it keeps net worth accurate and never reduces Today’s Safe-to-Spend. Use Adjust Balance when an account drifts due to unlogged bank fees or rounding and you want to snap it back to reality.',
-    tags: ['transfer', 'adjust', 'pay card', 'withdraw', 'atm', 'reconcile'],
+      'Use Transfer when moving pesos from Bank to Cash (ATM withdrawal), Bank to Bank, or paying a Credit Card from Cash/Bank—it keeps balances accurate and never reduces Today’s Safe-to-Spend. Use Set Balance (or Set Used on a Credit Card) when an account drifts due to unlogged fees or rounding and you want to snap it back to reality.',
+    tags: ['transfer', 'set balance', 'set used', 'adjust', 'pay card', 'withdraw', 'atm', 'reconcile'],
   },
 
   // Debts
@@ -166,7 +166,7 @@ export const FAQ_ITEMS: FaqItem[] = [
     summary:
       'Tracks personal IOUs separately from bank loans—I Owe is what you must pay; Owed to Me is what others owe you.',
     answer:
-      'In Wallet -> Debts, organize every IOU cleanly under I Owe (amber) or Owed to Me (green) with optional notes and .00 centavo tracking. Active debts also surface gently on Today as reminders, and fully paid debts collapse into Settled History.',
+      'In Wallet -> Debts, organize every IOU cleanly under I Owe (red) or Owed to Me (green) with optional notes and .00 centavo tracking. Active debts also surface gently on Today as reminders, and fully paid debts collapse into Settled History.',
     tags: ['debt', 'iou', 'i owe', 'owed to me', 'utang', 'lend', 'borrow'],
   },
   {
@@ -206,22 +206,22 @@ export const FAQ_ITEMS: FaqItem[] = [
     category: 'debts',
     question: 'Can I record partial payments or centavos on a debt?',
     summary:
-      'Yes—Pay and Receive support any partial amount from ₱0.01 up to the remaining balance.',
+      'Yes—Pay and Got Paid support any partial amount from ₱0.01 up to the remaining balance.',
     answer:
-      'Tap Pay on an I Owe item or Receive on an Owed to Me item and enter whatever amount changed hands (even partial amounts like ₱250.75). Remaining updates immediately, each payment is logged in Activity History, and paying off the full remaining amount marks the debt Settled automatically.',
-    tags: ['partial', 'payment', 'centavos', 'settle', 'remaining'],
+      'Tap Pay on an I Owe item or Got Paid on an Owed to Me item and enter whatever amount changed hands (even partial amounts like ₱250.75). Remaining updates immediately, each payment is logged in Activity History, and paying off the full remaining amount marks the debt Settled automatically.',
+    tags: ['partial', 'payment', 'centavos', 'settle', 'remaining', 'got paid'],
   },
 
   // Goals & Savings
   {
     id: 'treats-vs-sinking-funds',
     category: 'goals',
-    question: 'How are Treats different from Sinking Funds?',
+    question: 'How are Treats different from Savings Buckets?',
     summary:
-      'Treats are up to 3 guilt-free personal rewards; Sinking Funds save steadily for planned future expenses.',
+      'Treats are up to 3 guilt-free personal rewards; Savings Buckets track steady monthly pace for planned future expenses.',
     answer:
-      'Under the Goals tab, Treats let you pick up to 3 rewards you want, fund them from avoided impulse spends or daily leftovers, and celebrate claiming them once 100% funded. Sinking Funds are practical savings buckets for upcoming non-monthly costs (travel, annual fees, car maintenance, gifts) so big bills stay stress-free.',
-    tags: ['treats', 'goals', 'sinking fund', 'vault', 'reward'],
+      'Under the Goals tab, Treats let you pick up to 3 rewards you want, fund them from daily leftovers or direct Fund Treat transfers, and celebrate claiming them once 100% funded. Savings Buckets (Sinking Funds) are practical buckets for upcoming non-monthly costs (Emergency, Travel, Tuition, Gifts) with a monthly pace indicator.',
+    tags: ['treats', 'goals', 'sinking fund', 'savings bucket', 'vault', 'reward'],
   },
   {
     id: 'savings-goal-impact',
@@ -236,12 +236,12 @@ export const FAQ_ITEMS: FaqItem[] = [
   {
     id: 'insights-and-score',
     category: 'goals',
-    question: 'What is the Discipline Score & Insights banner?',
+    question: 'What are Insights, Discipline Score & Monthly Wrap-Up?',
     summary:
-      'Tracks budgeting consistency and surfaces practical, PH-focused insights from your recent activity.',
+      'Tracks budgeting consistency and surfaces your Monthly Report Card, Spending Breakdown, Savings Coach tips, and Milestones.',
     answer:
-      'Your Discipline Score reflects regular check-ins, payday confirmations, midnight rollovers, and staying within Safe-to-Spend. The Insights banner highlights helpful patterns—such as weekend vs. weekday spending, high fixed-bill ratio, or treat momentum—with clear action ideas.',
-    tags: ['discipline score', 'insights', 'coach', 'tips', 'habit'],
+      'Open Goals -> Insights to view your Monthly Report Card (grade & shareable summary), Spending Breakdown by category, live Savings Coach tips tailored to your ₱ budget, and your collapsible Milestones & Score card tracking streaks and check-ins.',
+    tags: ['discipline score', 'insights', 'coach', 'tips', 'habit', 'wrap-up'],
   },
 
   // Backup & Data

@@ -1,19 +1,16 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { StyleSheet, Text, TextInput } from 'react-native';
 import {
   useBudgetActions,
   useThemePrefs,
   useWallet,
 } from '../context/BudgetContext';
 import { triggerLightHaptic } from '../utils/haptics';
-import {
-  formatPeso,
-  formatPesoInput,
-  parsePesoInput,
-} from '../utils/numberFormat';
+import { parsePesoInput } from '../utils/numberFormat';
 import { ScalePressable } from './AnimatedPrimitives';
-import { AppIcon } from './AppIcon';
 import { FormModal } from './FormModal';
+import { PaymentSourcePicker } from './form/PaymentSourcePicker';
+import { PesoAmountInput } from './form/PesoAmountInput';
 
 interface TransferModalProps {
   visible: boolean;
@@ -22,19 +19,7 @@ interface TransferModalProps {
   onClose: () => void;
 }
 
-interface TransferOption {
-  id: string;
-  label: string;
-  subLabel: string;
-  icon: string;
-  isCard: boolean;
-}
-
-/**
- * Spacious modal to transfer funds between Cash / Bank accounts or pay a Credit Card from a real account.
- */
-export const TransferModal: React.FC<TransferModalProps> = ({
-  visible,
+const TransferModalContent: React.FC<Omit<TransferModalProps, 'visible'>> = ({
   initialFromId = null,
   initialToId = null,
   onClose,
@@ -48,239 +33,148 @@ export const TransferModal: React.FC<TransferModalProps> = ({
   const [amountText, setAmountText] = useState('');
   const [note, setNote] = useState('');
 
-  const fromOptions: TransferOption[] = [
-    {
-      id: 'cash',
-      label: 'Cash',
-      subLabel: formatVisiblePeso(cashOnHand),
-      icon: 'dollar-sign',
-      isCard: false,
-    },
-    ...banks.map((b) => ({
-      id: b.id,
-      label: b.name,
-      subLabel: formatVisiblePeso(b.balance),
-      icon: 'briefcase',
-      isCard: false,
-    })),
-  ];
-
-  const allDestOptions: TransferOption[] = [
-    ...fromOptions,
-    ...creditCards.map((c) => ({
-      id: c.id,
-      label: c.name,
-      subLabel: `${formatVisiblePeso(c.used)} used`,
-      icon: 'credit-card',
-      isCard: true,
-    })),
-  ];
-
-  const snapshotRef = useRef({ fromOptions, allDestOptions, banks });
-  snapshotRef.current = { fromOptions, allDestOptions, banks };
+  const snapshotRef = useRef({ banks, creditCards });
+  snapshotRef.current = { banks, creditCards };
 
   useEffect(() => {
-    if (!visible) return;
-    const {
-      fromOptions: fromList,
-      allDestOptions: destList,
-      banks: bList,
-    } = snapshotRef.current;
+    const { banks: bList, creditCards: cList } = snapshotRef.current;
+    const validFromIds = ['cash', ...bList.map((b) => b.id)];
+    const validDestIds = ['cash', ...bList.map((b) => b.id), ...cList.map((c) => c.id)];
 
     const preferredFrom =
-      initialFromId && fromList.some((o) => o.id === initialFromId)
+      initialFromId && validFromIds.includes(initialFromId)
         ? initialFromId
         : bList[0]?.id || 'cash';
-    const validDestinations = destList.filter((d) => d.id !== preferredFrom);
+    const remainingDests = validDestIds.filter((id) => id !== preferredFrom);
     const preferredTo =
-      initialToId &&
-      initialToId !== preferredFrom &&
-      validDestinations.some((d) => d.id === initialToId)
+      initialToId && remainingDests.includes(initialToId)
         ? initialToId
-        : validDestinations[0]?.id || '';
+        : remainingDests[0] || '';
 
     setFromId(preferredFrom);
     setToId(preferredTo);
     setAmountText('');
     setNote('');
-  }, [visible, initialFromId, initialToId]);
+  }, [initialFromId, initialToId]);
 
-  const toOptions = allDestOptions.filter((o) => o.id !== fromId);
-  const selectedDest = toOptions.find((o) => o.id === toId) || null;
+  const allDests = [
+    { id: 'cash', label: 'Cash', isCard: false },
+    ...banks.map((b) => ({ id: b.id, label: b.name, isCard: false })),
+    ...creditCards.map((c) => ({ id: c.id, label: c.name, isCard: true })),
+  ].filter((o) => o.id !== fromId);
+
+  const selectedDest = allDests.find((o) => o.id === toId) || allDests[0] || null;
+  const effectiveToId = selectedDest ? selectedDest.id : '';
+
+  const sourceAccount =
+    fromId === 'cash'
+      ? { label: 'Cash', balance: cashOnHand }
+      : (() => {
+          const bank = banks.find((b) => b.id === fromId);
+          return bank
+            ? { label: bank.name, balance: bank.balance }
+            : { label: 'Account', balance: 0 };
+        })();
+
   const numericAmount = parsePesoInput(amountText);
+  const hasOverdraft = numericAmount > sourceAccount.balance;
+  const hasDestOptions = allDests.length > 0;
   const canSubmit =
     Boolean(fromId) &&
     Boolean(selectedDest) &&
-    fromId !== selectedDest?.id &&
-    numericAmount > 0;
+    fromId !== effectiveToId &&
+    numericAmount > 0 &&
+    !hasOverdraft;
 
   const isCardPayment = Boolean(selectedDest?.isCard);
   const accentColor = isCardPayment ? shade.positive : shade.accent;
+  const activeSubmitBg = isCardPayment ? shade.positiveBtnBg : shade.accent;
+  const activeSubmitFg = isCardPayment ? '#FFFFFF' : shade.accentText;
 
   const handleSelectFrom = (nextFrom: string) => {
     triggerLightHaptic();
     setFromId(nextFrom);
     if (nextFrom === toId) {
-      const nextDest = allDestOptions.find((o) => o.id !== nextFrom);
+      const nextDest = [
+        { id: 'cash' },
+        ...banks.map((b) => ({ id: b.id })),
+        ...creditCards.map((c) => ({ id: c.id })),
+      ].find((o) => o.id !== nextFrom);
       setToId(nextDest ? nextDest.id : '');
     }
   };
 
   const handleConfirm = () => {
     if (!canSubmit || !selectedDest) return;
-    transferBetweenAccounts(
+    const ok = transferBetweenAccounts(
       fromId,
       selectedDest.id,
       numericAmount,
       note.trim() || undefined
     );
-    onClose();
+    if (ok) {
+      onClose();
+    }
   };
 
   return (
     <FormModal
-      visible={visible}
-      title={isCardPayment && selectedDest ? `Pay ${selectedDest.label}` : 'Transfer Money'}
+      visible
+      title={
+        isCardPayment && selectedDest
+          ? `Pay ${selectedDest.label}`
+          : 'Transfer Money'
+      }
       subtitle="Move funds between Cash, Banks, or pay a Credit Card"
       icon={isCardPayment ? 'credit-card' : 'repeat'}
       accentColor={accentColor}
       onClose={onClose}
     >
-      <View style={styles.sectionBlock}>
-        <Text style={[styles.sectionLabel, { color: shade.muted }]}>
-          FROM ACCOUNT
-        </Text>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.horizontalScroll}
-          contentContainerStyle={styles.pillScroll}
-        >
-          {fromOptions.map((opt) => {
-            const active = fromId === opt.id;
-            return (
-              <ScalePressable
-                key={opt.id}
-                onPress={() => handleSelectFrom(opt.id)}
-                style={[
-                  styles.sourcePill,
-                  {
-                    backgroundColor: active ? shade.accent : shade.surface,
-                  },
-                ]}
-              >
-                <View style={styles.inlineIconTitle}>
-                  <AppIcon
-                    name={opt.icon}
-                    size={12}
-                    color={active ? shade.accentText : shade.text}
-                  />
-                  <Text
-                    numberOfLines={1}
-                    style={[
-                      styles.sourceTitle,
-                      { color: active ? shade.accentText : shade.text },
-                    ]}
-                  >
-                    {opt.label}
-                  </Text>
-                </View>
-                <Text
-                  style={[
-                    styles.sourceSub,
-                    { color: active ? shade.accentText : shade.muted },
-                  ]}
-                >
-                  {opt.subLabel}
-                </Text>
-              </ScalePressable>
-            );
-          })}
-        </ScrollView>
-      </View>
+      <PaymentSourcePicker
+        label="FROM ACCOUNT"
+        selectedId={fromId}
+        onSelect={handleSelectFrom}
+        cashOnHand={cashOnHand}
+        banks={banks}
+        shade={shade}
+        formatVisiblePeso={formatVisiblePeso}
+      />
 
-      <View style={styles.sectionBlock}>
-        <Text style={[styles.sectionLabel, { color: shade.muted }]}>
-          TO ACCOUNT
-        </Text>
-        {toOptions.length === 0 ? (
-          <View style={[styles.emptyBox, { backgroundColor: shade.surface }]}>
-            <Text style={[styles.emptyText, { color: shade.muted }]}>
-              Add another bank or credit card to transfer between accounts.
-            </Text>
-          </View>
-        ) : (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={styles.horizontalScroll}
-            contentContainerStyle={styles.pillScroll}
-          >
-            {toOptions.map((opt) => {
-              const active = toId === opt.id;
-              const activeBg = opt.isCard ? shade.positive : shade.accent;
-              const activeFg = opt.isCard ? '#FFFFFF' : shade.accentText;
-              return (
-                <ScalePressable
-                  key={opt.id}
-                  onPress={() => {
-                    triggerLightHaptic();
-                    setToId(opt.id);
-                  }}
-                  style={[
-                    styles.sourcePill,
-                    { backgroundColor: active ? activeBg : shade.surface },
-                  ]}
-                >
-                  <View style={styles.inlineIconTitle}>
-                    <AppIcon
-                      name={opt.icon}
-                      size={12}
-                      color={active ? activeFg : shade.text}
-                    />
-                    <Text
-                      numberOfLines={1}
-                      style={[
-                        styles.sourceTitle,
-                        { color: active ? activeFg : shade.text },
-                      ]}
-                    >
-                      {opt.label}
-                    </Text>
-                  </View>
-                  <Text
-                    style={[
-                      styles.sourceSub,
-                      { color: active ? activeFg : shade.muted },
-                    ]}
-                  >
-                    {opt.subLabel}
-                  </Text>
-                </ScalePressable>
-              );
-            })}
-          </ScrollView>
-        )}
-      </View>
+      <PaymentSourcePicker
+        label="TO ACCOUNT"
+        selectedId={effectiveToId}
+        onSelect={setToId}
+        cashOnHand={cashOnHand}
+        banks={banks}
+        creditCards={creditCards}
+        excludeIds={[fromId]}
+        shade={shade}
+        formatVisiblePeso={formatVisiblePeso}
+        activeColor={isCardPayment ? shade.positiveBtnBg : shade.accent}
+        activeTextColor={isCardPayment ? '#FFFFFF' : shade.accentText}
+        creditCardSubMode="used"
+        emptyNotice="Add another bank or credit card to transfer between accounts."
+      />
 
-      <View
-        style={[
-          styles.amountBox,
-          { backgroundColor: shade.surface, borderColor: accentColor },
-        ]}
-      >
-        <Text style={[styles.pesoPrefix, { color: accentColor }]}>₱</Text>
-        <TextInput
-          value={amountText}
-          onChangeText={(t) => setAmountText(formatPesoInput(t))}
-          keyboardType="decimal-pad"
-          inputMode="decimal"
-          placeholder="Enter exact amount"
-          placeholderTextColor={shade.muted}
-          autoFocus
-          style={[styles.amountInput, { color: shade.text }]}
-        />
-      </View>
+      <PesoAmountInput
+        value={amountText}
+        onChangeText={setAmountText}
+        shade={shade}
+        accentColor={hasOverdraft ? shade.warning : accentColor}
+        borderColor={hasOverdraft ? shade.warning : accentColor}
+        placeholder="Enter exact amount"
+        autoFocus
+        inputAccessibilityLabel="Transfer amount"
+        containerStyle={styles.amountBox}
+        inputStyle={styles.amountInput}
+      />
+
+      {hasOverdraft && (
+        <Text style={[styles.errorText, { color: shade.warning }]}>
+          Insufficient balance in {sourceAccount.label} (available:{' '}
+          {formatVisiblePeso(sourceAccount.balance)}).
+        </Text>
+      )}
 
       <TextInput
         value={note}
@@ -291,6 +185,7 @@ export const TransferModal: React.FC<TransferModalProps> = ({
             : 'Optional note (e.g., Cash-in to GCash)'
         }
         placeholderTextColor={shade.muted}
+        accessibilityLabel="Transfer note"
         style={[
           styles.noteInput,
           {
@@ -304,10 +199,11 @@ export const TransferModal: React.FC<TransferModalProps> = ({
       <ScalePressable
         disabled={!canSubmit}
         onPress={handleConfirm}
+        accessibilityRole="button"
         style={[
           styles.submitBtn,
           {
-            backgroundColor: canSubmit ? accentColor : shade.surface,
+            backgroundColor: canSubmit ? activeSubmitBg : shade.surface,
             opacity: canSubmit ? 1 : 0.65,
           },
         ]}
@@ -315,19 +211,15 @@ export const TransferModal: React.FC<TransferModalProps> = ({
         <Text
           style={[
             styles.submitText,
-            {
-              color: canSubmit
-                ? isCardPayment
-                  ? '#FFFFFF'
-                  : shade.accentText
-                : shade.muted,
-            },
+            { color: canSubmit ? activeSubmitFg : shade.muted },
           ]}
         >
-          {canSubmit
-            ? isCardPayment && selectedDest
-              ? `Pay ${selectedDest.label} ${formatPeso(numericAmount)}`
-              : `Transfer ${formatPeso(numericAmount)}`
+          {!hasDestOptions
+            ? 'Add Another Account to Transfer'
+            : canSubmit && selectedDest
+            ? isCardPayment
+              ? `Pay ${selectedDest.label} ${formatVisiblePeso(numericAmount)}`
+              : `Transfer ${formatVisiblePeso(numericAmount)}`
             : 'Enter Amount to Transfer'}
         </Text>
       </ScalePressable>
@@ -335,72 +227,33 @@ export const TransferModal: React.FC<TransferModalProps> = ({
   );
 };
 
+/**
+ * Modal to transfer funds between Cash / Bank accounts or pay a Credit Card from a real account.
+ */
+export const TransferModal: React.FC<TransferModalProps> = (props) => {
+  if (!props.visible) return null;
+  return (
+    <TransferModalContent
+      initialFromId={props.initialFromId}
+      initialToId={props.initialToId}
+      onClose={props.onClose}
+    />
+  );
+};
+
 const styles = StyleSheet.create({
-  sectionBlock: {
-    gap: 7,
-    width: '100%',
-    minWidth: 0,
-  },
-  sectionLabel: {
-    fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 0.8,
-  },
-  horizontalScroll: {
-    width: '100%',
-    flexGrow: 0,
-    flexShrink: 0,
-  },
-  pillScroll: {
-    gap: 8,
-  },
-  sourcePill: {
-    paddingHorizontal: 13,
-    paddingVertical: 9,
-    borderRadius: 13,
-    minWidth: 96,
-  },
-  inlineIconTitle: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-  },
-  sourceTitle: {
-    fontSize: 12,
-    fontWeight: '800',
-  },
-  sourceSub: {
-    fontSize: 11,
-    fontWeight: '600',
-    marginTop: 2,
-  },
-  emptyBox: {
-    borderRadius: 12,
-    padding: 12,
-  },
-  emptyText: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
   amountBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
     borderWidth: 1.5,
     borderRadius: 14,
     paddingHorizontal: 14,
     paddingVertical: 11,
   },
-  pesoPrefix: {
-    fontSize: 22,
-    fontWeight: '800',
-    marginRight: 8,
-  },
   amountInput: {
-    flex: 1,
-    minWidth: 0,
     fontSize: 21,
-    fontWeight: '800',
-    paddingVertical: 2,
+  },
+  errorText: {
+    fontSize: 12,
+    fontWeight: '700',
   },
   noteInput: {
     width: '100%',

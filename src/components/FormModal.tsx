@@ -46,7 +46,7 @@ const FormModalContent: React.FC<FormModalProps> = ({
             bg={shade.surface}
             boxSize={36}
           />
-          <View style={{ flex: 1 }}>
+          <View style={{ flex: 1, minWidth: 0 }}>
             <Text style={[styles.title, { color: shade.text }]}>{title}</Text>
             {subtitle ? (
               <Text style={[styles.subtitle, { color: shade.muted }]}>

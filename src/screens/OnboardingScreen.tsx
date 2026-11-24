@@ -1,35 +1,19 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
+  KeyboardAvoidingView,
   Platform,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
-  TouchableOpacity,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   AnimatedProgressBar,
   FadeSlideIn,
-  PopValueText,
   ScalePressable,
 } from '../components/AnimatedPrimitives';
-import {
-  AppIcon,
-  IconBadge,
-  TREAT_ICON_CHOICES,
-} from '../components/AppIcon';
-import { BudgetStepperRow } from '../components/BudgetStepperRow';
-import { MonthlyBillsBreakdownCard } from '../components/MonthlyBillsBreakdownCard';
-import { SalaryScheduleCard } from '../components/SalaryScheduleCard';
-import {
-  formatPeso,
-  formatPesoInput,
-  formatPesoNumber,
-  parsePesoInput,
-} from '../utils/numberFormat';
 import {
   computeBaseDailyAllowance,
   sumBills,
@@ -46,6 +30,13 @@ import {
   triggerLightHaptic,
   triggerSuccessHaptic,
 } from '../utils/haptics';
+import {
+  formatPesoDisplay,
+  formatPesoNumber,
+  parsePesoInput,
+} from '../utils/numberFormat';
+import { useWebKeyboardInset } from '../utils/useWebKeyboardInset';
+import { OnboardingSteps } from './onboarding/OnboardingSteps';
 
 const TOTAL_QUESTIONS = 6;
 
@@ -54,15 +45,16 @@ const TOTAL_QUESTIONS = 6;
  * user after each answered question before sliding to the next.
  */
 export const OnboardingScreen: React.FC = () => {
-  const { shade } = useThemePrefs();
+  const { shade, privacyMode } = useThemePrefs();
   const { settings, billItems } = useDailyBudget();
   const { cashOnHand } = useWallet();
-  const { disciplineScore, cardTier } = useGoals();
+  const { disciplineScore, cardTier, treats } = useGoals();
   const { isEditingOnboarding } = useSystemStatus();
   const { completeOnboarding, cancelReopenedOnboarding } = useBudgetActions();
 
   const [step, setStep] = useState<number>(1);
   const insets = useSafeAreaInsets();
+  const { keyboardInset } = useWebKeyboardInset(true);
   const [direction, setDirection] = useState<'right' | 'left'>('right');
   const [praiseMsg, setPraiseMsg] = useState<string | null>(null);
   const praiseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -78,6 +70,7 @@ export const OnboardingScreen: React.FC = () => {
   const [treatIcon, setTreatIcon] = useState('headphones');
   const [treatName, setTreatName] = useState('');
   const [treatTargetText, setTreatTargetText] = useState('');
+  const [step5Error, setStep5Error] = useState<string | null>(null);
 
   const [localCashText, setLocalCashText] = useState(
     formatPesoNumber(cashOnHand)
@@ -88,6 +81,10 @@ export const OnboardingScreen: React.FC = () => {
       if (praiseTimerRef.current) clearTimeout(praiseTimerRef.current);
     };
   }, []);
+
+  const maskInputs = isEditingOnboarding && privacyMode;
+  const maskOnEdit = (amount: number) =>
+    formatPesoDisplay(amount, maskInputs);
 
   const totalBills = useMemo(() => sumBills(localBills), [localBills]);
 
@@ -119,7 +116,12 @@ export const OnboardingScreen: React.FC = () => {
     );
   };
 
-  const handleAddLocalBill = (name: string, icon: string, amount: number) => {
+  const handleAddLocalBill = (
+    name: string,
+    icon: string,
+    amount: number,
+    dueDay?: number
+  ) => {
     setLocalBills((prev) => [
       ...prev,
       {
@@ -127,6 +129,7 @@ export const OnboardingScreen: React.FC = () => {
         name: name.trim(),
         icon,
         amount,
+        ...(typeof dueDay === 'number' ? { dueDay } : {}),
       },
     ]);
   };
@@ -158,13 +161,13 @@ export const OnboardingScreen: React.FC = () => {
   const getPraiseForStep = (currentStep: number): string => {
     switch (currentStep) {
       case 1:
-        return `Nice! ${formatPeso(income)}/month logged. Great start! 👏`;
+        return `Nice! ${maskOnEdit(income)}/month logged. Great start! 👏`;
       case 2:
         return 'Got it! We’ll keep track of your paydays. 🗓️';
       case 3:
-        return `Awesome! ${formatPeso(totalBills)} in bills set aside safely. 👍`;
+        return `Awesome! ${maskOnEdit(totalBills)} in bills set aside safely. 👍`;
       case 4:
-        return `Good job! Protecting ${formatPeso(savings)}/month is huge. 🏦`;
+        return `Good job! Protecting ${maskOnEdit(savings)}/month is huge. 🏦`;
       case 5:
         return treatName.trim()
           ? `Love that goal! "${treatName.trim()}" is locked in. ✨`
@@ -176,6 +179,24 @@ export const OnboardingScreen: React.FC = () => {
 
   const handleNext = () => {
     if (praiseMsg) return;
+
+    if (step === 5) {
+      const hasName = Boolean(treatName.trim());
+      const targetVal = parsePesoInput(treatTargetText);
+      if (hasName && targetVal <= 0) {
+        setStep5Error(
+          'Enter a price greater than ₱0, or clear the treat name to skip.'
+        );
+        return;
+      }
+      if (!hasName && targetVal > 0) {
+        setStep5Error(
+          'Enter a treat name, or clear the price to skip this step.'
+        );
+        return;
+      }
+      setStep5Error(null);
+    }
 
     if (step >= TOTAL_QUESTIONS) {
       triggerCelebrationHaptic();
@@ -203,6 +224,7 @@ export const OnboardingScreen: React.FC = () => {
   const handleBack = () => {
     if (praiseTimerRef.current) clearTimeout(praiseTimerRef.current);
     setPraiseMsg(null);
+    setStep5Error(null);
     triggerLightHaptic();
     setDirection('left');
     setStep((s) => Math.max(1, s - 1));
@@ -211,8 +233,21 @@ export const OnboardingScreen: React.FC = () => {
   const progressPct = (step / TOTAL_QUESTIONS) * 100;
 
   return (
-    <View style={styles.root}>
-      {/* Top Progress Header */}
+    <KeyboardAvoidingView
+      behavior={
+        Platform.OS === 'ios'
+          ? 'padding'
+          : Platform.OS === 'android'
+          ? 'height'
+          : undefined
+      }
+      style={[
+        styles.root,
+        Platform.OS === 'web' && keyboardInset > 0
+          ? { paddingBottom: keyboardInset }
+          : null,
+      ]}
+    >
       <View
         style={[
           styles.topHeader,
@@ -226,16 +261,25 @@ export const OnboardingScreen: React.FC = () => {
           <Text style={[styles.stepKicker, { color: shade.accent }]}>
             QUESTION {step} OF {TOTAL_QUESTIONS}
           </Text>
-          <TouchableOpacity
-            onPress={
-              isEditingOnboarding ? cancelReopenedOnboarding : handleFinish
+          <ScalePressable
+            onPress={() => {
+              triggerLightHaptic();
+              if (isEditingOnboarding) {
+                cancelReopenedOnboarding();
+              } else {
+                handleFinish();
+              }
+            }}
+            accessibilityRole="button"
+            accessibilityLabel={
+              isEditingOnboarding ? 'Cancel setup edits' : 'Skip onboarding setup'
             }
-            activeOpacity={0.75}
+            hitSlop={8}
           >
             <Text style={[styles.skipText, { color: shade.muted }]}>
               {isEditingOnboarding ? 'Cancel ›' : 'Skip Setup ›'}
             </Text>
-          </TouchableOpacity>
+          </ScalePressable>
         </View>
 
         <AnimatedProgressBar
@@ -246,16 +290,67 @@ export const OnboardingScreen: React.FC = () => {
         />
       </View>
 
-      {/* Main 1-Question-at-a-Time Interview Body */}
       <View style={styles.bodyWrap}>
-        {/* Floating Praise Toast (never shifts layout below) */}
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <FadeSlideIn triggerKey={step} direction={direction} distance={22}>
+            <OnboardingSteps
+              step={step}
+              shade={shade}
+              maskOnEdit={maskOnEdit}
+              maskInputs={maskInputs}
+              income={income}
+              onChangeIncome={setIncome}
+              salaryFreq={salaryFreq}
+              payday1={payday1}
+              payday2={payday2}
+              onChangeSchedule={(freq, d1, d2) => {
+                setSalaryFreq(freq);
+                setPayday1(d1);
+                setPayday2(d2);
+              }}
+              localBills={localBills}
+              onUpdateBill={handleUpdateLocalBill}
+              onAddBill={handleAddLocalBill}
+              onRemoveBill={handleRemoveLocalBill}
+              savings={savings}
+              onChangeSavings={setSavings}
+              dailyPreview={dailyPreview}
+              paydayLabel={paydayLabel}
+              treatIcon={treatIcon}
+              onChangeTreatIcon={setTreatIcon}
+              treatName={treatName}
+              onChangeTreatName={(t) => {
+                setTreatName(t);
+                if (step5Error) setStep5Error(null);
+              }}
+              treatTargetText={treatTargetText}
+              onChangeTreatTargetText={(formatted) => {
+                setTreatTargetText(formatted);
+                if (step5Error) setStep5Error(null);
+              }}
+              step5Error={step5Error}
+              existingTreatsCount={treats.length}
+              isEditingOnboarding={isEditingOnboarding}
+              localCashText={localCashText}
+              onChangeLocalCashText={setLocalCashText}
+              cardTier={cardTier}
+              disciplineScore={disciplineScore}
+            />
+          </FadeSlideIn>
+        </ScrollView>
+
         {praiseMsg && (
           <Animated.View
             pointerEvents="none"
             style={[
               styles.praiseBanner,
               {
-                backgroundColor: shade.positive,
+                backgroundColor: shade.positiveBtnBg,
                 transform: [{ scale: praiseScale }],
               },
             ]}
@@ -265,379 +360,8 @@ export const OnboardingScreen: React.FC = () => {
             </Text>
           </Animated.View>
         )}
-
-        <ScrollView
-          style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-        >
-        <FadeSlideIn triggerKey={step} direction={direction} distance={22}>
-          {step === 1 && (
-            <View style={styles.stepStack}>
-              <View style={styles.titleBlock}>
-                <IconBadge
-                  name="dollar-sign"
-                  size={20}
-                  color={shade.accent}
-                  bg={shade.surface}
-                  boxSize={44}
-                />
-                <Text style={[styles.title, { color: shade.text }]}>
-                  How much do you earn each month?
-                </Text>
-                <Text style={[styles.subtitle, { color: shade.muted }]}>
-                  Type your monthly take-home pay below.
-                </Text>
-              </View>
-
-              <BudgetStepperRow
-                label="Monthly Income"
-                hint="Your monthly pay after tax"
-                value={income}
-                shade={shade}
-                onChange={setIncome}
-              />
-            </View>
-          )}
-
-          {step === 2 && (
-            <View style={styles.stepStack}>
-              <View style={styles.titleBlock}>
-                <IconBadge
-                  name="calendar"
-                  size={20}
-                  color={shade.accent}
-                  bg={shade.surface}
-                  boxSize={44}
-                />
-                <Text style={[styles.title, { color: shade.text }]}>
-                  How often do you get paid?
-                </Text>
-                <Text style={[styles.subtitle, { color: shade.muted }]}>
-                  Pick once or twice a month and set your paydays.
-                </Text>
-              </View>
-
-              <SalaryScheduleCard
-                frequency={salaryFreq}
-                payday1={payday1}
-                payday2={payday2}
-                shade={shade}
-                onChange={(freq, d1, d2) => {
-                  setSalaryFreq(freq);
-                  setPayday1(d1);
-                  setPayday2(d2);
-                }}
-              />
-            </View>
-          )}
-
-          {step === 3 && (
-            <View style={styles.stepStack}>
-              <View style={styles.titleBlock}>
-                <IconBadge
-                  name="file-text"
-                  size={20}
-                  color={shade.accent}
-                  bg={shade.surface}
-                  boxSize={44}
-                />
-                <Text style={[styles.title, { color: shade.text }]}>
-                  What are your monthly bills?
-                </Text>
-                <Text style={[styles.subtitle, { color: shade.muted }]}>
-                  Edit or add bills below. We set this aside first.
-                </Text>
-              </View>
-
-              <MonthlyBillsBreakdownCard
-                bills={localBills}
-                shade={shade}
-                onUpdateAmount={handleUpdateLocalBill}
-                onAddBill={handleAddLocalBill}
-                onRemoveBill={handleRemoveLocalBill}
-              />
-            </View>
-          )}
-
-          {step === 4 && (
-            <View style={styles.stepStack}>
-              <View style={styles.titleBlock}>
-                <IconBadge
-                  name="shield"
-                  size={20}
-                  color={shade.positive}
-                  bg={shade.positiveSoft}
-                  boxSize={44}
-                />
-                <Text style={[styles.title, { color: shade.text }]}>
-                  How much do you want to save?
-                </Text>
-                <Text style={[styles.subtitle, { color: shade.muted }]}>
-                  We protect your savings goal, then show your daily budget.
-                </Text>
-              </View>
-
-              <BudgetStepperRow
-                label="Monthly Savings Goal"
-                hint="Protected every month"
-                value={savings}
-                shade={shade}
-                onChange={setSavings}
-              />
-
-              {/* Live Safe-to-Spend Result */}
-              <View
-                style={[
-                  styles.heroCard,
-                  { backgroundColor: shade.surface, borderColor: shade.accent },
-                ]}
-              >
-                <View style={styles.headerRow}>
-                  <Text style={[styles.heroLabel, { color: shade.muted }]}>
-                    YOUR DAILY SAFE-TO-SPEND
-                  </Text>
-                  <View style={[styles.pillBadge, { backgroundColor: shade.bg }]}>
-                    <Text style={[styles.pillText, { color: shade.positive }]}>
-                      {paydayLabel}
-                    </Text>
-                  </View>
-                </View>
-
-                <PopValueText valueTrigger={dailyPreview}>
-                  <Text
-                    numberOfLines={1}
-                    adjustsFontSizeToFit
-                    minimumFontScale={0.78}
-                    style={[
-                      styles.heroAmount,
-                      { color: shade.text, fontVariant: ['tabular-nums'] },
-                    ]}
-                  >
-                    {formatPeso(dailyPreview)}
-                    <Text style={[styles.heroUnit, { color: shade.muted }]}>
-                      {' '}
-                      / day
-                    </Text>
-                  </Text>
-                </PopValueText>
-              </View>
-            </View>
-          )}
-
-          {step === 5 && (
-            <View style={styles.stepStack}>
-              <View style={styles.titleBlock}>
-                <IconBadge
-                  name="gift"
-                  size={20}
-                  color={shade.dopamine}
-                  bg={shade.dopamineSoft}
-                  boxSize={44}
-                />
-                <Text style={[styles.title, { color: shade.text }]}>
-                  Want to save for a treat?
-                </Text>
-                <Text style={[styles.subtitle, { color: shade.muted }]}>
-                  Add your first treat (up to 3), or leave blank to skip.
-                </Text>
-              </View>
-
-              <View
-                style={[
-                  styles.customCard,
-                  { backgroundColor: shade.card, borderColor: shade.border },
-                ]}
-              >
-                <Text style={[styles.fieldLabel, { color: shade.muted }]}>
-                  Pick an icon
-                </Text>
-                <View style={styles.emojiRow}>
-                  {TREAT_ICON_CHOICES.map((iconName) => {
-                    const active = treatIcon === iconName;
-                    return (
-                      <ScalePressable
-                        key={iconName}
-                        onPress={() => {
-                          triggerLightHaptic();
-                          setTreatIcon(iconName);
-                        }}
-                        style={[
-                          styles.emojiPill,
-                          {
-                            backgroundColor: active
-                              ? shade.dopamine
-                              : shade.surface,
-                          },
-                        ]}
-                      >
-                        <AppIcon
-                          name={iconName}
-                          size={16}
-                          color={active ? '#FFFFFF' : shade.text}
-                        />
-                      </ScalePressable>
-                    );
-                  })}
-                </View>
-
-                <Text style={[styles.fieldLabel, { color: shade.muted }]}>
-                  What’s the treat? (Optional)
-                </Text>
-                <TextInput
-                  value={treatName}
-                  onChangeText={setTreatName}
-                  placeholder="e.g., New Headphones, Weekend Trip"
-                  placeholderTextColor={shade.muted}
-                  style={[
-                    styles.textInput,
-                    {
-                      backgroundColor: shade.bg,
-                      color: shade.text,
-                      borderColor: shade.border,
-                    },
-                  ]}
-                />
-
-                <Text style={[styles.fieldLabel, { color: shade.muted }]}>
-                  How much does it cost? (₱)
-                </Text>
-                <View
-                  style={[
-                    styles.amountBox,
-                    { backgroundColor: shade.bg, borderColor: shade.border },
-                  ]}
-                >
-                  <Text style={[styles.pesoSign, { color: shade.dopamine }]}>
-                    ₱
-                  </Text>
-                  <TextInput
-                    value={treatTargetText}
-                    onChangeText={(t) =>
-                      setTreatTargetText(formatPesoInput(t))
-                    }
-                    keyboardType="decimal-pad"
-                    inputMode="decimal"
-                    placeholder="Type the price"
-                    placeholderTextColor={shade.muted}
-                    style={[styles.amountInput, { color: shade.text }]}
-                  />
-                </View>
-              </View>
-            </View>
-          )}
-
-          {step === 6 && (
-            <View style={styles.stepStack}>
-              <View style={styles.titleBlock}>
-                <IconBadge
-                  name="briefcase"
-                  size={20}
-                  color={shade.accent}
-                  bg={shade.surface}
-                  boxSize={44}
-                />
-                <Text style={[styles.title, { color: shade.text }]}>
-                  How much cash do you have right now?
-                </Text>
-                <Text style={[styles.subtitle, { color: shade.muted }]}>
-                  You can add your banks and cards in the Wallet tab next.
-                </Text>
-              </View>
-
-              <View
-                style={[
-                  styles.customCard,
-                  { backgroundColor: shade.card, borderColor: shade.border },
-                ]}
-              >
-                <Text style={[styles.fieldLabel, { color: shade.muted }]}>
-                  Cash on hand (₱)
-                </Text>
-                <View
-                  style={[
-                    styles.amountBox,
-                    { backgroundColor: shade.bg, borderColor: shade.border },
-                  ]}
-                >
-                  <Text style={[styles.pesoSign, { color: shade.accent }]}>
-                    ₱
-                  </Text>
-                  <TextInput
-                    value={localCashText}
-                    onChangeText={(t) => setLocalCashText(formatPesoInput(t))}
-                    keyboardType="decimal-pad"
-                    inputMode="decimal"
-                    placeholder="0"
-                    placeholderTextColor={shade.muted}
-                    selectTextOnFocus
-                    style={[styles.amountInput, { color: shade.text }]}
-                  />
-                </View>
-              </View>
-
-              {/* Final Obsidian Hero Card Preview */}
-              <View
-                style={[
-                  styles.previewMetalCard,
-                  {
-                    backgroundColor: shade.heroBg,
-                    borderColor: shade.heroBorder,
-                  },
-                ]}
-              >
-                <View style={styles.headerRow}>
-                  <View style={styles.tierRow}>
-                    <View
-                      style={[
-                        styles.tierDot,
-                        { backgroundColor: '#FFFFFF' },
-                      ]}
-                    />
-                    <Text
-                      style={[styles.tierText, { color: shade.heroMuted }]}
-                    >
-                      {cardTier.toUpperCase()} TIER
-                    </Text>
-                  </View>
-                  <View
-                    style={[
-                      styles.scoreBadge,
-                      { backgroundColor: shade.heroSurface },
-                    ]}
-                  >
-                    <Text style={[styles.scoreText, { color: '#4ADE80' }]}>
-                      {paydayLabel}
-                    </Text>
-                  </View>
-                </View>
-
-                <Text
-                  numberOfLines={1}
-                  adjustsFontSizeToFit
-                  minimumFontScale={0.78}
-                  style={[
-                    styles.previewBalance,
-                    { color: shade.heroText, fontVariant: ['tabular-nums'] },
-                  ]}
-                >
-                  {formatPeso(dailyPreview)}
-                </Text>
-                <Text style={[styles.previewPass, { color: '#A5B4FC' }]}>
-                  {treatName.trim() && parsePesoInput(treatTargetText) > 0
-                    ? `First Treat: ${treatName.trim()} (${formatPeso(
-                        parsePesoInput(treatTargetText)
-                      )})`
-                    : `0 / 3 Treats • Score ${disciplineScore}`}
-                </Text>
-              </View>
-            </View>
-          )}
-        </FadeSlideIn>
-        </ScrollView>
       </View>
 
-      {/* Bottom Step Navigation */}
       <View
         style={[
           styles.footerNav,
@@ -651,6 +375,8 @@ export const OnboardingScreen: React.FC = () => {
         {step > 1 ? (
           <ScalePressable
             onPress={handleBack}
+            accessibilityRole="button"
+            accessibilityLabel="Previous question"
             style={[
               styles.backBtn,
               { backgroundColor: shade.card, borderColor: shade.border },
@@ -665,11 +391,15 @@ export const OnboardingScreen: React.FC = () => {
         <ScalePressable
           disabled={Boolean(praiseMsg)}
           onPress={handleNext}
+          accessibilityRole="button"
+          accessibilityLabel={
+            step === TOTAL_QUESTIONS ? 'Finish setup' : 'Next question'
+          }
           style={[
             styles.primaryBtn,
             {
               backgroundColor:
-                step === TOTAL_QUESTIONS ? shade.dopamine : shade.accent,
+                step === TOTAL_QUESTIONS ? shade.dopamineBtnBg : shade.accent,
               opacity: praiseMsg ? 0.8 : 1,
             },
           ]}
@@ -691,7 +421,7 @@ export const OnboardingScreen: React.FC = () => {
           </Text>
         </ScalePressable>
       </View>
-    </View>
+    </KeyboardAvoidingView>
   );
 };
 
@@ -725,7 +455,7 @@ const styles = StyleSheet.create({
   },
   praiseBanner: {
     position: 'absolute',
-    top: 4,
+    bottom: 12,
     left: 18,
     right: 18,
     zIndex: 20,
@@ -752,140 +482,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-start',
     paddingHorizontal: 18,
     paddingTop: 20,
-    paddingBottom: 28,
-  },
-  stepStack: {
-    gap: 15,
-  },
-  titleBlock: {
-    gap: 6,
-  },
-  title: {
-    fontSize: 23,
-    fontWeight: '800',
-    letterSpacing: -0.5,
-    lineHeight: 29,
-  },
-  subtitle: {
-    fontSize: 13,
-    lineHeight: 19,
-  },
-  heroCard: {
-    borderRadius: 22,
-    borderWidth: 1.2,
-    padding: 16,
-    gap: 8,
-  },
-  heroLabel: {
-    fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 0.9,
-  },
-  pillBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
-  },
-  pillText: {
-    fontSize: 10,
-    fontWeight: '700',
-  },
-  heroAmount: {
-    fontSize: 36,
-    fontWeight: '800',
-    letterSpacing: -0.8,
-  },
-  heroUnit: {
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  customCard: {
-    borderRadius: 20,
-    borderWidth: 1,
-    padding: 15,
-    gap: 11,
-  },
-  fieldLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  emojiRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
-  emojiPill: {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  textInput: {
-    minWidth: 0,
-    borderRadius: 12,
-    borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 14,
-  },
-  amountBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 12,
-    borderWidth: 1.3,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  pesoSign: {
-    fontSize: 16,
-    fontWeight: '800',
-    marginRight: 6,
-  },
-  amountInput: {
-    flex: 1,
-    minWidth: 0,
-    fontSize: 16,
-    fontWeight: '800',
-    paddingVertical: 2,
-  },
-  previewMetalCard: {
-    borderRadius: 22,
-    borderWidth: 1.3,
-    padding: 16,
-    gap: 8,
-  },
-  tierRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  tierDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-  },
-  tierText: {
-    fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 1.1,
-  },
-  scoreBadge: {
-    paddingHorizontal: 9,
-    paddingVertical: 3,
-    borderRadius: 999,
-  },
-  scoreText: {
-    fontSize: 10,
-    fontWeight: '700',
-  },
-  previewBalance: {
-    fontSize: 32,
-    fontWeight: '800',
-  },
-  previewPass: {
-    fontSize: 12,
-    fontWeight: '700',
+    paddingBottom: 64,
   },
   footerNav: {
     flexDirection: 'row',

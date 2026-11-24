@@ -7,24 +7,28 @@ export interface WebKeyboardMetrics {
   offsetTop: number;
 }
 
+const ZERO_METRICS: WebKeyboardMetrics = {
+  keyboardInset: 0,
+  viewportHeight: 0,
+  offsetTop: 0,
+};
+
 /**
  * Tracks iOS Safari / mobile browser virtual keyboard overlap via `window.visualViewport`
  * so centered modals lift above the numpad/keyboard instead of getting covered.
  */
 export function useWebKeyboardInset(enabled: boolean = true): WebKeyboardMetrics {
-  const [metrics, setMetrics] = useState<WebKeyboardMetrics>({
-    keyboardInset: 0,
-    viewportHeight: 0,
-    offsetTop: 0,
-  });
+  const [metrics, setMetrics] = useState<WebKeyboardMetrics>(ZERO_METRICS);
 
   useEffect(() => {
-    if (
-      !enabled ||
-      Platform.OS !== 'web' ||
-      typeof window === 'undefined'
-    ) {
-      setMetrics({ keyboardInset: 0, viewportHeight: 0, offsetTop: 0 });
+    if (!enabled || Platform.OS !== 'web' || typeof window === 'undefined') {
+      setMetrics((prev) =>
+        prev.keyboardInset === 0 &&
+        prev.viewportHeight === 0 &&
+        prev.offsetTop === 0
+          ? prev
+          : ZERO_METRICS
+      );
       return;
     }
 

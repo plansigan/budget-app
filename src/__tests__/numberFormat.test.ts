@@ -16,6 +16,9 @@ describe('numberFormat', () => {
     expect(formatPeso(0.05)).toBe('₱0.05');
     expect(formatPeso(-145.5)).toBe('-₱145.50');
     expect(formatPeso(-0.004)).toBe('₱0.00');
+    expect(formatPeso(-0.001)).toBe('₱0.00');
+    expect(formatPeso(-0.001, 0)).toBe('₱0');
+    expect(formatPeso(-0.001)).toBe(formatPeso(0));
     expect(formatPeso(Number.NaN)).toBe('₱0.00');
     expect(formatPeso(1234, 0)).toBe('₱1,234');
   });
@@ -25,6 +28,9 @@ describe('numberFormat', () => {
     expect(formatPesoDisplay(1250.75, false)).toBe('₱1,250.75');
     expect(formatPesoDisplay(1250.75, true)).toBe('₱••••');
     expect(formatPesoDisplay(-45.5, true)).toBe('-₱••••');
+    expect(formatPesoDisplay(-0.001, false)).toBe('₱0.00');
+    expect(formatPesoDisplay(-0.001, true)).toBe('₱••••');
+    expect(formatPesoNumber(-0.001)).toBe('');
   });
 
   it('formats raw input with commas and preserves valid decimal typing states', () => {

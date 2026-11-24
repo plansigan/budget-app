@@ -61,6 +61,62 @@ describe('savingsCoach', () => {
     expect(zeroIncome.savingsPct).toBe(0);
     expect(zeroIncome.dailyPct).toBe(0);
     expect(zeroIncome.emergencyTarget3Mo).toBe(15000);
+
+    const withCommitments = computeBudgetHealth(
+      {
+        monthlyIncome: 50000,
+        fixedBills: 15000,
+        monthlySavingsGoal: 10000,
+        salaryFrequency: 2,
+        payday1: 15,
+        payday2: 30,
+      },
+      10000
+    );
+    expect(withCommitments.billsPct).toBe(50);
+    expect(withCommitments.savingsPct).toBe(20);
+    expect(withCommitments.dailyPct).toBe(30);
+    expect(withCommitments.emergencyTarget3Mo).toBe(75000);
+    expect(withCommitments.emergencyTarget6Mo).toBe(150000);
+  });
+
+  it('evaluates cross-month unpaid bills against target due month without stale dismissal', () => {
+    const endOfApril = new Date(2026, 3, 29, 10, 0, 0);
+    const aprilPaidTips = generatePersonalizedTips(
+      makeCoachInput({
+        currentMonthKey: '2026-04',
+        billItems: [
+          {
+            id: 'bill-rent',
+            name: 'May Rent',
+            icon: 'home',
+            amount: 8000,
+            dueDay: 2,
+            lastPaidMonth: '2026-04',
+          },
+        ],
+      }),
+      endOfApril
+    );
+    expect(aprilPaidTips.some((t) => t.id === 'bill-due-bill-rent')).toBe(true);
+
+    const mayPrepaidTips = generatePersonalizedTips(
+      makeCoachInput({
+        currentMonthKey: '2026-04',
+        billItems: [
+          {
+            id: 'bill-rent',
+            name: 'May Rent',
+            icon: 'home',
+            amount: 8000,
+            dueDay: 2,
+            lastPaidMonth: '2026-05',
+          },
+        ],
+      }),
+      endOfApril
+    );
+    expect(mayPrepaidTips.some((t) => t.id === 'bill-due-bill-rent')).toBe(false);
   });
 
   it('masks user balances and card utilization figures when privacyMode is true', () => {

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   ScrollView,
   StyleSheet,
@@ -11,7 +11,6 @@ import {
   FAQ_CATEGORIES,
   FAQ_ITEMS,
   FaqCategoryKey,
-  FaqItem,
   filterFaqItems,
 } from '../data/faqData';
 import { triggerLightHaptic } from '../utils/haptics';
@@ -25,31 +24,22 @@ interface AppGuideFaqModalProps {
   onReplayQuickGuide: () => void;
 }
 
-const CATEGORY_LABEL_MAP: Record<FaqItem['category'], string> = {
-  today: 'Today',
-  wallet: 'Wallet & Cards',
-  debts: 'Debts',
-  goals: 'Goals & Savings',
-  backup: 'Backup & Data',
-};
+const CATEGORY_LABEL_MAP = FAQ_CATEGORIES.reduce<Record<string, string>>(
+  (acc, cat) => {
+    acc[cat.key] = cat.label;
+    return acc;
+  },
+  {}
+);
 
-const AppGuideFaqModalContent: React.FC<AppGuideFaqModalProps> = ({
-  visible,
-  onClose,
-  onReplayQuickGuide,
-}) => {
+const AppGuideFaqModalContent: React.FC<
+  Omit<AppGuideFaqModalProps, 'visible'>
+> = ({ onClose, onReplayQuickGuide }) => {
   const { shade } = useThemePrefs();
 
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState<FaqCategoryKey>('all');
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
-
-  useEffect(() => {
-    if (!visible) return;
-    setQuery('');
-    setCategory('all');
-    setExpandedIds(new Set());
-  }, [visible]);
 
   const filteredItems = useMemo(
     () => filterFaqItems(FAQ_ITEMS, category, query),
@@ -71,7 +61,7 @@ const AppGuideFaqModalContent: React.FC<AppGuideFaqModalProps> = ({
 
   return (
     <BaseModal
-      visible={visible}
+      visible
       onClose={onClose}
       dismissLabel="Dismiss App Guide and FAQ"
       minKeyboardCardHeight={260}
@@ -82,114 +72,123 @@ const AppGuideFaqModalContent: React.FC<AppGuideFaqModalProps> = ({
       ]}
     >
       {/* Header */}
-          <View style={styles.headerRow}>
-            <View style={styles.titleRow}>
-              <IconBadge
-                name="book-open"
-                size={16}
-                color={shade.dopamine}
-                bg={shade.dopamineSoft}
-                boxSize={36}
-              />
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={[styles.title, { color: shade.text }]}>
-                  App Guide & FAQ
-                </Text>
-                <Text style={[styles.subtitle, { color: shade.muted }]}>
-                  How Velvet works & common questions
-                </Text>
-              </View>
-            </View>
+      <View style={styles.headerRow}>
+        <View style={styles.titleRow}>
+          <IconBadge
+            name="book-open"
+            size={16}
+            color={shade.dopamine}
+            bg={shade.dopamineSoft}
+            boxSize={36}
+          />
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={[styles.title, { color: shade.text }]}>
+              App Guide & FAQ
+            </Text>
+            <Text style={[styles.subtitle, { color: shade.muted }]}>
+              How Velvet works & common questions
+            </Text>
+          </View>
+        </View>
 
+        <ScalePressable
+          onPress={() => {
+            triggerLightHaptic();
+            onClose();
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="Close guide"
+          hitSlop={8}
+          style={[styles.closeBtn, { backgroundColor: shade.surface }]}
+        >
+          <AppIcon name="x" size={16} color={shade.muted} />
+        </ScalePressable>
+      </View>
+
+      {/* Search Input */}
+      <View
+        style={[
+          styles.searchBox,
+          {
+            backgroundColor: shade.surface,
+            borderColor: shade.border,
+          },
+        ]}
+      >
+        <AppIcon name="search" size={15} color={shade.muted} />
+        <TextInput
+          value={query}
+          onChangeText={setQuery}
+          placeholder="Search features or questions..."
+          placeholderTextColor={shade.muted}
+          returnKeyType="search"
+          autoCorrect={false}
+          accessibilityLabel="Search App Guide and FAQ"
+          style={[styles.searchInput, { color: shade.text }]}
+        />
+        {query.length > 0 && (
+          <ScalePressable
+            onPress={() => {
+              triggerLightHaptic();
+              setQuery('');
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Clear search"
+            hitSlop={8}
+            style={[styles.clearBtn, { backgroundColor: shade.card }]}
+          >
+            <AppIcon name="x" size={12} color={shade.muted} />
+          </ScalePressable>
+        )}
+      </View>
+
+      {/* Category Filter Pills */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.chipsScroll}
+        contentContainerStyle={styles.chipsRow}
+      >
+        {FAQ_CATEGORIES.map((cat) => {
+          const active = category === cat.key;
+          return (
             <ScalePressable
+              key={cat.key}
               onPress={() => {
                 triggerLightHaptic();
-                onClose();
+                setCategory(cat.key);
               }}
-              accessibilityLabel="Close guide"
-              hitSlop={8}
-              style={[styles.closeBtn, { backgroundColor: shade.surface }]}
+              accessibilityRole="tab"
+              accessibilityLabel={`FAQ category ${cat.label}`}
+              accessibilityState={{ selected: active }}
+              hitSlop={6}
+              style={[
+                styles.catChip,
+                {
+                  backgroundColor: active
+                    ? shade.dopamineBtnBg
+                    : shade.surface,
+                  borderColor: active ? shade.dopamineBtnBg : shade.border,
+                },
+              ]}
             >
-              <AppIcon name="x" size={16} color={shade.muted} />
-            </ScalePressable>
-          </View>
-
-          {/* Search Input */}
-          <View
-            style={[
-              styles.searchBox,
-              {
-                backgroundColor: shade.surface,
-                borderColor: shade.border,
-              },
-            ]}
-          >
-            <AppIcon name="search" size={15} color={shade.muted} />
-            <TextInput
-              value={query}
-              onChangeText={setQuery}
-              placeholder="Search features or questions..."
-              placeholderTextColor={shade.muted}
-              returnKeyType="search"
-              autoCorrect={false}
-              style={[styles.searchInput, { color: shade.text }]}
-            />
-            {query.length > 0 && (
-              <ScalePressable
-                onPress={() => {
-                  triggerLightHaptic();
-                  setQuery('');
-                }}
-                accessibilityLabel="Clear search"
-                hitSlop={6}
-                style={[styles.clearBtn, { backgroundColor: shade.card }]}
+              <AppIcon
+                name={cat.icon}
+                size={12}
+                color={active ? '#FFFFFF' : shade.muted}
+              />
+              <Text
+                style={[
+                  styles.catChipText,
+                  { color: active ? '#FFFFFF' : shade.text },
+                ]}
               >
-                <AppIcon name="x" size={12} color={shade.muted} />
-              </ScalePressable>
-            )}
-          </View>
-
-          {/* Category Filter Pills */}
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={styles.chipsScroll}
-            contentContainerStyle={styles.chipsRow}
-          >
-            {FAQ_CATEGORIES.map((cat) => {
-              const active = category === cat.key;
-              return (
-                <ScalePressable
-                  key={cat.key}
-                  onPress={() => {
-                    triggerLightHaptic();
-                    setCategory(cat.key);
-                  }}
-                  style={[
-                    styles.catChip,
-                    {
-                      backgroundColor: active ? shade.dopamine : shade.surface,
-                      borderColor: active ? shade.dopamine : shade.border,
-                    },
-                  ]}
-                >
-                  <AppIcon
-                    name={cat.icon}
-                    size={12}
-                    color={active ? '#FFFFFF' : shade.muted}
-                  />
-                  <Text
-                    style={[
-                      styles.catChipText,
-                      { color: active ? '#FFFFFF' : shade.text },
-                    ]}
-                  >
-                    {cat.label}
-                  </Text>
-                </ScalePressable>
-              );
-            })}
-          </ScrollView>
+                {cat.label}
+              </Text>
+            </ScalePressable>
+          );
+        })}
+      </ScrollView>
 
           {/* Accordion List + Footer */}
           <ScrollView
@@ -221,6 +220,9 @@ const AppGuideFaqModalContent: React.FC<AppGuideFaqModalProps> = ({
                     setQuery('');
                     setCategory('all');
                   }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Reset search and filters"
+                  hitSlop={8}
                   style={[
                     styles.resetSearchBtn,
                     { backgroundColor: shade.dopamineSoft },
@@ -415,11 +417,13 @@ const styles = StyleSheet.create({
   },
   chipsScroll: {
     flexGrow: 0,
+    flexShrink: 0,
   },
   chipsRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    paddingVertical: 2,
     paddingRight: 4,
   },
   catChip: {

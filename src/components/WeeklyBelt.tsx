@@ -136,7 +136,7 @@ export const WeeklyBelt: React.FC = React.memo(() => {
               setWeekOffset((prev) => Math.max(MIN_WEEK_OFFSET, prev - 1));
             }}
             accessibilityLabel="Previous week"
-            hitSlop={6}
+            hitSlop={8}
             style={[
               styles.weekArrowBtn,
               {
@@ -159,7 +159,7 @@ export const WeeklyBelt: React.FC = React.memo(() => {
               setWeekOffset((prev) => Math.min(0, prev + 1));
             }}
             accessibilityLabel="Next week"
-            hitSlop={6}
+            hitSlop={8}
             style={[
               styles.weekArrowBtn,
               {
@@ -178,12 +178,16 @@ export const WeeklyBelt: React.FC = React.memo(() => {
             const summary = getDaySummary(item.dateKey);
 
             let dotColor = shade.border;
+            let selectedDotColor = shade.accentText;
             if (summary.safeRemaining < 0) {
               dotColor = shade.warning;
+              selectedDotColor = shade.dark ? shade.warning : shade.heroWarning;
             } else if (summary.savedOrSkipped > 0) {
               dotColor = shade.dopamine;
+              selectedDotColor = shade.dark ? shade.dopamine : shade.heroDopamine;
             } else if (summary.entriesCount > 0) {
               dotColor = shade.positive;
+              selectedDotColor = shade.dark ? shade.positive : shade.heroPositive;
             }
 
             return (
@@ -197,6 +201,7 @@ export const WeeklyBelt: React.FC = React.memo(() => {
                   selected: isSelected,
                   disabled: item.isFuture,
                 }}
+                hitSlop={{ top: 8, bottom: 8 }}
                 scaleTo={0.92}
                 style={[
                   styles.dayPill,
@@ -216,6 +221,7 @@ export const WeeklyBelt: React.FC = React.memo(() => {
                 ]}
               >
                 <Text
+                  numberOfLines={1}
                   style={[
                     styles.dayShort,
                     { color: isSelected ? shade.accentText : shade.muted },
@@ -224,6 +230,7 @@ export const WeeklyBelt: React.FC = React.memo(() => {
                   {item.shortDay}
                 </Text>
                 <Text
+                  numberOfLines={1}
                   style={[
                     styles.dayNum,
                     { color: isSelected ? shade.accentText : shade.text },
@@ -235,7 +242,7 @@ export const WeeklyBelt: React.FC = React.memo(() => {
                   style={[
                     styles.statusDot,
                     {
-                      backgroundColor: isSelected ? shade.accentText : dotColor,
+                      backgroundColor: isSelected ? selectedDotColor : dotColor,
                     },
                   ]}
                 />
@@ -262,7 +269,7 @@ export const WeeklyBelt: React.FC = React.memo(() => {
               </View>
               <Text style={[styles.pastStats, { color: shade.muted }]}>
                 Spent {formatVisiblePeso(selectedSummary.spent)} • Safe left{' '}
-                {formatVisiblePeso(Math.max(0, selectedSummary.safeRemaining))}
+                {formatVisiblePeso(selectedSummary.safeRemaining)}
               </Text>
             </View>
             <ScalePressable
@@ -270,6 +277,9 @@ export const WeeklyBelt: React.FC = React.memo(() => {
                 setSelectedDateKey(todayKey);
                 setWeekOffset(0);
               }}
+              accessibilityRole="button"
+              accessibilityLabel="Jump back to Today"
+              hitSlop={8}
               style={[styles.backTodayPill, { backgroundColor: shade.accent }]}
             >
               <Text

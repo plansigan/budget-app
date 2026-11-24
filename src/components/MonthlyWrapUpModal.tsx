@@ -1,5 +1,7 @@
 import React, { useMemo } from 'react';
 import {
+  Platform,
+  ScrollView,
   Share,
   StyleSheet,
   Text,
@@ -10,6 +12,7 @@ import {
   useGoals,
   useThemePrefs,
 } from '../context/BudgetContext';
+import { useToastActions } from '../context/ToastContext';
 import { MonthlyArchiveSnapshot } from '../types/budget';
 import { triggerLightHaptic, triggerSuccessHaptic } from '../utils/haptics';
 import {
@@ -27,15 +30,13 @@ interface MonthlyWrapUpModalProps {
   archiveSnapshot?: MonthlyArchiveSnapshot | null;
 }
 
-const MonthlyWrapUpModalContent: React.FC<MonthlyWrapUpModalProps> = ({
-  visible,
-  onClose,
-  archiveSnapshot = null,
-}) => {
+const MonthlyWrapUpModalContent: React.FC<
+  Omit<MonthlyWrapUpModalProps, 'visible'>
+> = ({ onClose, archiveSnapshot = null }) => {
   const { shade, privacyMode } = useThemePrefs();
+  const { showToast } = useToastActions();
   const { settings, entries } = useDailyBudget();
-  const { monthlySaved, streakDays, disciplineScore, treats, sinkingFunds } =
-    useGoals();
+  const { monthlySaved, streakDays, disciplineScore } = useGoals();
 
   const report = useMemo(
     () =>
@@ -47,8 +48,6 @@ const MonthlyWrapUpModalContent: React.FC<MonthlyWrapUpModalProps> = ({
             entries,
             streakDays,
             disciplineScore,
-            treats,
-            sinkingFunds,
             privacyMode,
           }),
     [
@@ -58,8 +57,6 @@ const MonthlyWrapUpModalContent: React.FC<MonthlyWrapUpModalProps> = ({
       entries,
       streakDays,
       disciplineScore,
-      treats,
-      sinkingFunds,
       privacyMode,
     ]
   );
@@ -68,6 +65,37 @@ const MonthlyWrapUpModalContent: React.FC<MonthlyWrapUpModalProps> = ({
 
   const handleShare = async () => {
     triggerSuccessHaptic();
+    if (Platform.OS === 'web') {
+      try {
+        if (
+          typeof navigator !== 'undefined' &&
+          typeof navigator.share === 'function'
+        ) {
+          await navigator.share({
+            title: report.monthTitle,
+            text: report.shareText,
+          });
+          return;
+        }
+      } catch {
+        // Fall back to clipboard
+      }
+      try {
+        if (
+          typeof navigator !== 'undefined' &&
+          navigator.clipboard &&
+          typeof navigator.clipboard.writeText === 'function'
+        ) {
+          await navigator.clipboard.writeText(report.shareText);
+          showToast('Monthly summary copied to clipboard!', true);
+          return;
+        }
+      } catch {
+        showToast('Could not copy report on this browser.', false);
+      }
+      return;
+    }
+
     try {
       await Share.share({
         title: report.monthTitle,
@@ -80,204 +108,222 @@ const MonthlyWrapUpModalContent: React.FC<MonthlyWrapUpModalProps> = ({
 
   return (
     <BaseModal
-      visible={visible}
+      visible
       onClose={onClose}
       avoidKeyboard={false}
       initialScale={0.9}
       springSpeed={24}
       springBounciness={8}
-      backdropStyle={styles.backdrop}
       cardStyle={[
         styles.card,
         { backgroundColor: shade.heroBg, borderColor: shade.heroBorder },
       ]}
     >
-      <View style={styles.topRow}>
-            <Text style={[styles.kicker, { color: shade.heroMuted }]}>
-              {report.monthTitle}
-            </Text>
-            <ScalePressable
-              onPress={() => {
-                triggerLightHaptic();
-                onClose();
-              }}
-              accessibilityLabel="Close modal"
-              hitSlop={8}
-              style={[
-                styles.closeChip,
-                { backgroundColor: shade.heroSurface },
-              ]}
-            >
-              <AppIcon name="x" size={14} color={shade.heroText} />
-            </ScalePressable>
-          </View>
-
-          <View style={styles.gradeRow}>
-            <View
-              style={[
-                styles.gradeBadge,
-                { backgroundColor: shade.positive },
-              ]}
-            >
-              <Text style={styles.gradeText}>{report.grade}</Text>
-            </View>
-            <View style={{ flex: 1, gap: 3 }}>
-              <Text style={[styles.headline, { color: shade.heroText }]}>
-                Monthly Report Card
-              </Text>
-              <Text style={[styles.subline, { color: shade.heroMuted }]}>
-                {report.headline}
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.statsGrid}>
-            <View style={styles.statsRow}>
-              <View
-                style={[styles.statBox, { backgroundColor: shade.heroSurface }]}
-              >
-                <Text style={[styles.statLabel, { color: shade.heroMuted }]}>
-                  TOTAL SAVED
-                </Text>
-                <Text
-                  numberOfLines={1}
-                  adjustsFontSizeToFit
-                  minimumFontScale={0.78}
-                  style={[styles.statVal, { color: '#4ADE80' }]}
-                >
-                  {mask(report.totalSaved)}
-                </Text>
-              </View>
-
-              <View
-                style={[styles.statBox, { backgroundColor: shade.heroSurface }]}
-              >
-                <Text style={[styles.statLabel, { color: shade.heroMuted }]}>
-                  TOTAL SPENT
-                </Text>
-                <Text
-                  numberOfLines={1}
-                  adjustsFontSizeToFit
-                  minimumFontScale={0.78}
-                  style={[styles.statVal, { color: shade.heroText }]}
-                >
-                  {mask(report.totalSpent)}
-                </Text>
-              </View>
-            </View>
-
-            <View style={styles.statsRow}>
-              <View
-                style={[styles.statBox, { backgroundColor: shade.heroSurface }]}
-              >
-                <Text style={[styles.statLabel, { color: shade.heroMuted }]}>
-                  SAVINGS RATE
-                </Text>
-                <Text style={[styles.statVal, { color: '#A5B4FC' }]}>
-                  {report.savingsRatePct}%
-                </Text>
-              </View>
-
-              <View
-                style={[styles.statBox, { backgroundColor: shade.heroSurface }]}
-              >
-                <Text style={[styles.statLabel, { color: shade.heroMuted }]}>
-                  STREAK & SCORE
-                </Text>
-                <View style={styles.inlineRow}>
-                  <AppIcon name="zap" size={15} color="#FBBF24" />
-                  <Text style={[styles.statVal, { color: shade.heroText }]}>
-                    {report.streakDays}d • {report.disciplineScore}
-                  </Text>
-                </View>
-              </View>
-            </View>
-          </View>
-
-          <View
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollBody}
+      >
+        <View style={styles.topRow}>
+          <Text style={[styles.kicker, { color: shade.heroMuted }]}>
+            {report.monthTitle}
+          </Text>
+          <ScalePressable
+            onPress={() => {
+              triggerLightHaptic();
+              onClose();
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Close monthly wrap-up"
+            hitSlop={8}
             style={[
-              styles.highlightBox,
+              styles.closeChip,
               { backgroundColor: shade.heroSurface },
             ]}
           >
-            <View style={styles.between}>
-              <Text style={[styles.hlLabel, { color: shade.heroMuted }]}>
-                Top Spend Category
+            <AppIcon name="x" size={14} color={shade.heroText} />
+          </ScalePressable>
+        </View>
+
+        <View style={styles.gradeRow}>
+          <View
+            style={[
+              styles.gradeBadge,
+              { backgroundColor: shade.positiveBtnBg },
+            ]}
+          >
+            <Text style={styles.gradeText}>{report.grade}</Text>
+          </View>
+          <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
+            <Text style={[styles.headline, { color: shade.heroText }]}>
+              Monthly Report Card
+            </Text>
+            <Text style={[styles.subline, { color: shade.heroMuted }]}>
+              {report.headline}
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.statsGrid}>
+          <View style={styles.statsRow}>
+            <View
+              style={[styles.statBox, { backgroundColor: shade.heroSurface }]}
+            >
+              <Text style={[styles.statLabel, { color: shade.heroMuted }]}>
+                TOTAL SAVED
               </Text>
-              <Text style={[styles.hlVal, { color: shade.heroText }]}>
-                {report.topCategoryLabel}
+              <Text
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.78}
+                style={[styles.statVal, { color: shade.heroPositive }]}
+              >
+                {mask(report.totalSaved)}
               </Text>
             </View>
-            <View style={styles.between}>
-              <Text style={[styles.hlLabel, { color: shade.heroMuted }]}>
-                Most Used Wallet
+
+            <View
+              style={[styles.statBox, { backgroundColor: shade.heroSurface }]}
+            >
+              <Text style={[styles.statLabel, { color: shade.heroMuted }]}>
+                TOTAL SPENT
               </Text>
-              <Text style={[styles.hlVal, { color: shade.heroText }]}>
-                {report.topSourceLabel}
+              <Text
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.78}
+                style={[styles.statVal, { color: shade.heroText }]}
+              >
+                {mask(report.totalSpent)}
               </Text>
             </View>
           </View>
 
-          <View style={styles.footerRow}>
-            <ScalePressable
-              onPress={handleShare}
-              style={[styles.shareBtn, { backgroundColor: '#FFFFFF' }]}
+          <View style={styles.statsRow}>
+            <View
+              style={[styles.statBox, { backgroundColor: shade.heroSurface }]}
             >
-              <Text style={[styles.shareBtnText, { color: '#141519' }]}>
-                Share Report
+              <Text style={[styles.statLabel, { color: shade.heroMuted }]}>
+                SAVINGS RATE
               </Text>
-            </ScalePressable>
-            <ScalePressable
-              onPress={() => {
-                triggerLightHaptic();
-                onClose();
-              }}
-              style={[
-                styles.doneBtn,
-                { backgroundColor: shade.heroSurface },
-              ]}
+              <Text style={[styles.statVal, { color: shade.heroDopamine }]}>
+                {report.savingsRatePct}%
+              </Text>
+            </View>
+
+            <View
+              style={[styles.statBox, { backgroundColor: shade.heroSurface }]}
             >
-              <Text style={[styles.doneBtnText, { color: shade.heroText }]}>
-                Close
+              <Text style={[styles.statLabel, { color: shade.heroMuted }]}>
+                STREAK & SCORE
               </Text>
-            </ScalePressable>
+              <View style={styles.inlineRow}>
+                <AppIcon name="zap" size={15} color={shade.heroAmber} />
+                <Text style={[styles.statVal, { color: shade.heroText }]}>
+                  {report.streakDays}d • {report.disciplineScore}
+                </Text>
+              </View>
+            </View>
           </View>
+        </View>
+
+        <View
+          style={[
+            styles.highlightBox,
+            { backgroundColor: shade.heroSurface },
+          ]}
+        >
+          <View style={styles.between}>
+            <Text style={[styles.hlLabel, { color: shade.heroMuted }]}>
+              Top Spend Category
+            </Text>
+            <Text style={[styles.hlVal, { color: shade.heroText }]}>
+              {report.topCategoryLabel}
+            </Text>
+          </View>
+          <View style={styles.between}>
+            <Text style={[styles.hlLabel, { color: shade.heroMuted }]}>
+              Most Used Wallet
+            </Text>
+            <Text style={[styles.hlVal, { color: shade.heroText }]}>
+              {report.topSourceLabel}
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.footerRow}>
+          <ScalePressable
+            onPress={() => {
+              void handleShare();
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Share monthly report"
+            style={[styles.shareBtn, { backgroundColor: '#FFFFFF' }]}
+          >
+            <Text style={[styles.shareBtnText, { color: '#141519' }]}>
+              Share Report
+            </Text>
+          </ScalePressable>
+          <ScalePressable
+            onPress={() => {
+              triggerLightHaptic();
+              onClose();
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Close monthly wrap-up"
+            style={[styles.doneBtn, { backgroundColor: shade.heroSurface }]}
+          >
+            <Text style={[styles.doneBtnText, { color: shade.heroText }]}>
+              Close
+            </Text>
+          </ScalePressable>
+        </View>
+      </ScrollView>
     </BaseModal>
   );
 };
 
 /**
- * Dark Obsidian Spotify-Wrapped-inspired Monthly Report Card summarizing savings,
- * spending, streaks, top category, and grade with 1-tap Share.
+ * Dark Obsidian Monthly Report Card summarizing savings, spending, streaks,
+ * top category, and grade with Web clipboard fallback + Share.
  */
-export const MonthlyWrapUpModal: React.FC<MonthlyWrapUpModalProps> = (props) => {
+export const MonthlyWrapUpModal: React.FC<MonthlyWrapUpModalProps> = (
+  props
+) => {
   if (!props.visible) return null;
-  return <MonthlyWrapUpModalContent {...props} />;
+  return (
+    <MonthlyWrapUpModalContent
+      archiveSnapshot={props.archiveSnapshot}
+      onClose={props.onClose}
+    />
+  );
 };
 
 const styles = StyleSheet.create({
-  backdrop: {
-    backgroundColor: 'rgba(17, 24, 39, 0.55)',
-  },
   card: {
     borderRadius: 26,
     padding: 20,
+    maxHeight: '88%',
+  },
+  scrollBody: {
     gap: 16,
   },
   topRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: 8,
   },
   kicker: {
     fontSize: 10,
     fontWeight: '800',
     letterSpacing: 1,
+    flex: 1,
+    minWidth: 0,
   },
   closeChip: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -311,10 +357,12 @@ const styles = StyleSheet.create({
   },
   statsRow: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 8,
   },
   statBox: {
     flex: 1,
+    minWidth: 120,
     borderRadius: 14,
     padding: 12,
     gap: 4,
@@ -341,8 +389,10 @@ const styles = StyleSheet.create({
   },
   between: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     justifyContent: 'space-between',
     alignItems: 'center',
+    gap: 6,
   },
   hlLabel: {
     fontSize: 11,

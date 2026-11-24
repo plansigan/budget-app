@@ -2,6 +2,12 @@ import { ThemeShade } from '../theme/palette';
 import { TransactionEntry } from '../types/budget';
 import { formatPeso } from './numberFormat';
 
+function round2(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  const r = Math.round(value * 100) / 100;
+  return r === 0 ? 0 : r;
+}
+
 export interface TransactionPresentation {
   deltaText: string;
   deltaColor: string;
@@ -89,7 +95,7 @@ export function getTransactionPresentation(
     case 'envelope_refill': {
       const amt = Math.abs(entry.amount);
       return {
-        deltaText: maskIfNeeded(`+${formatPeso(amt)} Env`),
+        deltaText: maskIfNeeded(`+${formatPeso(amt)} Top-Up`),
         deltaColor: shade.positive,
         csvSignedAmount: 0,
         isTreatHighlight: false,
@@ -130,8 +136,7 @@ export function getTransactionPresentation(
     case 'wallet_deposit': {
       const amt = Math.abs(entry.amount);
       const isCardPayment =
-        entry.icon === 'credit-card' ||
-        /payment/i.test(entry.label || '');
+        entry.isCardPayment === true || entry.icon === 'credit-card';
       return {
         deltaText: maskIfNeeded(
           isCardPayment ? `Paid ${formatPeso(amt)}` : `+${formatPeso(amt)}`
@@ -209,8 +214,18 @@ export function getTransactionPresentation(
       return {
         deltaText: maskIfNeeded(visible),
         deltaColor: savingsAmt > 0 ? shade.positive : shade.dopamine,
-        csvSignedAmount: treatAmt + savingsAmt,
+        csvSignedAmount: round2(treatAmt + savingsAmt),
         isTreatHighlight: treatAmt > 0 && savingsAmt === 0,
+      };
+    }
+
+    default: {
+      const amt = Math.abs(Number.isFinite(entry.amount) ? entry.amount : 0);
+      return {
+        deltaText: maskIfNeeded(formatPeso(amt)),
+        deltaColor: shade.muted,
+        csvSignedAmount: 0,
+        isTreatHighlight: false,
       };
     }
   }
