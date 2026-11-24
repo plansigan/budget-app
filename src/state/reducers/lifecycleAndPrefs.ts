@@ -99,6 +99,7 @@ export const handleLifecycleAndPrefsAction: SliceReducer = (state, action) => {
         monthlyArchives: [],
         activeTreatId: nextActiveTreatId,
         treats: nextTreats,
+        wantToBuyItems: [],
         installments: [],
         envelopes: [],
         sinkingFunds: [],

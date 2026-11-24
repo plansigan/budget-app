@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:e2e": "playwright test",
     "lint": "eslint App.tsx src"
   },
   "dependencies": {
@@ -29,6 +30,7 @@
   "devDependencies": {
     "@babel/core": "^7.25.2",
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.65.1",
     "@types/react": "~19.3.0",
     "eslint": "^10.15.0",
     "eslint-plugin-react-hooks": "^7.1.1",

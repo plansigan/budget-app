@@ -12,6 +12,7 @@ import {
   TransactionEntry,
   TransactionType,
   TreatVaultItem,
+  WantToBuyItem,
 } from '../types/budget';
 import {
   mirrorLatestStateToIdb,
@@ -43,6 +44,7 @@ const VALID_TRANSACTION_TYPES = new Set<TransactionType>([
   'wallet_transfer',
   'debt_outflow',
   'debt_inflow',
+  'savings_spend',
 ]);
 
 const VALID_GRADES = new Set<MonthlyArchiveSnapshot['grade']>([
@@ -263,6 +265,10 @@ export function normalizePersistedState(
             previousEnvelopeBalance,
             rolloverDelta,
             savingsDelta,
+            wantToBuyId:
+              typeof e.wantToBuyId === 'string' && e.wantToBuyId.trim()
+                ? e.wantToBuyId.trim()
+                : undefined,
           };
         })
     : [];
@@ -382,6 +388,64 @@ export function normalizePersistedState(
       ? raw.activeTreatId
       : '';
 
+  const fallbackCreated = getTodayKey();
+  const normalizedWantToBuy: WantToBuyItem[] = Array.isArray(raw.wantToBuyItems)
+    ? raw.wantToBuyItems
+        .filter((w): w is WantToBuyItem =>
+          Boolean(w && typeof w === 'object')
+        )
+        .map((w, idx) => {
+          const validStatus =
+            w.status === 'bought' || w.status === 'skipped'
+              ? w.status
+              : 'waiting';
+          const createdAt =
+            typeof w.createdAt === 'string' &&
+            /^\d{4}-\d{2}-\d{2}$/.test(w.createdAt)
+              ? w.createdAt
+              : fallbackCreated;
+          const reevaluateOn =
+            typeof w.reevaluateOn === 'string' &&
+            /^\d{4}-\d{2}-\d{2}$/.test(w.reevaluateOn)
+              ? w.reevaluateOn
+              : createdAt;
+          const noteTrimmed =
+            typeof w.note === 'string' && w.note.trim()
+              ? w.note.trim()
+              : undefined;
+          const resolvedAt =
+            validStatus !== 'waiting' &&
+            typeof w.resolvedAt === 'string' &&
+            /^\d{4}-\d{2}-\d{2}$/.test(w.resolvedAt)
+              ? w.resolvedAt
+              : undefined;
+          const fundingChoice =
+            w.fundingChoice === 'daily' ||
+            w.fundingChoice === 'savings_jar' ||
+            w.fundingChoice === 'sinking_fund'
+              ? w.fundingChoice
+              : undefined;
+          return {
+            id: typeof w.id === 'string' && w.id ? w.id : `wtb-${idx}`,
+            name:
+              typeof w.name === 'string' && w.name.trim()
+                ? w.name.trim()
+                : 'Wish Item',
+            price: roundCurrency(safeNum(w.price, 1, 0.01)),
+            icon: typeof w.icon === 'string' && w.icon ? w.icon : 'shopping-bag',
+            ...(noteTrimmed ? { note: noteTrimmed } : {}),
+            createdAt,
+            reevaluateOn,
+            status: validStatus,
+            ...(resolvedAt ? { resolvedAt } : {}),
+            ...(fundingChoice ? { fundingChoice } : {}),
+            ...(typeof w.sinkingFundId === 'string' && w.sinkingFundId
+              ? { sinkingFundId: w.sinkingFundId }
+              : {}),
+          };
+        })
+    : [];
+
   const rawLastSrc =
     typeof raw.lastPaymentSourceId === 'string' &&
     raw.lastPaymentSourceId.trim().length > 0
@@ -433,6 +497,7 @@ export function normalizePersistedState(
     disciplineScore: Math.round(safeNum(raw.disciplineScore, 800, 700, 999)),
     activeTreatId: validActiveTreatId,
     treats: normalizedTreats,
+    wantToBuyItems: normalizedWantToBuy,
     entries: normalizedEntries,
     monthlyArchives: normalizedArchives,
     unlockedMilestones: Array.isArray(raw.unlockedMilestones)

@@ -11,6 +11,7 @@ import { DebtPaymentModal } from '../components/DebtModals';
 import { EditTransactionModal } from '../components/EditTransactionModal';
 import { PayBillModal } from '../components/PayBillModal';
 import { PaydayCheckInModal } from '../components/PaydayCheckInModal';
+import { BuyWantToBuyModal } from '../components/WantToBuyModals';
 import { WeeklyBelt } from '../components/WeeklyBelt';
 import {
   useBudgetActions,
@@ -19,11 +20,16 @@ import {
   useThemePrefs,
   useWallet,
 } from '../context/BudgetContext';
-import { parseDateKeyLocal, roundCurrency } from '../state/budgetMath';
+import {
+  getDaysUntilDateKey,
+  parseDateKeyLocal,
+  roundCurrency,
+} from '../state/budgetMath';
 import {
   BillItem,
   DebtItem,
   TransactionEntry,
+  WantToBuyItem,
   getDaysUntilDayOfMonth,
   getExpectedPaycheckAmount,
   getNextPaydayLabel,
@@ -34,6 +40,7 @@ import { getTransactionPresentation } from '../utils/transactionDisplay';
 import { TodayActivityCard } from './today/TodayActivityCard';
 import { TodayHeroCard } from './today/TodayHeroCard';
 import { TodayQuickAllowances } from './today/TodayQuickAllowances';
+import { TodayReevaluateCard } from './today/TodayReevaluateCard';
 import { TodayUpcomingAndDebts } from './today/TodayUpcomingAndDebts';
 
 interface TodayScreenProps {
@@ -70,9 +77,14 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
     getDayEntries,
   } = useDailyBudget();
   const { debts } = useWallet();
-  const { monthlySaved, treats, activeTreat } = useGoals();
-  const { bankTodaySurplus, claimTreat, undoEntry, dismissPaydayPrompt } =
-    useBudgetActions();
+  const { monthlySaved, treats, activeTreat, wantToBuyItems } = useGoals();
+  const {
+    bankTodaySurplus,
+    claimTreat,
+    undoEntry,
+    dismissPaydayPrompt,
+    skipWantToBuy,
+  } = useBudgetActions();
 
   const [modalVisible, setModalVisible] = useState(false);
   const [modalMode, setModalMode] = useState<ActionModalMode>('spend');
@@ -82,6 +94,8 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
   const [debtToPay, setDebtToPay] = useState<DebtItem | null>(null);
   const [showAllActivity, setShowAllActivity] = useState(false);
   const [showEndDayConfirm, setShowEndDayConfirm] = useState(false);
+  const [reviewingWantItem, setReviewingWantItem] =
+    useState<WantToBuyItem | null>(null);
   const [editingEntry, setEditingEntry] = useState<TransactionEntry | null>(
     null
   );
@@ -191,6 +205,16 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
       ? activeTreat
       : treats.find((t) => !t.claimed) || null;
 
+  const readyWantToBuyItems = useMemo(
+    () =>
+      wantToBuyItems.filter(
+        (w) =>
+          w.status === 'waiting' &&
+          getDaysUntilDateKey(w.reevaluateOn, todayKey) <= 0
+      ),
+    [wantToBuyItems, todayKey]
+  );
+
   return (
     <ScrollView
       contentContainerStyle={styles.scrollContent}
@@ -231,6 +255,12 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
           onOpenAllowances={handleOpenAllowances}
           onOpenVault={onOpenVault}
           onClaimTreat={claimTreat}
+        />
+
+        <TodayReevaluateCard
+          readyItems={readyWantToBuyItems}
+          onReviewItem={setReviewingWantItem}
+          onSkipItem={(item) => skipWantToBuy(item.id)}
         />
 
         <TodayUpcomingAndDebts
@@ -292,6 +322,12 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
       <EditTransactionModal
         entry={editingEntry}
         onClose={() => setEditingEntry(null)}
+      />
+
+      <BuyWantToBuyModal
+        item={reviewingWantItem}
+        onClose={() => setReviewingWantItem(null)}
+        showDecisionShortcuts
       />
 
       <ConfirmModal

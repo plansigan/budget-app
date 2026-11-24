@@ -206,6 +206,7 @@ export function useDailyActions({
         label: string;
         category?: SpendCategoryKey;
         icon?: string;
+        paymentSourceId?: string;
       }
     ) => {
       if (!Number.isFinite(updates.amount) || updates.amount <= 0) return;
@@ -225,6 +226,7 @@ export function useDailyActions({
         label: trimmedLabel,
         category: updates.category,
         icon: updates.icon,
+        paymentSourceId: updates.paymentSourceId,
       });
       showToast('Updated transaction', false);
     },

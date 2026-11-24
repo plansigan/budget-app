@@ -9,3 +9,5 @@ web-build/
 *.mobileprovision
 *.orig.*
 .DS_Store
+playwright-report/
+test-results/

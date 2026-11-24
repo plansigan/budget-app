@@ -1,4 +1,12 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, {
+  Suspense,
+  lazy,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   ActivityIndicator,
   BackHandler,
@@ -20,11 +28,20 @@ import {
 } from './src/components/AnimatedPrimitives';
 import { AppErrorBoundary } from './src/components/AppErrorBoundary';
 import { AppIcon } from './src/components/AppIcon';
-import { AppGuideFaqModal } from './src/components/AppGuideFaqModal';
-import { InteractiveTutorialModal } from './src/components/InteractiveTutorialModal';
 import { AppHeader } from './src/components/shell/AppHeader';
 import { BottomTabBar } from './src/components/shell/BottomTabBar';
 import { ToastOverlay } from './src/components/shell/ToastOverlay';
+
+const AppGuideFaqModal = lazy(() =>
+  import('./src/components/AppGuideFaqModal').then((m) => ({
+    default: m.AppGuideFaqModal,
+  }))
+);
+const InteractiveTutorialModal = lazy(() =>
+  import('./src/components/InteractiveTutorialModal').then((m) => ({
+    default: m.InteractiveTutorialModal,
+  }))
+);
 import {
   BudgetProvider,
   useBudgetActions,
@@ -375,15 +392,23 @@ const AppShell: React.FC = () => {
         onSelectTab={switchTab}
       />
 
-      {!hasSeenTutorial && <InteractiveTutorialModal />}
-      <AppGuideFaqModal
-        visible={showFaq}
-        onClose={() => setShowFaq(false)}
-        onReplayQuickGuide={() => {
-          setShowFaq(false);
-          openTutorial();
-        }}
-      />
+      {!hasSeenTutorial && (
+        <Suspense fallback={null}>
+          <InteractiveTutorialModal />
+        </Suspense>
+      )}
+      {showFaq && (
+        <Suspense fallback={null}>
+          <AppGuideFaqModal
+            visible={showFaq}
+            onClose={() => setShowFaq(false)}
+            onReplayQuickGuide={() => {
+              setShowFaq(false);
+              openTutorial();
+            }}
+          />
+        </Suspense>
+      )}
       <AchievementModal onNavigateTab={(tab) => switchTab(tab)} />
     </View>
   );

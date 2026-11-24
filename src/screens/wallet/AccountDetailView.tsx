@@ -114,6 +114,7 @@ export const AccountDetailView: React.FC<AccountDetailViewProps> = ({
           e.type === 'spend' ||
           e.type === 'bill_paid' ||
           e.type === 'envelope_spend' ||
+          e.type === 'savings_spend' ||
           e.type === 'debt_outflow' ||
           (e.type === 'wallet_transfer' &&
             e.paymentSourceId === selectedAccountId)

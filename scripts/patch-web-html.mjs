@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -81,6 +82,34 @@ fs.writeFileSync(
   'utf8'
 );
 
+// Remove unused vector-icon font files so dist stays lean on static hosts
+function pruneUnusedVectorFonts(subDir) {
+  const fullDir = path.join(distDir, subDir);
+  if (!fs.existsSync(fullDir)) return 0;
+  let removed = 0;
+  const stack = [fullDir];
+  while (stack.length > 0) {
+    const dir = stack.pop();
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        stack.push(fullPath);
+      } else if (
+        entry.isFile() &&
+        entry.name.endsWith('.ttf') &&
+        !entry.name.startsWith('Feather.')
+      ) {
+        fs.unlinkSync(fullPath);
+        removed += 1;
+      }
+    }
+  }
+  return removed;
+}
+
+const prunedFonts = pruneUnusedVectorFonts('assets');
+
 // Build safe offline-capable Service Worker with build-unique cache key
 function walkRelativeUrls(subDir) {
   const fullDir = path.join(distDir, subDir);
@@ -111,7 +140,13 @@ let bundleBuildId = `${Date.now()}`;
 if (fs.existsSync(expoJsDir)) {
   const jsFiles = fs.readdirSync(expoJsDir).filter((f) => f.endsWith('.js')).sort();
   if (jsFiles.length > 0) {
-    bundleBuildId = jsFiles[0].replace(/[^a-zA-Z0-9_-]/g, '-');
+    const hash = crypto
+      .createHash('sha1')
+      .update(jsFiles.join('|'))
+      .digest('hex')
+      .slice(0, 12);
+    const entryFile = jsFiles.find((f) => f.startsWith('index-')) || jsFiles[0];
+    bundleBuildId = `${entryFile.replace(/[^a-zA-Z0-9_-]/g, '-')}-${hash}`;
   }
 }
 const cacheName = `velvet-budget-${bundleBuildId}`;
@@ -222,5 +257,5 @@ self.addEventListener('fetch', (event) => {
 fs.writeFileSync(path.join(distDir, 'sw.js'), swSource, 'utf8');
 
 console.log(
-  `Patched dist/index.html, 404.html, manifest.json, icons (${iconFiles.length}), and sw.js (${cacheName}, ${precacheUrls.length} cached assets, baseUrl="${rawBaseUrl}")`
+  `Patched dist/index.html, 404.html, manifest.json, icons (${iconFiles.length}), pruned unused fonts (${prunedFonts}), and sw.js (${cacheName}, ${precacheUrls.length} cached assets, baseUrl="${rawBaseUrl}")`
 );
