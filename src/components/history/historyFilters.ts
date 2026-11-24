@@ -28,7 +28,7 @@ export function matchesHistoryFilter(
     case 'all':
       return true;
     case 'spend':
-      return type === 'spend';
+      return type === 'spend' || type === 'savings_spend';
     case 'envelopes':
       return type === 'envelope_spend' || type === 'envelope_refill';
     case 'bills':
@@ -41,7 +41,8 @@ export function matchesHistoryFilter(
         type === 'treat_direct' ||
         type === 'impulse_skipped' ||
         type === 'midnight_split' ||
-        type === 'sinking_fund'
+        type === 'sinking_fund' ||
+        type === 'savings_spend'
       );
     case 'wallet':
       return (

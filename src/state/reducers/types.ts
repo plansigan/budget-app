@@ -224,6 +224,7 @@ export type BudgetAction =
       label: string;
       category?: SpendCategoryKey;
       icon?: string;
+      paymentSourceId?: string;
     }
   | {
       type: 'ADD_DEBT';
@@ -252,6 +253,32 @@ export type BudgetAction =
       paymentSourceId?: string;
       affectsDailyBudget?: boolean;
       dateKey?: string;
+      todayKey?: string;
+    }
+  | {
+      type: 'ADD_WANT_TO_BUY';
+      name: string;
+      price: number;
+      icon: string;
+      note?: string;
+      todayKey?: string;
+      coolOffDays?: number;
+    }
+  | {
+      type: 'EXTEND_WANT_TO_BUY';
+      id: string;
+      extraDays?: number;
+      todayKey?: string;
+    }
+  | { type: 'SKIP_WANT_TO_BUY'; id: string; todayKey?: string }
+  | { type: 'DELETE_WANT_TO_BUY'; id: string }
+  | {
+      type: 'BUY_WANT_TO_BUY';
+      id: string;
+      fundingChoice: 'daily' | 'savings_jar' | 'sinking_fund';
+      sinkingFundId?: string;
+      paymentSourceId?: string;
+      category?: SpendCategoryKey;
       todayKey?: string;
     };
 

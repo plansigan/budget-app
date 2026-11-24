@@ -1,6 +1,10 @@
 import { TransactionEntry } from '../../types/budget';
 import { roundCurrency } from '../budgetMath';
-import { isEditableEntry, reconcileEditedWalletDelta } from './helpers';
+import {
+  applyWalletDelta,
+  isEditableEntry,
+  reconcileEditedWalletDelta,
+} from './helpers';
 import { SliceReducer } from './types';
 
 export const handleEditEntryAction: SliceReducer = (state, action) => {
@@ -23,6 +27,9 @@ export const handleEditEntryAction: SliceReducer = (state, action) => {
 
   let nextAppliedWalletDelta = target.appliedWalletDelta;
   let nextSignedDelta = target.signedDelta;
+  let nextPaymentSourceId = target.paymentSourceId;
+  let nextPaymentSourceLabel = target.paymentSourceLabel;
+  let nextIsCardPayment = target.isCardPayment;
   let nextPreviousEnvelopeBalance = target.previousEnvelopeBalance;
   let nextAppliedEnvelopeDelta = target.appliedEnvelopeDelta;
 
@@ -31,22 +38,55 @@ export const handleEditEntryAction: SliceReducer = (state, action) => {
     target.type === 'bill_paid' ||
     target.type === 'envelope_spend'
   ) {
-    if (target.paymentSourceId) {
-      const oldApplied =
-        typeof target.appliedWalletDelta === 'number'
-          ? target.appliedWalletDelta
-          : target.amount;
-      const rec = reconcileEditedWalletDelta(
-        state,
+    const requestedSourceId =
+      action.paymentSourceId !== undefined
+        ? action.paymentSourceId
+        : target.paymentSourceId;
+    const normalizedRequested =
+      requestedSourceId === 'none' || !requestedSourceId
+        ? undefined
+        : requestedSourceId;
+    const oldApplied =
+      typeof target.appliedWalletDelta === 'number'
+        ? target.appliedWalletDelta
+        : target.paymentSourceId
+        ? target.amount
+        : 0;
+
+    if (normalizedRequested === target.paymentSourceId) {
+      if (target.paymentSourceId) {
+        const rec = reconcileEditedWalletDelta(
+          state,
+          target.paymentSourceId,
+          'outflow',
+          oldApplied,
+          cleanAmount
+        );
+        nextCash = rec.cashOnHand;
+        nextBanks = rec.banks;
+        nextCards = rec.creditCards;
+        nextAppliedWalletDelta = rec.nextAppliedDelta;
+      }
+    } else {
+      const rev = applyWalletDelta(
+        { cashOnHand: nextCash, banks: nextBanks, creditCards: nextCards },
         target.paymentSourceId,
-        'outflow',
+        'inflow',
         oldApplied,
+        { allowCardInflow: true }
+      );
+      const applied = applyWalletDelta(
+        rev,
+        normalizedRequested,
+        'outflow',
         cleanAmount
       );
-      nextCash = rec.cashOnHand;
-      nextBanks = rec.banks;
-      nextCards = rec.creditCards;
-      nextAppliedWalletDelta = rec.nextAppliedDelta;
+      nextCash = applied.cashOnHand;
+      nextBanks = applied.banks;
+      nextCards = applied.creditCards;
+      nextPaymentSourceId = applied.effectiveSourceId;
+      nextPaymentSourceLabel = applied.sourceLabel;
+      nextAppliedWalletDelta = applied.appliedDelta;
     }
 
     if (target.type === 'envelope_spend' && target.envelopeId) {
@@ -66,21 +106,52 @@ export const handleEditEntryAction: SliceReducer = (state, action) => {
       });
     }
   } else if (target.type === 'wallet_deposit') {
+    const requestedSourceId =
+      action.paymentSourceId !== undefined
+        ? action.paymentSourceId
+        : target.paymentSourceId;
     const oldApplied =
       typeof target.appliedWalletDelta === 'number'
         ? target.appliedWalletDelta
         : target.amount;
-    const rec = reconcileEditedWalletDelta(
-      state,
-      target.paymentSourceId,
-      'inflow',
-      oldApplied,
-      cleanAmount
-    );
-    nextCash = rec.cashOnHand;
-    nextBanks = rec.banks;
-    nextCards = rec.creditCards;
-    nextAppliedWalletDelta = rec.nextAppliedDelta;
+    if (requestedSourceId === target.paymentSourceId) {
+      const rec = reconcileEditedWalletDelta(
+        state,
+        target.paymentSourceId,
+        'inflow',
+        oldApplied,
+        cleanAmount
+      );
+      nextCash = rec.cashOnHand;
+      nextBanks = rec.banks;
+      nextCards = rec.creditCards;
+      nextAppliedWalletDelta = rec.nextAppliedDelta;
+    } else {
+      const rev = applyWalletDelta(
+        { cashOnHand: nextCash, banks: nextBanks, creditCards: nextCards },
+        target.paymentSourceId,
+        'outflow',
+        oldApplied,
+        { allowCardInflow: true }
+      );
+      const applied = applyWalletDelta(
+        rev,
+        requestedSourceId,
+        'inflow',
+        cleanAmount,
+        { allowCardInflow: true }
+      );
+      if (applied.sourceKind === 'none') {
+        return state;
+      }
+      nextCash = applied.cashOnHand;
+      nextBanks = applied.banks;
+      nextCards = applied.creditCards;
+      nextPaymentSourceId = applied.effectiveSourceId;
+      nextPaymentSourceLabel = applied.sourceLabel;
+      nextAppliedWalletDelta = applied.appliedDelta;
+      nextIsCardPayment = applied.sourceKind === 'card';
+    }
     nextSignedDelta = cleanAmount;
   } else if (target.type === 'save_direct') {
     const delta = roundCurrency(cleanAmount - target.amount);
@@ -120,6 +191,11 @@ export const handleEditEntryAction: SliceReducer = (state, action) => {
     ...target,
     amount: cleanAmount,
     label: cleanLabel,
+    paymentSourceId: nextPaymentSourceId,
+    paymentSourceLabel: nextPaymentSourceLabel,
+    ...(nextIsCardPayment !== undefined
+      ? { isCardPayment: nextIsCardPayment }
+      : {}),
     ...(canUpdateCat && action.category !== undefined
       ? { category: action.category }
       : {}),

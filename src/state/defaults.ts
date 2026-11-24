@@ -11,8 +11,14 @@ import {
   ThemeMode,
   TransactionEntry,
   TreatVaultItem,
+  WantToBuyItem,
 } from '../types/budget';
-import { getTodayKey, parseDateKeyLocal, sumBills } from './budgetMath';
+import {
+  addDaysToDateKey,
+  getTodayKey,
+  parseDateKeyLocal,
+  sumBills,
+} from './budgetMath';
 
 const DEMO_MONTH_NAMES = [
   'JANUARY',
@@ -74,6 +80,7 @@ export interface PersistedBudgetState {
   disciplineScore: number;
   activeTreatId: string;
   treats: TreatVaultItem[];
+  wantToBuyItems: WantToBuyItem[];
   entries: TransactionEntry[];
   monthlyArchives: MonthlyArchiveSnapshot[];
   unlockedMilestones: string[];
@@ -165,6 +172,7 @@ export function createNewUserState(
     disciplineScore: 800,
     activeTreatId: '',
     treats: [],
+    wantToBuyItems: [],
     entries: [],
     monthlyArchives: [],
     unlockedMilestones: [],
@@ -246,6 +254,27 @@ export function createDemoState(
         fromImpulses: 1350,
         fromRollovers: 1100,
         claimed: false,
+      },
+    ],
+    wantToBuyItems: [
+      {
+        id: 'wtb-demo-1',
+        name: 'Mechanical Keyboard',
+        price: 3500,
+        icon: 'shopping-bag',
+        note: 'Wait 7 days before checking out',
+        createdAt: addDaysToDateKey(todayKey, -7),
+        reevaluateOn: todayKey,
+        status: 'waiting',
+      },
+      {
+        id: 'wtb-demo-2',
+        name: 'Running Jacket',
+        price: 2200,
+        icon: 'shopping-bag',
+        createdAt: addDaysToDateKey(todayKey, -3),
+        reevaluateOn: addDaysToDateKey(todayKey, 4),
+        status: 'waiting',
       },
     ],
     entries: [

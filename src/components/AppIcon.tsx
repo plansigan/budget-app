@@ -1,6 +1,6 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { Feather } from '@expo/vector-icons';
+import Feather from '@expo/vector-icons/Feather';
 import { SpendCategoryKey } from '../types/budget';
 
 export type AppIconName = React.ComponentProps<typeof Feather>['name'];

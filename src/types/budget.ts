@@ -30,7 +30,22 @@ export type TransactionType =
   | 'wallet_adjust'
   | 'wallet_transfer'
   | 'debt_outflow'
-  | 'debt_inflow';
+  | 'debt_inflow'
+  | 'savings_spend';
+
+export interface WantToBuyItem {
+  id: string;
+  name: string;
+  price: number;
+  icon: string;
+  note?: string;
+  createdAt: string;
+  reevaluateOn: string;
+  status: 'waiting' | 'bought' | 'skipped';
+  resolvedAt?: string;
+  fundingChoice?: 'daily' | 'savings_jar' | 'sinking_fund';
+  sinkingFundId?: string;
+}
 
 export type CardTier =
   | 'Matte Slate'
@@ -93,6 +108,8 @@ export interface TransactionEntry {
   previousPaydayCheckInKey?: string;
   /** Explicit marker for credit-card payment deposits (preferred over note heuristics). */
   isCardPayment?: boolean;
+  /** Linked WantToBuyItem id when logged via the 7-day cool-off flow. */
+  wantToBuyId?: string;
 }
 
 export interface MonthlyArchiveSnapshot {

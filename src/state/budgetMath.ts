@@ -30,6 +30,29 @@ export function parseDateKeyLocal(dateKey: string): Date {
   return new Date(now.getFullYear(), now.getMonth(), now.getDate());
 }
 
+/**
+ * Adds a signed number of calendar days to a YYYY-MM-DD local date key.
+ */
+export function addDaysToDateKey(dateKey: string, days: number): string {
+  const dt = parseDateKeyLocal(dateKey);
+  dt.setDate(dt.getDate() + Math.round(days));
+  return formatLocalDateKey(dt);
+}
+
+/**
+ * Returns whole calendar days from `todayKey` until `targetDateKey` (<= 0 means due or overdue).
+ */
+export function getDaysUntilDateKey(
+  targetDateKey: string,
+  todayKey: string
+): number {
+  const target = parseDateKeyLocal(targetDateKey);
+  const today = parseDateKeyLocal(todayKey);
+  return Math.round(
+    (target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
+  );
+}
+
 export function safeNum(
   value: unknown,
   fallback: number,

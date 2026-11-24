@@ -1,12 +1,17 @@
 import React, { useEffect, useState } from 'react';
 import { StyleSheet, Text, TextInput, View } from 'react-native';
-import { useBudgetActions, useThemePrefs } from '../context/BudgetContext';
+import {
+  useBudgetActions,
+  useThemePrefs,
+  useWallet,
+} from '../context/BudgetContext';
 import { SpendCategoryKey, TransactionEntry } from '../types/budget';
 import { classifySpendCategory } from '../utils/insightsEngine';
 import { formatPesoNumber, parsePesoInput } from '../utils/numberFormat';
 import { formatEntryDateLocal } from '../utils/transactionDisplay';
 import { ScalePressable } from './AnimatedPrimitives';
 import { FormModal } from './FormModal';
+import { PaymentSourcePicker } from './form/PaymentSourcePicker';
 import { PesoAmountInput } from './form/PesoAmountInput';
 import { SpendCategoryPicker } from './form/SpendCategoryPicker';
 
@@ -16,20 +21,22 @@ interface EditTransactionModalProps {
 }
 
 /**
- * Modal to edit a logged transaction's amount, label/note, and category
- * while automatically reconciling linked Wallet, Allowance, Savings, or Treat balances.
+ * Modal to edit a logged transaction's amount, payment account, label/note,
+ * and category while automatically reconciling linked Wallet, Allowance, Savings, or Treat balances.
  */
 export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
   entry,
   onClose,
 }) => {
-  const { shade } = useThemePrefs();
+  const { shade, formatVisiblePeso } = useThemePrefs();
+  const { cashOnHand, banks, creditCards } = useWallet();
   const { editEntry } = useBudgetActions();
 
   const [amountText, setAmountText] = useState('');
   const [labelText, setLabelText] = useState('');
   const [category, setCategory] = useState<SpendCategoryKey>('other');
   const [icon, setIcon] = useState<string>('tag');
+  const [paymentSourceId, setPaymentSourceId] = useState<string>('none');
   const [formError, setFormError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -42,6 +49,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
     ) as SpendCategoryKey;
     setCategory(resolvedCat);
     setIcon(entry.icon || classified.icon);
+    setPaymentSourceId(entry.paymentSourceId || 'none');
     setFormError(null);
   }, [entry]);
 
@@ -49,10 +57,25 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
 
   const isSpendEntry =
     entry.type === 'spend' || entry.type === 'envelope_spend';
+  const supportsWalletSource =
+    entry.type === 'spend' ||
+    entry.type === 'envelope_spend' ||
+    entry.type === 'bill_paid' ||
+    entry.type === 'wallet_deposit';
+
+  const selectedSourceLabel =
+    paymentSourceId === 'cash'
+      ? 'Cash'
+      : banks.find((b) => b.id === paymentSourceId)?.name ||
+        creditCards.find((c) => c.id === paymentSourceId)?.name ||
+        (paymentSourceId === 'none' ? 'Track Only' : entry.paymentSourceLabel);
+
   const numericAmount = parsePesoInput(amountText);
   const canSave = numericAmount > 0 && labelText.trim().length > 0;
   const dateStr = formatEntryDateLocal(entry);
-  const contextLine = entry.paymentSourceLabel
+  const contextLine = supportsWalletSource && selectedSourceLabel
+    ? `${dateStr} • ${selectedSourceLabel} — Balances update automatically`
+    : entry.paymentSourceLabel
     ? `${dateStr} • ${entry.paymentSourceLabel} — Balances update automatically`
     : `${dateStr} — Balances update automatically`;
 
@@ -88,6 +111,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
       amount: numericAmount,
       label: labelText.trim(),
       ...(isSpendEntry ? { category, icon } : {}),
+      ...(supportsWalletSource ? { paymentSourceId } : {}),
     });
     onClose();
   };
@@ -116,6 +140,27 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
         containerStyle={styles.amountBox}
         inputStyle={styles.amountInput}
       />
+
+      {supportsWalletSource && (
+        <PaymentSourcePicker
+          selectedId={paymentSourceId}
+          onSelect={setPaymentSourceId}
+          cashOnHand={cashOnHand}
+          banks={banks}
+          creditCards={creditCards}
+          shade={shade}
+          formatVisiblePeso={formatVisiblePeso}
+          activeColor={filledBtnBg}
+          activeTextColor={filledBtnFg}
+          includeCash
+          includeTrackOnly={entry.type !== 'wallet_deposit'}
+          trackOnlyId="none"
+          trackOnlyLabel="Track Only"
+          trackOnlySubLabel="No wallet change"
+          creditCardSubMode={entry.type === 'wallet_deposit' ? 'used' : 'avail'}
+          label="ACCOUNT"
+        />
+      )}
 
       {isSpendEntry && (
         <SpendCategoryPicker

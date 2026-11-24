@@ -553,4 +553,79 @@ describe('budgetReducer & persistence', () => {
     expect(withInst.installments[0].paidMonths).toBe(12);
     expect(withInst.installments[0].totalMonths).toBe(12);
   });
+
+  it('switches paymentSourceId on EDIT_ENTRY for spends and deposits accurately', () => {
+    let state = makeReducerState({
+      cashOnHand: 1000,
+      banks: [{ id: 'bank-bpi', name: 'BPI', balance: 5000 }],
+      creditCards: [{ id: 'cc-bdo', name: 'BDO Visa', limit: 10000, used: 1000, cutoffDay: 15 }],
+    });
+
+    // 1) Spend on Cash (300), then edit to BPI (450), then to BDO Visa (450), then to Track Only ('none')
+    state = budgetReducer(state, {
+      type: 'LOG_SPEND',
+      amount: 300,
+      label: 'Shoes',
+      icon: 'shopping-bag',
+      paymentSourceId: 'cash',
+      dateKey: '2026-04-10',
+      todayKey: '2026-04-10',
+    });
+    const spendId = state.entries[0].id;
+    expect(state.cashOnHand).toBe(700);
+
+    state = budgetReducer(state, {
+      type: 'EDIT_ENTRY',
+      entryId: spendId,
+      amount: 450,
+      label: 'Running Shoes',
+      paymentSourceId: 'bank-bpi',
+    });
+    expect(state.cashOnHand).toBe(1000);
+    expect(state.banks[0].balance).toBe(4550);
+    expect(state.entries[0].paymentSourceId).toBe('bank-bpi');
+    expect(state.entries[0].paymentSourceLabel).toBe('BPI');
+
+    state = budgetReducer(state, {
+      type: 'EDIT_ENTRY',
+      entryId: spendId,
+      amount: 450,
+      label: 'Running Shoes',
+      paymentSourceId: 'cc-bdo',
+    });
+    expect(state.banks[0].balance).toBe(5000);
+    expect(state.creditCards[0].used).toBe(1450);
+
+    state = budgetReducer(state, {
+      type: 'EDIT_ENTRY',
+      entryId: spendId,
+      amount: 450,
+      label: 'Running Shoes',
+      paymentSourceId: 'none',
+    });
+    expect(state.creditCards[0].used).toBe(1000);
+    expect(state.entries[0].paymentSourceId).toBeUndefined();
+    expect(state.entries[0].paymentSourceLabel).toBeUndefined();
+
+    // 2) Wallet deposit Cash (500) -> edit to BPI (800)
+    state = budgetReducer(state, {
+      type: 'DEPOSIT_TO_WALLET',
+      sourceId: 'cash',
+      amount: 500,
+      todayKey: '2026-04-10',
+    });
+    const depId = state.entries[0].id;
+    expect(state.cashOnHand).toBe(1500);
+
+    state = budgetReducer(state, {
+      type: 'EDIT_ENTRY',
+      entryId: depId,
+      amount: 800,
+      label: 'Side Gig Deposit',
+      paymentSourceId: 'bank-bpi',
+    });
+    expect(state.cashOnHand).toBe(1000);
+    expect(state.banks[0].balance).toBe(5800);
+    expect(state.entries[0].paymentSourceId).toBe('bank-bpi');
+  });
 });
