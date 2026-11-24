@@ -40,7 +40,7 @@ const pwaHeadTags = [
   '<meta name="apple-mobile-web-app-title" content="Velvet Budget" />',
   `<link rel="apple-touch-icon" sizes="180x180" href="${appleTouchIconHref}" />`,
   `<link rel="manifest" href="${manifestHref}" />`,
-  '<style id="velvet-web-base">input:focus,textarea:focus{outline:none !important;box-shadow:none !important;}@supports (-webkit-touch-callout: none){input,textarea,select{font-size:16px !important;}}</style>',
+  '<style id="velvet-web-base">input:focus:not(:focus-visible),textarea:focus:not(:focus-visible){outline:none !important;box-shadow:none !important;}@supports (-webkit-touch-callout: none){input,textarea,select{font-size:16px !important;}}</style>',
 ].join('\n    ');
 
 if (!html.includes('id="velvet-web-base"')) {

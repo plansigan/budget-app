@@ -2,16 +2,13 @@ import React, { useState } from 'react';
 import { StyleSheet, Text, TextInput, View } from 'react-native';
 import { ThemeShade } from '../theme/palette';
 import { BillItem } from '../types/budget';
-import { triggerLightHaptic } from '../utils/haptics';
-import {
-  formatPeso,
-  formatPesoInput,
-  formatPesoNumber,
-  parsePesoInput,
-} from '../utils/numberFormat';
+import { formatPeso, formatPesoNumber, parsePesoInput } from '../utils/numberFormat';
 import { ScalePressable } from './AnimatedPrimitives';
-import { AppIcon, BILL_ICON_CHOICES } from './AppIcon';
+import { BILL_ICON_CHOICES } from './AppIcon';
 import { FormModal } from './FormModal';
+import { IconPickerGrid } from './form/IconPickerGrid';
+import { PesoAmountInput } from './form/PesoAmountInput';
+import { QuickPresetChips } from './form/QuickPresetChips';
 
 export const QUICK_BILL_PRESETS = [
   { icon: 'droplet', name: 'Water', amount: 500 },
@@ -20,12 +17,23 @@ export const QUICK_BILL_PRESETS = [
   { icon: 'shield', name: 'Insurance', amount: 1500 },
 ];
 
-export function parseDueDayDraft(raw: string): number | undefined {
-  const cleaned = raw.replace(/[^0-9]/g, '');
-  if (!cleaned) return undefined;
+function validateDueDayDraft(
+  raw: string
+): { valid: boolean; value: number | undefined; error?: string } {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return { valid: true, value: undefined };
+  }
+  const cleaned = trimmed.replace(/[^0-9]/g, '');
   const parsed = parseInt(cleaned, 10);
-  if (!Number.isFinite(parsed) || parsed < 1) return undefined;
-  return Math.min(31, parsed);
+  if (!Number.isFinite(parsed) || parsed < 1 || parsed > 31) {
+    return {
+      valid: false,
+      value: undefined,
+      error: 'Due day must be between 1 and 31.',
+    };
+  }
+  return { valid: true, value: parsed };
 }
 
 export interface AddEditBillModalProps {
@@ -78,11 +86,19 @@ const AddEditBillModalContent: React.FC<
   const [billFormError, setBillFormError] = useState<string | null>(null);
 
   const parsedCustomAmt = parsePesoInput(newAmountText);
-  const isCustomBillValid = Boolean(newName.trim()) && parsedCustomAmt > 0;
+  const dueCheck = validateDueDayDraft(newDueDayText);
+  const isCustomBillValid =
+    Boolean(newName.trim()) && parsedCustomAmt > 0 && dueCheck.valid;
   const isEditing = editingBill !== null;
 
+  const presetItems = QUICK_BILL_PRESETS.map((p) => ({
+    ...p,
+    label: `${p.name} ${formatPeso(p.amount)}`,
+  }));
+
   const handleSaveBillForm = () => {
-    if (!newName.trim()) {
+    const trimmedName = newName.trim();
+    if (!trimmedName) {
       setBillFormError('Please enter a bill name.');
       return;
     }
@@ -90,12 +106,21 @@ const AddEditBillModalContent: React.FC<
       setBillFormError('Please enter a monthly amount greater than ₱0.');
       return;
     }
+    if (!dueCheck.valid) {
+      setBillFormError(dueCheck.error || 'Due day must be between 1 and 31.');
+      return;
+    }
     setBillFormError(null);
-    const parsedDue = parseDueDayDraft(newDueDayText);
     if (editingBill && onUpdateBillItem) {
-      onUpdateBillItem(editingBill.id, newName, newIcon, parsedCustomAmt, parsedDue);
+      onUpdateBillItem(
+        editingBill.id,
+        trimmedName,
+        newIcon,
+        parsedCustomAmt,
+        dueCheck.value
+      );
     } else {
-      onAddBill(newName, newIcon, parsedCustomAmt, parsedDue);
+      onAddBill(trimmedName, newIcon, parsedCustomAmt, dueCheck.value);
     }
     onClose();
   };
@@ -113,61 +138,29 @@ const AddEditBillModalContent: React.FC<
       onClose={onClose}
     >
       {!isEditing && collapsible && (
-        <View style={{ gap: 6 }}>
-          <Text style={[styles.modalLabel, { color: shade.muted }]}>
-            Quick Starters (tap to fill)
-          </Text>
-          <View style={styles.presetChips}>
-            {QUICK_BILL_PRESETS.map((preset) => (
-              <ScalePressable
-                key={preset.name}
-                onPress={() => {
-                  triggerLightHaptic();
-                  setNewName(preset.name);
-                  setNewIcon(preset.icon);
-                  setNewAmountText(formatPesoNumber(preset.amount));
-                  setBillFormError(null);
-                }}
-                style={[styles.presetChip, { backgroundColor: shade.surface }]}
-              >
-                <AppIcon name={preset.icon} size={12} color={shade.dopamine} />
-                <Text style={[styles.presetChipText, { color: shade.text }]}>
-                  {preset.name} {formatPeso(preset.amount)}
-                </Text>
-              </ScalePressable>
-            ))}
-          </View>
-        </View>
+        <QuickPresetChips
+          label="Quick Starters (tap to fill)"
+          presets={presetItems}
+          shade={shade}
+          accentColor={shade.dopamine}
+          onSelect={(preset) => {
+            setNewName(preset.name);
+            setNewIcon(preset.icon);
+            setNewAmountText(formatPesoNumber(preset.amount));
+            setBillFormError(null);
+          }}
+        />
       )}
-      <Text style={[styles.modalLabel, { color: shade.muted }]}>
-        Pick an icon
-      </Text>
-      <View style={styles.iconRow}>
-        {BILL_ICON_CHOICES.map((iconName) => {
-          const active = newIcon === iconName;
-          return (
-            <ScalePressable
-              key={iconName}
-              onPress={() => {
-                triggerLightHaptic();
-                setNewIcon(iconName);
-              }}
-              style={[
-                styles.iconPill,
-                {
-                  backgroundColor: active ? shade.accent : shade.surface,
-                },
-              ]}
-            >
-              <AppIcon
-                name={iconName}
-                size={16}
-                color={active ? shade.accentText : shade.text}
-              />
-            </ScalePressable>
-          );
-        })}
-      </View>
+
+      <IconPickerGrid
+        label="Pick an icon"
+        icons={BILL_ICON_CHOICES}
+        selected={newIcon}
+        onSelect={setNewIcon}
+        shade={shade}
+        activeBg={shade.accent}
+        activeFg={shade.accentText}
+      />
 
       <TextInput
         value={newName}
@@ -177,6 +170,7 @@ const AddEditBillModalContent: React.FC<
         }}
         placeholder="Bill name (e.g., Meralco, Condo Dues)"
         placeholderTextColor={shade.muted}
+        accessibilityLabel="Bill name"
         style={[
           styles.nameInput,
           {
@@ -187,26 +181,17 @@ const AddEditBillModalContent: React.FC<
         ]}
       />
 
-      <View
-        style={[
-          styles.newAmountWrap,
-          { backgroundColor: shade.surface, borderColor: shade.border },
-        ]}
-      >
-        <Text style={[styles.pesoSign, { color: shade.accent }]}>₱</Text>
-        <TextInput
-          value={newAmountText}
-          onChangeText={(t) => {
-            setNewAmountText(formatPesoInput(t));
-            if (billFormError) setBillFormError(null);
-          }}
-          keyboardType="decimal-pad"
-          inputMode="decimal"
-          placeholder="Monthly amount"
-          placeholderTextColor={shade.muted}
-          style={[styles.newAmountInput, { color: shade.text }]}
-        />
-      </View>
+      <PesoAmountInput
+        value={newAmountText}
+        onChangeText={(formatted) => {
+          setNewAmountText(formatted);
+          if (billFormError) setBillFormError(null);
+        }}
+        shade={shade}
+        accentColor={shade.accent}
+        placeholder="Monthly amount"
+        inputAccessibilityLabel="Monthly bill amount"
+      />
 
       {enableTracking && (
         <View style={styles.dueFieldRow}>
@@ -215,33 +200,36 @@ const AddEditBillModalContent: React.FC<
           </Text>
           <TextInput
             value={newDueDayText}
-            onChangeText={(t) =>
-              setNewDueDayText(t.replace(/[^0-9]/g, '').slice(0, 2))
-            }
+            onChangeText={(t) => {
+              setNewDueDayText(t.replace(/[^0-9]/g, '').slice(0, 2));
+              if (billFormError) setBillFormError(null);
+            }}
             keyboardType="numeric"
             maxLength={2}
             placeholder="e.g., 15"
             placeholderTextColor={shade.muted}
+            accessibilityLabel="Bill due day of month"
             style={[
               styles.dueDaySmallInput,
               {
                 backgroundColor: shade.surface,
                 color: shade.text,
-                borderColor: shade.border,
+                borderColor: !dueCheck.valid ? shade.warning : shade.border,
               },
             ]}
           />
         </View>
       )}
 
-      {billFormError && (
+      {billFormError ? (
         <Text style={[styles.formErrorText, { color: shade.warning }]}>
           {billFormError}
         </Text>
-      )}
+      ) : null}
 
       <ScalePressable
         onPress={handleSaveBillForm}
+        accessibilityRole="button"
         style={[
           styles.addBtn,
           {
@@ -253,9 +241,7 @@ const AddEditBillModalContent: React.FC<
         <Text
           style={[
             styles.addBtnText,
-            {
-              color: isCustomBillValid ? shade.accentText : shade.muted,
-            },
+            { color: isCustomBillValid ? shade.accentText : shade.muted },
           ]}
         >
           {isEditing ? 'Save Bill Changes' : 'Add to Monthly Bills'}
@@ -293,10 +279,17 @@ const BillDueDayModalContent: React.FC<
   const [dueDayDraft, setDueDayDraft] = useState(
     typeof bill.dueDay === 'number' ? String(bill.dueDay) : ''
   );
+  const [dueError, setDueError] = useState<string | null>(null);
 
   const handleSaveDueDay = () => {
+    const check = validateDueDayDraft(dueDayDraft);
+    if (!check.valid) {
+      setDueError(check.error || 'Due day must be between 1 and 31.');
+      return;
+    }
+    setDueError(null);
     if (onUpdateDueDay) {
-      onUpdateDueDay(bill.id, parseDueDayDraft(dueDayDraft));
+      onUpdateDueDay(bill.id, check.value);
     }
     onClose();
   };
@@ -311,23 +304,30 @@ const BillDueDayModalContent: React.FC<
     >
       <TextInput
         value={dueDayDraft}
-        onChangeText={(t) =>
-          setDueDayDraft(t.replace(/[^0-9]/g, '').slice(0, 2))
-        }
+        onChangeText={(t) => {
+          setDueDayDraft(t.replace(/[^0-9]/g, '').slice(0, 2));
+          if (dueError) setDueError(null);
+        }}
         keyboardType="numeric"
         maxLength={2}
         placeholder="Day of month (1-31, leave blank to clear)"
         placeholderTextColor={shade.muted}
+        accessibilityLabel="Due day of month"
         autoFocus
         style={[
           styles.nameInput,
           {
             backgroundColor: shade.surface,
             color: shade.text,
-            borderColor: shade.border,
+            borderColor: dueError ? shade.warning : shade.border,
           },
         ]}
       />
+      {dueError ? (
+        <Text style={[styles.formErrorText, { color: shade.warning }]}>
+          {dueError}
+        </Text>
+      ) : null}
       <View style={styles.dueModalBtnRow}>
         <ScalePressable
           onPress={() => {
@@ -336,6 +336,7 @@ const BillDueDayModalContent: React.FC<
             }
             onClose();
           }}
+          accessibilityRole="button"
           style={[
             styles.dueClearBtn,
             { backgroundColor: shade.surface, borderColor: shade.border },
@@ -347,6 +348,7 @@ const BillDueDayModalContent: React.FC<
         </ScalePressable>
         <ScalePressable
           onPress={handleSaveDueDay}
+          accessibilityRole="button"
           style={[styles.dueSaveBtn, { backgroundColor: shade.accent }]}
         >
           <Text style={[styles.addBtnText, { color: shade.accentText }]}>
@@ -367,43 +369,9 @@ export const BillDueDayModal: React.FC<BillDueDayModalProps> = ({
 };
 
 const styles = StyleSheet.create({
-  pesoSign: {
-    fontSize: 12,
-    fontWeight: '800',
-    marginRight: 3,
-  },
-  presetChips: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
-  presetChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 9,
-    paddingVertical: 6,
-    borderRadius: 9,
-  },
-  presetChipText: {
-    fontSize: 11,
-    fontWeight: '700',
-  },
   modalLabel: {
     fontSize: 11,
     fontWeight: '700',
-  },
-  iconRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 7,
-  },
-  iconPill: {
-    width: 38,
-    height: 38,
-    borderRadius: 11,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   nameInput: {
     minWidth: 0,
@@ -413,34 +381,6 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     fontSize: 14,
   },
-  newAmountWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 12,
-    borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  newAmountInput: {
-    flex: 1,
-    minWidth: 0,
-    fontSize: 16,
-    fontWeight: '800',
-    paddingVertical: 0,
-  },
-  addBtn: {
-    borderRadius: 12,
-    paddingVertical: 13,
-    alignItems: 'center',
-  },
-  addBtnText: {
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  formErrorText: {
-    fontSize: 12,
-    fontWeight: '700',
-  },
   dueFieldRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -448,11 +388,11 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   dueDaySmallInput: {
-    width: 84,
+    width: 86,
     borderRadius: 10,
     borderWidth: 1,
     paddingHorizontal: 10,
-    paddingVertical: 7,
+    paddingVertical: 8,
     fontSize: 13,
     fontWeight: '800',
     textAlign: 'center',
@@ -462,10 +402,10 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   dueClearBtn: {
-    paddingHorizontal: 16,
-    paddingVertical: 13,
+    flex: 1,
     borderRadius: 12,
     borderWidth: 1,
+    paddingVertical: 12,
     alignItems: 'center',
   },
   dueClearBtnText: {
@@ -473,9 +413,23 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   dueSaveBtn: {
-    flex: 1,
-    paddingVertical: 13,
+    flex: 2,
     borderRadius: 12,
+    paddingVertical: 12,
     alignItems: 'center',
+  },
+  addBtn: {
+    borderRadius: 13,
+    paddingVertical: 14,
+    alignItems: 'center',
+    marginTop: 2,
+  },
+  addBtnText: {
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  formErrorText: {
+    fontSize: 12,
+    fontWeight: '700',
   },
 });

@@ -4,7 +4,11 @@ import {
   TreatVaultItem,
 } from '../../types/budget';
 import { getTodayKey, roundCurrency } from '../budgetMath';
-import { makeUid } from './helpers';
+import {
+  applyDaytimeCheckIn,
+  findActiveUnclaimedTreat,
+  makeUid,
+} from './helpers';
 import { SliceReducer } from './types';
 
 export const handleGoalsAndTreatsAction: SliceReducer = (state, action) => {
@@ -19,6 +23,7 @@ export const handleGoalsAndTreatsAction: SliceReducer = (state, action) => {
       };
 
     case 'BOOST_SAVINGS_GOAL': {
+      if (!Number.isFinite(action.delta)) return state;
       const cleanDelta = roundCurrency(Math.max(0, action.delta));
       if (cleanDelta <= 0) return state;
       return {
@@ -33,12 +38,14 @@ export const handleGoalsAndTreatsAction: SliceReducer = (state, action) => {
     }
 
     case 'FUND_ACTIVE_TREAT': {
+      if (!Number.isFinite(action.amount) || action.amount <= 0) return state;
       const cleanAmount = roundCurrency(Math.max(0.01, action.amount));
       const todayKey = action.todayKey || getTodayKey();
       const targetDateKey = action.dateKey;
-      const activeUnclaimed =
-        state.treats.find((t) => t.id === state.activeTreatId && !t.claimed) ||
-        state.treats.find((t) => !t.claimed);
+      const activeUnclaimed = findActiveUnclaimedTreat(
+        state.treats,
+        state.activeTreatId
+      );
 
       if (!activeUnclaimed) return state;
 
@@ -50,7 +57,7 @@ export const handleGoalsAndTreatsAction: SliceReducer = (state, action) => {
 
       const actualAmount = roundCurrency(Math.min(cleanAmount, remainingNeeded));
       const isToday = targetDateKey === todayKey;
-      const bonusStreak = isToday && !state.checkedInToday ? 1 : 0;
+      const checkIn = applyDaytimeCheckIn(state, isToday);
 
       const entry: TransactionEntry = {
         id: makeUid('treat'),
@@ -65,8 +72,9 @@ export const handleGoalsAndTreatsAction: SliceReducer = (state, action) => {
 
       return {
         ...state,
-        checkedInToday: isToday ? true : state.checkedInToday,
-        streakDays: state.streakDays + bonusStreak,
+        checkedInToday: checkIn.checkedInToday,
+        streakDays: checkIn.streakDays,
+        bufferShields: checkIn.bufferShields,
         disciplineScore: Math.min(999, state.disciplineScore + 10),
         treats: state.treats.map((t) =>
           t.id === activeUnclaimed.id
@@ -99,12 +107,14 @@ export const handleGoalsAndTreatsAction: SliceReducer = (state, action) => {
     }
 
     case 'ADD_TREAT': {
-      if (state.treats.length >= 3) return state;
+      if (state.treats.length >= 3 || !Number.isFinite(action.target)) {
+        return state;
+      }
       const trimmed = action.name.trim();
       const cleanTarget = roundCurrency(action.target);
       if (!trimmed || cleanTarget <= 0) return state;
 
-      const newId = `treat-${Date.now()}`;
+      const newId = makeUid('treat');
       const newItem: TreatVaultItem = {
         id: newId,
         name: trimmed,
@@ -145,23 +155,25 @@ export const handleGoalsAndTreatsAction: SliceReducer = (state, action) => {
 
     case 'ADD_SINKING_FUND': {
       const trimmed = action.name.trim();
+      if (!Number.isFinite(action.target)) return state;
       const cleanTarget = roundCurrency(action.target);
       if (!trimmed || cleanTarget <= 0) return state;
+      const months = Number.isFinite(action.monthsToGoal)
+        ? Math.max(1, Math.min(120, Math.round(action.monthsToGoal || 6)))
+        : 6;
       const newFund: SinkingFundItem = {
         id: makeUid('sf'),
         name: trimmed,
         icon: action.icon || 'shield',
         target: cleanTarget,
         saved: 0,
-        monthsToGoal: Math.max(
-          1,
-          Math.min(120, Math.round(action.monthsToGoal || 6))
-        ),
+        monthsToGoal: months,
       };
       return { ...state, sinkingFunds: [...state.sinkingFunds, newFund] };
     }
 
     case 'DEPOSIT_TO_SINKING_FUND': {
+      if (!Number.isFinite(action.amount) || action.amount <= 0) return state;
       const cleanAmt = roundCurrency(Math.max(0.01, action.amount));
       const target = state.sinkingFunds.find((f) => f.id === action.id);
       if (!target) return state;
@@ -175,7 +187,6 @@ export const handleGoalsAndTreatsAction: SliceReducer = (state, action) => {
         timestamp: new Date().toISOString(),
         dateKey: action.todayKey || getTodayKey(),
         sinkingFundId: target.id,
-        treatId: target.id,
       };
 
       return {

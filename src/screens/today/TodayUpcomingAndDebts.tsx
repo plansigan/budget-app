@@ -17,12 +17,14 @@ interface UpcomingBillEntry {
 
 interface TodayUpcomingAndDebtsProps {
   upcomingUnpaidBills: UpcomingBillEntry[];
+  totalUpcomingBillsCount?: number;
   openDebtsCount: number;
   iOweTotal: number;
   owedToMeTotal: number;
   previewDebts: DebtItem[];
   onPayBill: (bill: BillItem) => void;
   onPayDebt: (debt: DebtItem) => void;
+  onOpenBills?: () => void;
   onOpenDebts?: () => void;
 }
 
@@ -30,15 +32,19 @@ export const TodayUpcomingAndDebts: React.FC<TodayUpcomingAndDebtsProps> =
   React.memo(
     ({
       upcomingUnpaidBills,
+      totalUpcomingBillsCount,
       openDebtsCount,
       iOweTotal,
       owedToMeTotal,
       previewDebts,
       onPayBill,
       onPayDebt,
+      onOpenBills,
       onOpenDebts,
     }) => {
       const { shade, formatVisiblePeso } = useThemePrefs();
+      const displayBillsCount =
+        totalUpcomingBillsCount ?? upcomingUnpaidBills.length;
 
       return (
         <>
@@ -54,11 +60,33 @@ export const TodayUpcomingAndDebts: React.FC<TodayUpcomingAndDebtsProps> =
                   <Text style={[styles.sectionKicker, { color: shade.muted }]}>
                     BILLS DUE SOON
                   </Text>
-                  <Text
-                    style={[styles.billsDueCount, { color: shade.warning }]}
-                  >
-                    {upcomingUnpaidBills.length} unpaid
-                  </Text>
+                  <View style={styles.headerActions}>
+                    <Text
+                      style={[styles.billsDueCount, { color: shade.warning }]}
+                    >
+                      {displayBillsCount} unpaid
+                    </Text>
+                    {onOpenBills && (
+                      <ScalePressable
+                        onPress={() => {
+                          triggerLightHaptic();
+                          onOpenBills();
+                        }}
+                        accessibilityRole="button"
+                        accessibilityLabel="Manage monthly fixed bills"
+                        hitSlop={8}
+                      >
+                        <Text
+                          style={[
+                            styles.sectionSubHint,
+                            { color: shade.accent, fontWeight: '800' },
+                          ]}
+                        >
+                          Manage ›
+                        </Text>
+                      </ScalePressable>
+                    )}
+                  </View>
                 </View>
 
                 <View style={{ gap: 8 }}>
@@ -112,6 +140,11 @@ export const TodayUpcomingAndDebts: React.FC<TodayUpcomingAndDebtsProps> =
                             triggerLightHaptic();
                             onPayBill(bill);
                           }}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Pay ${bill.name} (${formatVisiblePeso(
+                            bill.amount
+                          )})`}
+                          hitSlop={6}
                           style={[
                             styles.payMiniBtn,
                             { backgroundColor: shade.accent },
@@ -151,7 +184,9 @@ export const TodayUpcomingAndDebts: React.FC<TodayUpcomingAndDebtsProps> =
                       triggerLightHaptic();
                       onOpenDebts?.();
                     }}
-                    hitSlop={6}
+                    accessibilityRole="button"
+                    accessibilityLabel="Manage personal debts"
+                    hitSlop={8}
                   >
                     <Text
                       style={[
@@ -254,6 +289,15 @@ export const TodayUpcomingAndDebts: React.FC<TodayUpcomingAndDebtsProps> =
                               triggerLightHaptic();
                               onPayDebt(debt);
                             }}
+                            accessibilityRole="button"
+                            accessibilityLabel={
+                              isOwe
+                                ? `Pay ${debt.personName} (${formatVisiblePeso(
+                                    remaining
+                                  )})`
+                                : `Mark received from ${debt.personName}`
+                            }
+                            hitSlop={6}
                             style={[
                               styles.payMiniBtn,
                               {
@@ -295,6 +339,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 8,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
   },
   sectionCard: {
     borderRadius: 20,

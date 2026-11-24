@@ -1,12 +1,6 @@
 import { useCallback, useMemo } from 'react';
-import {
-  computeBaseDailyAllowance,
-  computeDayMetricsFromEntries,
-  getBudgetedInstallmentsTotal,
-  getTodayKey,
-  getTotalMonthlyEnvelopes,
-  roundCurrency,
-} from '../../state/budgetMath';
+import { getTodayKey, roundCurrency } from '../../state/budgetMath';
+import { findActiveUnclaimedTreat } from '../../state/reducers/helpers';
 import {
   triggerCelebrationHaptic,
   triggerLightHaptic,
@@ -19,10 +13,12 @@ export function useGoalsActions({
   dispatch,
   stateRef,
   selectedDateKeyRef,
+  getDaySummaryRef,
   showToast,
 }: ActionHookDeps) {
   const boostSavingsGoal = useCallback(
     (delta: number) => {
+      if (!Number.isFinite(delta)) return;
       const cleanDelta = roundCurrency(Math.max(0, delta));
       if (cleanDelta <= 0) return;
       triggerSuccessHaptic();
@@ -37,13 +33,14 @@ export function useGoalsActions({
 
   const fundActiveTreat = useCallback(
     (amount: number) => {
+      if (!Number.isFinite(amount) || amount <= 0) return;
       const cleanAmount = roundCurrency(Math.max(0.01, amount));
       const targetDateKey = selectedDateKeyRef.current;
       const current = stateRef.current;
-      const activeUnclaimed =
-        current.treats.find(
-          (t) => t.id === current.activeTreatId && !t.claimed
-        ) || current.treats.find((t) => !t.claimed);
+      const activeUnclaimed = findActiveUnclaimedTreat(
+        current.treats,
+        current.activeTreatId
+      );
 
       if (!activeUnclaimed) {
         triggerLightHaptic();
@@ -65,23 +62,7 @@ export function useGoalsActions({
       }
 
       const actualAmount = roundCurrency(Math.min(cleanAmount, remainingNeeded));
-      const today = getTodayKey();
-      const baseDaily = computeBaseDailyAllowance(
-        current.settings,
-        getBudgetedInstallmentsTotal(current.installments) +
-          getTotalMonthlyEnvelopes(
-            current.envelopes || [],
-            current.settings.salaryFrequency
-          )
-      );
-      const daySummary = computeDayMetricsFromEntries(
-        current.entries,
-        targetDateKey,
-        baseDaily,
-        current.rolloverBalance,
-        today,
-        current.lastActiveDate
-      );
+      const daySummary = getDaySummaryRef.current(targetDateKey);
       const exceededSafe =
         actualAmount > Math.max(0, roundCurrency(daySummary.safeRemaining));
 
@@ -90,7 +71,7 @@ export function useGoalsActions({
         type: 'FUND_ACTIVE_TREAT',
         amount: cleanAmount,
         dateKey: targetDateKey,
-        todayKey: today,
+        todayKey: getTodayKey(),
       });
 
       if (exceededSafe) {
@@ -110,7 +91,7 @@ export function useGoalsActions({
         );
       }
     },
-    [dispatch, stateRef, selectedDateKeyRef, showToast]
+    [dispatch, stateRef, selectedDateKeyRef, getDaySummaryRef, showToast]
   );
 
   const claimTreat = useCallback(
@@ -133,6 +114,7 @@ export function useGoalsActions({
         showToast('Maximum of 3 treats allowed in Wishlist.', false);
         return;
       }
+      if (!Number.isFinite(target)) return;
       const trimmed = name.trim();
       const cleanTarget = roundCurrency(target);
       if (!trimmed || cleanTarget <= 0) return;
@@ -177,6 +159,7 @@ export function useGoalsActions({
 
   const addSinkingFund = useCallback(
     (name: string, icon: string, target: number, monthsToGoal: number) => {
+      if (!Number.isFinite(target)) return;
       const trimmed = name.trim();
       const cleanTarget = roundCurrency(target);
       if (!trimmed || cleanTarget <= 0) return;
@@ -196,11 +179,12 @@ export function useGoalsActions({
 
   const depositToSinkingFund = useCallback(
     (id: string, amount: number) => {
+      if (!Number.isFinite(amount) || amount <= 0) return;
       const cleanAmt = roundCurrency(Math.max(0.01, amount));
       const target = stateRef.current.sinkingFunds.find((f) => f.id === id);
       if (!target) return;
 
-      const hitGoal = target.saved + cleanAmt >= target.target;
+      const hitGoal = roundCurrency(target.saved + cleanAmt) >= target.target;
       if (hitGoal) triggerCelebrationHaptic();
       else triggerSuccessHaptic();
 

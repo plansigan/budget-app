@@ -1,11 +1,10 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
-import { ScalePressable } from '../components/AnimatedPrimitives';
+import React, { type ComponentRef, useCallback, useEffect, useRef, useState } from 'react';
+import { ScrollView, StyleSheet, View } from 'react-native';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { PayBillModal } from '../components/PayBillModal';
+import { SegmentedTabBar } from '../components/form/SegmentedTabBar';
 import { useThemePrefs } from '../context/BudgetContext';
 import { BillItem } from '../types/budget';
-import { triggerLightHaptic } from '../utils/haptics';
 import {
   AutoSnapshotsModal,
   RestoreBackupModal,
@@ -22,8 +21,7 @@ interface SetupAndStyleScreenProps {
 }
 
 /**
- * Clean 2-segment Budget screen separating Plan (income, schedule, bills,
- * allowances, savings) from Settings (appearance, auto-snapshots, tools).
+ * 2-segment Budget screen with a pinned Plan / Settings toggle and smooth auto-scroll to Allowances.
  */
 export const SetupAndStyleScreen: React.FC<SetupAndStyleScreenProps> = ({
   focusAllowancesKey = 0,
@@ -42,86 +40,85 @@ export const SetupAndStyleScreen: React.FC<SetupAndStyleScreenProps> = ({
   const [pendingConfirm, setPendingConfirm] =
     useState<SetupConfirmRequest | null>(null);
 
+  const scrollViewRef = useRef<ComponentRef<typeof ScrollView>>(null);
+  const allowancesOffsetYRef = useRef<number | null>(null);
+  const pendingAllowancesScrollRef = useRef(false);
+
+  const scrollToAllowances = useCallback(() => {
+    const targetY = allowancesOffsetYRef.current;
+    if (targetY === null) return false;
+    pendingAllowancesScrollRef.current = false;
+    setTimeout(() => {
+      scrollViewRef.current?.scrollTo({
+        y: Math.max(0, targetY - 8),
+        animated: true,
+      });
+    }, 60);
+    return true;
+  }, []);
+
   useEffect(() => {
-    if (focusAllowancesKey > 0) {
-      setSubTab('plan');
+    if (focusAllowancesKey <= 0) return;
+    pendingAllowancesScrollRef.current = true;
+    setSubTab('plan');
+    if (subTab === 'plan') {
+      scrollToAllowances();
     }
-  }, [focusAllowancesKey]);
+  }, [focusAllowancesKey, subTab, scrollToAllowances]);
+
+  const handleAllowancesLayout = useCallback(
+    (y: number) => {
+      allowancesOffsetYRef.current = y;
+      if (pendingAllowancesScrollRef.current) {
+        scrollToAllowances();
+      }
+    },
+    [scrollToAllowances]
+  );
+
+  const handleChangeSubTab = useCallback((next: 'plan' | 'settings') => {
+    setSubTab(next);
+    scrollViewRef.current?.scrollTo({ y: 0, animated: false });
+  }, []);
 
   const handleOpenSnapshots = useCallback(() => setShowSnapshotsModal(true), []);
   const handleOpenRestore = useCallback(() => setShowRestoreBox(true), []);
 
   return (
-    <ScrollView
-      contentContainerStyle={styles.scrollContent}
-      showsVerticalScrollIndicator={false}
-    >
-      <View
-        style={[
-          styles.subTabBar,
-          { backgroundColor: shade.surface, borderColor: shade.border },
+    <View style={styles.root}>
+      <SegmentedTabBar<'plan' | 'settings'>
+        value={subTab}
+        onChange={handleChangeSubTab}
+        shade={shade}
+        variant="card"
+        options={[
+          { key: 'plan', label: 'Plan' },
+          { key: 'settings', label: 'Settings' },
         ]}
+      />
+
+      <ScrollView
+        ref={scrollViewRef}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
       >
-        <ScalePressable
-          onPress={() => {
-            triggerLightHaptic();
-            setSubTab('plan');
-          }}
-          accessibilityRole="tab"
-          accessibilityState={{ selected: subTab === 'plan' }}
-          style={[
-            styles.subTabBtn,
-            subTab === 'plan' && { backgroundColor: shade.card },
-          ]}
-        >
-          <Text
-            style={[
-              styles.subTabText,
-              { color: subTab === 'plan' ? shade.text : shade.muted },
-            ]}
-          >
-            Plan
-          </Text>
-        </ScalePressable>
-
-        <ScalePressable
-          onPress={() => {
-            triggerLightHaptic();
-            setSubTab('settings');
-          }}
-          accessibilityRole="tab"
-          accessibilityState={{ selected: subTab === 'settings' }}
-          style={[
-            styles.subTabBtn,
-            subTab === 'settings' && { backgroundColor: shade.card },
-          ]}
-        >
-          <Text
-            style={[
-              styles.subTabText,
-              { color: subTab === 'settings' ? shade.text : shade.muted },
-            ]}
-          >
-            Settings
-          </Text>
-        </ScalePressable>
-      </View>
-
-      {subTab === 'plan' ? (
-        <BudgetPlanSection
-          focusAllowancesKey={focusAllowancesKey}
-          onRequestPayBill={setBillToPay}
-        />
-      ) : (
-        <SettingsAndBackupSection
-          onOpenFaq={onOpenFaq}
-          onOpenSnapshots={handleOpenSnapshots}
-          onOpenRestore={handleOpenRestore}
-          backupStatus={backupStatus}
-          onSetBackupStatus={setBackupStatus}
-          onRequestConfirm={setPendingConfirm}
-        />
-      )}
+        {subTab === 'plan' ? (
+          <BudgetPlanSection
+            focusAllowancesKey={focusAllowancesKey}
+            onRequestPayBill={setBillToPay}
+            onAllowancesLayout={handleAllowancesLayout}
+          />
+        ) : (
+          <SettingsAndBackupSection
+            onOpenFaq={onOpenFaq}
+            onOpenSnapshots={handleOpenSnapshots}
+            onOpenRestore={handleOpenRestore}
+            backupStatus={backupStatus}
+            onSetBackupStatus={setBackupStatus}
+            onRequestConfirm={setPendingConfirm}
+          />
+        )}
+      </ScrollView>
 
       <AutoSnapshotsModal
         visible={showSnapshotsModal}
@@ -142,7 +139,7 @@ export const SetupAndStyleScreen: React.FC<SetupAndStyleScreenProps> = ({
         title={pendingConfirm?.title || ''}
         message={pendingConfirm?.message || ''}
         confirmLabel={pendingConfirm?.confirmLabel || 'Confirm'}
-        destructive={pendingConfirm?.destructive}
+        destructive={pendingConfirm?.destructive ?? true}
         icon={pendingConfirm?.icon}
         onCancel={() => setPendingConfirm(null)}
         onConfirm={() => {
@@ -150,30 +147,17 @@ export const SetupAndStyleScreen: React.FC<SetupAndStyleScreenProps> = ({
           setPendingConfirm(null);
         }}
       />
-    </ScrollView>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+    gap: 14,
+  },
   scrollContent: {
     paddingBottom: 40,
     gap: 16,
-  },
-  subTabBar: {
-    flexDirection: 'row',
-    borderRadius: 15,
-    borderWidth: 1,
-    padding: 4,
-    gap: 4,
-  },
-  subTabBtn: {
-    flex: 1,
-    paddingVertical: 10,
-    borderRadius: 11,
-    alignItems: 'center',
-  },
-  subTabText: {
-    fontSize: 13,
-    fontWeight: '800',
   },
 });

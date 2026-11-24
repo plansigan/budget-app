@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { roundCurrency } from '../state/budgetMath';
+import { budgetReducer } from '../state/budgetReducer';
 import { createNewUserState, PersistedBudgetState } from '../state/defaults';
 import { applyMidnightRollover } from '../state/rollover';
 
@@ -162,5 +163,36 @@ describe('applyMidnightRollover', () => {
     expect(marchArchives[0].totalSaved).toBe(
       roundCurrency(2000 + res.vaultAdded)
     );
+  });
+
+  it('does not double-increment streak or shields when BANK_TODAY_SURPLUS is followed by midnight rollover', () => {
+    let state = makeBaseState({
+      streakDays: 6,
+      bufferShields: 1,
+      checkedInToday: false,
+      activeTreatId: '',
+      treats: [],
+    });
+
+    // Daytime End Day & Save checks in today and crosses the 7-day shield threshold
+    state = budgetReducer(state, {
+      type: 'BANK_TODAY_SURPLUS',
+      dateKey: '2026-04-10',
+      todayKey: '2026-04-10',
+    });
+    expect(state.checkedInToday).toBe(true);
+    expect(state.streakDays).toBe(7);
+    expect(state.bufferShields).toBe(2);
+
+    // Midnight rollover immediately following must keep streak at 7 and shields at 2
+    const rolled = budgetReducer(state, {
+      type: 'APPLY_ROLLOVER',
+      newDateKey: '2026-04-11',
+      minimumSplitFallback: 0,
+    });
+    expect(rolled.streakDays).toBe(7);
+    expect(rolled.bufferShields).toBe(2);
+    expect(rolled.checkedInToday).toBe(false);
+    expect(rolled.lastActiveDate).toBe('2026-04-11');
   });
 });

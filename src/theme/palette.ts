@@ -19,10 +19,16 @@ export interface ThemeShade {
   heroMuted: string;
   dopamine: string;
   dopamineSoft: string;
+  dopamineBtnBg: string;
   positive: string;
   positiveSoft: string;
+  positiveBtnBg: string;
   warning: string;
   warningSoft: string;
+  heroPositive: string;
+  heroDopamine: string;
+  heroWarning: string;
+  heroAmber: string;
   dark: boolean;
 }
 
@@ -48,10 +54,16 @@ export const VELVET_SHADE: ThemeShade = {
   heroMuted: '#9CA3AF',
   dopamine: '#4F46E5',
   dopamineSoft: 'rgba(79, 70, 229, 0.09)',
+  dopamineBtnBg: '#4F46E5',
   positive: '#15803D',
   positiveSoft: 'rgba(21, 128, 61, 0.10)',
+  positiveBtnBg: '#15803D',
   warning: '#DC2626',
   warningSoft: 'rgba(220, 38, 38, 0.10)',
+  heroPositive: '#4ADE80',
+  heroDopamine: '#A5B4FC',
+  heroWarning: '#F87171',
+  heroAmber: '#FBBF24',
   dark: false,
 };
 
@@ -77,10 +89,16 @@ export const VELVET_DARK_SHADE: ThemeShade = {
   heroMuted: '#A1A7B8',
   dopamine: '#6366F1',
   dopamineSoft: 'rgba(99, 102, 241, 0.18)',
+  dopamineBtnBg: '#4F46E5',
   positive: '#16A34A',
   positiveSoft: 'rgba(22, 163, 74, 0.18)',
+  positiveBtnBg: '#15803D',
   warning: '#EF4444',
   warningSoft: 'rgba(239, 68, 68, 0.18)',
+  heroPositive: '#4ADE80',
+  heroDopamine: '#A5B4FC',
+  heroWarning: '#F87171',
+  heroAmber: '#FBBF24',
   dark: true,
 };
 

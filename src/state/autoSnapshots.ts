@@ -2,12 +2,13 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 import type { PersistedBudgetState } from './defaults';
 
+export const BACKUP_SCHEMA_VERSION = 6;
 export const AUTO_SNAPSHOT_INTERVAL_MS = 10 * 60 * 1000;
-export const ASYNC_SNAPSHOTS_KEY = '@velvet_budget_auto_snapshots_v1';
+const ASYNC_SNAPSHOTS_KEY = '@velvet_budget_auto_snapshots_v1';
 export const MAX_ASYNC_SNAPSHOTS = 6;
-export const MAX_IDB_SNAPSHOTS = 20;
-export const IDB_NAME = 'velvet_budget_recovery_v1';
-export const IDB_STORE = 'kv';
+const MAX_IDB_SNAPSHOTS = 20;
+const IDB_NAME = 'velvet_budget_recovery_v1';
+const IDB_STORE = 'kv';
 
 export type AutoSnapshotReason = 'auto_interval' | 'before_restore' | 'manual';
 
@@ -37,6 +38,7 @@ interface StructuralIdbTransaction {
   objectStore: (name: string) => StructuralIdbObjectStore;
   oncomplete: ((ev?: unknown) => void) | null;
   onerror: ((ev?: unknown) => void) | null;
+  onabort: ((ev?: unknown) => void) | null;
 }
 
 interface StructuralIdbDatabase {
@@ -49,13 +51,25 @@ interface StructuralIdbDatabase {
   close: () => void;
 }
 
-interface StructuralOpenDbRequest extends StructuralIdbRequest<StructuralIdbDatabase> {
+interface StructuralOpenDbRequest
+  extends StructuralIdbRequest<StructuralIdbDatabase> {
   onupgradeneeded: ((ev?: unknown) => void) | null;
+  onblocked: ((ev?: unknown) => void) | null;
 }
 
 interface StructuralIdbFactory {
   open: (name: string, version?: number) => StructuralOpenDbRequest;
 }
+
+const VALID_SNAPSHOT_REASONS = new Set<AutoSnapshotReason>([
+  'auto_interval',
+  'before_restore',
+  'manual',
+]);
+
+// Serialize write operations so rapid saves/snapshots never land out of order.
+let idbWriteQueue: Promise<unknown> = Promise.resolve();
+let snapshotCaptureQueue: Promise<unknown> = Promise.resolve();
 
 function getWebIndexedDb(): StructuralIdbFactory | null {
   if (Platform.OS !== 'web') return null;
@@ -73,6 +87,13 @@ function openRecoveryDb(): Promise<StructuralIdbDatabase | null> {
   if (!idb) return Promise.resolve(null);
 
   return new Promise((resolve) => {
+    let settled = false;
+    const finish = (db: StructuralIdbDatabase | null) => {
+      if (settled) return;
+      settled = true;
+      resolve(db);
+    };
+
     try {
       const req = idb.open(IDB_NAME, 1);
       req.onupgradeneeded = () => {
@@ -85,10 +106,11 @@ function openRecoveryDb(): Promise<StructuralIdbDatabase | null> {
           // Ignore upgrade errors safely
         }
       };
-      req.onsuccess = () => resolve(req.result || null);
-      req.onerror = () => resolve(null);
+      req.onsuccess = () => finish(req.result || null);
+      req.onerror = () => finish(null);
+      req.onblocked = () => finish(null);
     } catch {
-      resolve(null);
+      finish(null);
     }
   });
 }
@@ -97,25 +119,28 @@ async function idbGet<T>(key: string): Promise<T | null> {
   const db = await openRecoveryDb();
   if (!db) return null;
   return new Promise((resolve) => {
-    try {
-      const tx = db.transaction(IDB_STORE, 'readonly');
-      const store = tx.objectStore(IDB_STORE);
-      const req = store.get(key);
-      req.onsuccess = () => {
-        db.close();
-        resolve((req.result as T | undefined) ?? null);
-      };
-      req.onerror = () => {
-        db.close();
-        resolve(null);
-      };
-    } catch {
+    let settled = false;
+    const finish = (val: T | null) => {
+      if (settled) return;
+      settled = true;
       try {
         db.close();
       } catch {
         // Ignore close failure
       }
-      resolve(null);
+      resolve(val);
+    };
+
+    try {
+      const tx = db.transaction(IDB_STORE, 'readonly');
+      const store = tx.objectStore(IDB_STORE);
+      const req = store.get(key);
+      req.onsuccess = () => finish((req.result as T | undefined) ?? null);
+      req.onerror = () => finish(null);
+      tx.onerror = () => finish(null);
+      tx.onabort = () => finish(null);
+    } catch {
+      finish(null);
     }
   });
 }
@@ -124,27 +149,35 @@ async function idbSet(key: string, value: unknown): Promise<boolean> {
   const db = await openRecoveryDb();
   if (!db) return false;
   return new Promise((resolve) => {
-    try {
-      const tx = db.transaction(IDB_STORE, 'readwrite');
-      const store = tx.objectStore(IDB_STORE);
-      store.put(value, key);
-      tx.oncomplete = () => {
-        db.close();
-        resolve(true);
-      };
-      tx.onerror = () => {
-        db.close();
-        resolve(false);
-      };
-    } catch {
+    let settled = false;
+    const finish = (ok: boolean) => {
+      if (settled) return;
+      settled = true;
       try {
         db.close();
       } catch {
         // Ignore close failure
       }
-      resolve(false);
+      resolve(ok);
+    };
+
+    try {
+      const tx = db.transaction(IDB_STORE, 'readwrite');
+      const store = tx.objectStore(IDB_STORE);
+      store.put(value, key);
+      tx.oncomplete = () => finish(true);
+      tx.onerror = () => finish(false);
+      tx.onabort = () => finish(false);
+    } catch {
+      finish(false);
     }
   });
+}
+
+function enqueueIdbWrite<T>(task: () => Promise<T>): Promise<T> {
+  const run = idbWriteQueue.then(task, task);
+  idbWriteQueue = run.catch(() => undefined);
+  return run;
 }
 
 /**
@@ -217,7 +250,7 @@ export function formatSnapshotAgeLabel(
  * if localStorage is cleared or corrupted.
  */
 export async function mirrorLatestStateToIdb(rawJson: string): Promise<boolean> {
-  return idbSet('latest_state', rawJson);
+  return enqueueIdbWrite(() => idbSet('latest_state', rawJson));
 }
 
 /**
@@ -226,6 +259,18 @@ export async function mirrorLatestStateToIdb(rawJson: string): Promise<boolean> 
 export async function readLatestStateFromIdb(): Promise<string | null> {
   const val = await idbGet<unknown>('latest_state');
   return typeof val === 'string' && val.length > 0 ? val : null;
+}
+
+function safeInt(val: unknown, fallback = 0): number {
+  return typeof val === 'number' && Number.isFinite(val)
+    ? Math.max(0, Math.round(val))
+    : fallback;
+}
+
+function safeNumVal(val: unknown, fallback = 0): number {
+  return typeof val === 'number' && Number.isFinite(val)
+    ? Math.max(0, Math.round(val * 100) / 100)
+    : fallback;
 }
 
 function normalizeSnapshotArray(raw: unknown): AutoBackupSnapshot[] {
@@ -237,10 +282,25 @@ function normalizeSnapshotArray(raw: unknown): AutoBackupSnapshot[] {
           item &&
             typeof item === 'object' &&
             typeof (item as AutoBackupSnapshot).id === 'string' &&
+            (item as AutoBackupSnapshot).id.length > 0 &&
             typeof (item as AutoBackupSnapshot).savedAt === 'string' &&
-            typeof (item as AutoBackupSnapshot).json === 'string'
+            !Number.isNaN(Date.parse((item as AutoBackupSnapshot).savedAt)) &&
+            typeof (item as AutoBackupSnapshot).json === 'string' &&
+            (item as AutoBackupSnapshot).json.length > 0
         )
     )
+    .map((item) => ({
+      id: item.id,
+      savedAt: item.savedAt,
+      reason: VALID_SNAPSHOT_REASONS.has(item.reason)
+        ? item.reason
+        : 'auto_interval',
+      entriesCount: safeInt(item.entriesCount),
+      accountsCount: safeInt(item.accountsCount),
+      envelopesCount: safeInt(item.envelopesCount),
+      monthlyIncome: safeNumVal(item.monthlyIncome),
+      json: item.json,
+    }))
     .sort((a, b) => b.savedAt.localeCompare(a.savedAt));
 }
 
@@ -254,6 +314,100 @@ async function readAsyncSnapshots(): Promise<AutoBackupSnapshot[]> {
   }
 }
 
+function mergeSnapshots(
+  primary: AutoBackupSnapshot[],
+  secondary: AutoBackupSnapshot[]
+): AutoBackupSnapshot[] {
+  const byId = new Map<string, AutoBackupSnapshot>();
+  for (const snap of secondary) {
+    byId.set(snap.id, snap);
+  }
+  for (const snap of primary) {
+    byId.set(snap.id, snap);
+  }
+  return Array.from(byId.values()).sort((a, b) =>
+    b.savedAt.localeCompare(a.savedAt)
+  );
+}
+
+/**
+ * Captures a full v6 JSON recovery snapshot and returns both the snapshot and
+ * total available snapshot count without requiring an extra read pass.
+ */
+export async function captureAutoSnapshotWithMeta(
+  state: PersistedBudgetState,
+  reason: AutoSnapshotReason = 'auto_interval',
+  now: Date = new Date()
+): Promise<{ snapshot: AutoBackupSnapshot; count: number } | null> {
+  // Build the immutable snapshot synchronously before queuing so caller dispatches cannot race.
+  let snapshot: AutoBackupSnapshot;
+  try {
+    const savedAt = now.toISOString();
+    const json = JSON.stringify({
+      version: BACKUP_SCHEMA_VERSION,
+      exportedAt: savedAt,
+      data: state,
+    });
+
+    snapshot = {
+      id: `snap-${now.getTime()}-${Math.floor(Math.random() * 10000)}`,
+      savedAt,
+      reason,
+      entriesCount: Array.isArray(state.entries) ? state.entries.length : 0,
+      accountsCount:
+        (Array.isArray(state.banks) ? state.banks.length : 0) +
+        (Array.isArray(state.creditCards) ? state.creditCards.length : 0),
+      envelopesCount: Array.isArray(state.envelopes)
+        ? state.envelopes.length
+        : 0,
+      monthlyIncome: safeNumVal(state.settings?.monthlyIncome),
+      json,
+    };
+  } catch {
+    return null;
+  }
+
+  const run = async (): Promise<{
+    snapshot: AutoBackupSnapshot;
+    count: number;
+  } | null> => {
+    try {
+      const existingAsync = await readAsyncSnapshots();
+      const nextAsync = [snapshot, ...existingAsync].slice(
+        0,
+        MAX_ASYNC_SNAPSHOTS
+      );
+      try {
+        await AsyncStorage.setItem(
+          ASYNC_SNAPSHOTS_KEY,
+          JSON.stringify(nextAsync)
+        );
+      } catch {
+        // Ignore AsyncStorage cap failure if primary Web IDB still succeeds
+      }
+
+      if (getWebIndexedDb()) {
+        const nextIdb = await enqueueIdbWrite(async () => {
+          const existingIdb = normalizeSnapshotArray(await idbGet('snapshots'));
+          const updated = [snapshot, ...existingIdb].slice(0, MAX_IDB_SNAPSHOTS);
+          await idbSet('snapshots', updated);
+          return updated;
+        });
+        const merged = mergeSnapshots(nextIdb, nextAsync);
+        return { snapshot, count: merged.length };
+      }
+
+      return { snapshot, count: nextAsync.length };
+    } catch {
+      return null;
+    }
+  };
+
+  const queued = snapshotCaptureQueue.then(run, run);
+  snapshotCaptureQueue = queued.catch(() => undefined);
+  return queued;
+}
+
 /**
  * Captures a full v6 JSON recovery snapshot into both IndexedDB (up to 20)
  * and AsyncStorage (up to 6).
@@ -263,59 +417,21 @@ export async function captureAutoSnapshot(
   reason: AutoSnapshotReason = 'auto_interval',
   now: Date = new Date()
 ): Promise<AutoBackupSnapshot | null> {
-  try {
-    const savedAt = now.toISOString();
-    const json = JSON.stringify({
-      version: 6,
-      exportedAt: savedAt,
-      data: state,
-    });
-
-    const snapshot: AutoBackupSnapshot = {
-      id: `snap-${now.getTime()}-${Math.floor(Math.random() * 10000)}`,
-      savedAt,
-      reason,
-      entriesCount: Array.isArray(state.entries) ? state.entries.length : 0,
-      accountsCount:
-        (Array.isArray(state.banks) ? state.banks.length : 0) +
-        (Array.isArray(state.creditCards) ? state.creditCards.length : 0),
-      envelopesCount: Array.isArray(state.envelopes) ? state.envelopes.length : 0,
-      monthlyIncome:
-        typeof state.settings?.monthlyIncome === 'number'
-          ? state.settings.monthlyIncome
-          : 0,
-      json,
-    };
-
-    const existingAsync = await readAsyncSnapshots();
-    const nextAsync = [snapshot, ...existingAsync].slice(0, MAX_ASYNC_SNAPSHOTS);
-    try {
-      await AsyncStorage.setItem(ASYNC_SNAPSHOTS_KEY, JSON.stringify(nextAsync));
-    } catch {
-      // Ignore AsyncStorage cap failure if primary Web IDB still succeeds
-    }
-
-    if (getWebIndexedDb()) {
-      const existingIdb = normalizeSnapshotArray(await idbGet('snapshots'));
-      const nextIdb = [snapshot, ...existingIdb].slice(0, MAX_IDB_SNAPSHOTS);
-      await idbSet('snapshots', nextIdb);
-    }
-
-    return snapshot;
-  } catch {
-    return null;
-  }
+  const res = await captureAutoSnapshotWithMeta(state, reason, now);
+  return res ? res.snapshot : null;
 }
 
 /**
- * Lists saved automatic recovery snapshots ordered newest first.
+ * Lists saved automatic recovery snapshots ordered newest first, merging Web IDB
+ * and AsyncStorage copies cleanly.
  */
 export async function listAutoSnapshots(): Promise<AutoBackupSnapshot[]> {
+  const fromAsync = await readAsyncSnapshots();
   if (getWebIndexedDb()) {
     const fromIdb = normalizeSnapshotArray(await idbGet('snapshots'));
-    if (fromIdb.length > 0) return fromIdb;
+    return mergeSnapshots(fromIdb, fromAsync);
   }
-  return readAsyncSnapshots();
+  return fromAsync;
 }
 
 /**

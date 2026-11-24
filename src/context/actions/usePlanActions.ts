@@ -1,5 +1,6 @@
 import { useCallback, useMemo } from 'react';
 import { getTodayKey, roundCurrency } from '../../state/budgetMath';
+import { resolvePaymentSource } from '../../state/reducers/helpers';
 import {
   EnvelopeCadence,
   EnvelopeRolloverMode,
@@ -219,20 +220,12 @@ export function usePlanActions({
       const env = (current.envelopes || []).find((e) => e.id === envelopeId);
       if (!env) return;
 
+      if (!Number.isFinite(amount) || amount <= 0) return;
       const cleanAmount = roundCurrency(Math.max(0.01, amount));
       const targetDateKey = selectedDateKeyRef.current;
 
-      let sourceLabel = '';
-      if (paymentSourceId === 'cash') {
-        sourceLabel = ' • Cash';
-      } else if (paymentSourceId && paymentSourceId !== 'none') {
-        const matchedBank = current.banks.find((b) => b.id === paymentSourceId);
-        const matchedCard = current.creditCards.find(
-          (c) => c.id === paymentSourceId
-        );
-        if (matchedBank) sourceLabel = ` • ${matchedBank.name}`;
-        else if (matchedCard) sourceLabel = ` • ${matchedCard.name}`;
-      }
+      const resolved = resolvePaymentSource(current, paymentSourceId);
+      const sourceLabel = resolved.label ? ` • ${resolved.label}` : '';
 
       triggerSuccessHaptic();
       dispatch({

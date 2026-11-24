@@ -1,25 +1,20 @@
-import React, { useEffect, useState } from 'react';
-import { StyleSheet, Text, TextInput, View } from 'react-native';
+import React, { useState } from 'react';
+import { StyleSheet, Text, View } from 'react-native';
 import { sumBills } from '../context/BudgetContext';
 import { ThemeShade } from '../theme/palette';
-import { BillItem, getDaysUntilDayOfMonth } from '../types/budget';
+import { BillItem } from '../types/budget';
 import { triggerLightHaptic } from '../utils/haptics';
-import {
-  formatOrdinal,
-  formatPeso,
-  formatPesoDisplay,
-  formatPesoInput,
-  formatPesoNumber,
-  parsePesoInput,
-} from '../utils/numberFormat';
+import { formatPeso, formatPesoDisplay } from '../utils/numberFormat';
 import { PopValueText, ScalePressable } from './AnimatedPrimitives';
-import { AppIcon, IconBadge } from './AppIcon';
+import { AppIcon } from './AppIcon';
 import {
   AddEditBillModal,
   BillDueDayModal,
   QUICK_BILL_PRESETS,
 } from './BillModals';
 import { ConfirmModal } from './ConfirmModal';
+import { BillRowCard } from './bills/BillRowCard';
+import { QuickPresetChips } from './form/QuickPresetChips';
 
 export interface MonthlyBillsBreakdownCardProps {
   bills: BillItem[];
@@ -48,57 +43,9 @@ export interface MonthlyBillsBreakdownCardProps {
   defaultExpanded?: boolean;
 }
 
-interface BillAmountInputProps {
-  value: number;
-  shade: ThemeShade;
-  onChange: (next: number) => void;
-}
-
-const BillAmountInput: React.FC<BillAmountInputProps> = ({
-  value,
-  shade,
-  onChange,
-}) => {
-  const [isFocused, setIsFocused] = useState(false);
-  const [draftText, setDraftText] = useState(() => formatPesoNumber(value));
-
-  useEffect(() => {
-    if (!isFocused) {
-      setDraftText(formatPesoNumber(value));
-    }
-  }, [value, isFocused]);
-
-  return (
-    <TextInput
-      value={isFocused ? draftText : formatPesoNumber(value)}
-      onChangeText={(t) => {
-        const formatted = formatPesoInput(t);
-        setDraftText(formatted);
-        onChange(Math.max(0, parsePesoInput(formatted)));
-      }}
-      onFocus={() => {
-        setIsFocused(true);
-        setDraftText(formatPesoNumber(value));
-      }}
-      onBlur={() => {
-        setIsFocused(false);
-        const parsed = Math.max(0, parsePesoInput(draftText));
-        onChange(parsed);
-        setDraftText(formatPesoNumber(parsed));
-      }}
-      keyboardType="decimal-pad"
-      inputMode="decimal"
-      placeholder="0"
-      placeholderTextColor={shade.muted}
-      selectTextOnFocus
-      style={[styles.amountInput, { color: shade.text }]}
-    />
-  );
-};
-
 /**
  * Interactive Monthly Bills Breakdown allowing users to add, edit, or remove
- * individual bills via modal while computing the total fixed bills.
+ * individual bills while computing total fixed bills.
  */
 const MonthlyBillsBreakdownCardBase: React.FC<
   MonthlyBillsBreakdownCardProps
@@ -146,6 +93,11 @@ const MonthlyBillsBreakdownCardBase: React.FC<
     setBillModalState({ bill });
   };
 
+  const quickPresets = QUICK_BILL_PRESETS.map((p) => ({
+    ...p,
+    label: `${p.name} ${formatPeso(p.amount)}`,
+  }));
+
   return (
     <View
       style={[
@@ -153,7 +105,6 @@ const MonthlyBillsBreakdownCardBase: React.FC<
         { backgroundColor: shade.card, borderColor: shade.border },
       ]}
     >
-      {/* Header with Live Total & Optional Collapse Trigger */}
       <View style={styles.headerRow}>
         <ScalePressable
           disabled={!collapsible}
@@ -161,7 +112,9 @@ const MonthlyBillsBreakdownCardBase: React.FC<
             triggerLightHaptic();
             setExpanded((v) => !v);
           }}
-          style={{ flex: 1 }}
+          accessibilityRole={collapsible ? 'button' : 'text'}
+          accessibilityState={collapsible ? { expanded } : undefined}
+          style={{ flex: 1, minWidth: 0 }}
         >
           <Text style={[styles.title, { color: shade.text }]}>
             Monthly fixed bills ({bills.length})
@@ -180,6 +133,9 @@ const MonthlyBillsBreakdownCardBase: React.FC<
             <>
               <ScalePressable
                 onPress={openAddBillModal}
+                accessibilityRole="button"
+                accessibilityLabel="Add monthly bill"
+                hitSlop={8}
                 style={[styles.customToggle, { backgroundColor: shade.surface }]}
               >
                 <AppIcon name="plus" size={12} color={shade.dopamine} />
@@ -194,6 +150,11 @@ const MonthlyBillsBreakdownCardBase: React.FC<
                   triggerLightHaptic();
                   setExpanded((v) => !v);
                 }}
+                accessibilityRole="button"
+                accessibilityLabel={
+                  expanded ? 'Collapse monthly bills' : 'Expand monthly bills'
+                }
+                accessibilityState={{ expanded }}
                 hitSlop={8}
               >
                 <AppIcon
@@ -212,13 +173,17 @@ const MonthlyBillsBreakdownCardBase: React.FC<
                     { backgroundColor: shade.positiveSoft },
                   ]}
                 >
-                  <Text style={[styles.paidCountText, { color: shade.positive }]}>
+                  <Text
+                    style={[styles.paidCountText, { color: shade.positive }]}
+                  >
                     {paidCount}/{bills.length} paid
                   </Text>
                 </View>
               )}
               <PopValueText valueTrigger={totalBills}>
-                <View style={[styles.totalPill, { backgroundColor: shade.surface }]}>
+                <View
+                  style={[styles.totalPill, { backgroundColor: shade.surface }]}
+                >
                   <Text style={[styles.totalText, { color: shade.accent }]}>
                     Total: {formatPesoDisplay(totalBills, privacyMode)}
                   </Text>
@@ -229,187 +194,38 @@ const MonthlyBillsBreakdownCardBase: React.FC<
         </View>
       </View>
 
-      {/* Individual Bill Rows */}
       {expanded && (
         <View style={styles.billList}>
-        {bills.length === 0 ? (
-          <View style={[styles.emptyRow, { backgroundColor: shade.bg }]}>
-            <Text style={[styles.emptyText, { color: shade.muted }]}>
-              No fixed bills yet. Tap a preset or + Custom Bill.
-            </Text>
-          </View>
-        ) : (
-          bills.map((bill) => {
-            const isPaid = bill.lastPaidMonth === activeMonthKey;
-            const daysLeft =
-              typeof bill.dueDay === 'number'
-                ? getDaysUntilDayOfMonth(bill.dueDay)
-                : null;
-            const isUrgent = !isPaid && daysLeft !== null && daysLeft <= 3;
-
-            return (
-              <View
+          {bills.length === 0 ? (
+            <View style={[styles.emptyRow, { backgroundColor: shade.bg }]}>
+              <Text style={[styles.emptyText, { color: shade.muted }]}>
+                {collapsible
+                  ? 'No fixed bills yet. Tap + Add above.'
+                  : 'No fixed bills yet. Tap a preset or + Custom Bill below.'}
+              </Text>
+            </View>
+          ) : (
+            bills.map((bill) => (
+              <BillRowCard
                 key={bill.id}
-                style={[styles.billRowCard, { backgroundColor: shade.surface }]}
-              >
-                <View style={styles.billMainRow}>
-                    <ScalePressable
-                      onPress={() => {
-                        if (onUpdateBillItem) {
-                          openEditBillModal(bill);
-                        }
-                      }}
-                      disabled={!onUpdateBillItem}
-                      style={[styles.billLeft, { minWidth: 0 }]}
-                    >
-                      <IconBadge
-                        name={bill.icon}
-                        size={14}
-                        color={shade.text}
-                        bg={shade.card}
-                        boxSize={28}
-                      />
-                      <Text
-                        numberOfLines={1}
-                        style={[styles.billName, { color: shade.text }]}
-                      >
-                        {bill.name}
-                      </Text>
-                    </ScalePressable>
-
-                  <View style={styles.billRight}>
-                    <View
-                      style={[
-                        styles.amountBox,
-                        { backgroundColor: shade.bg, borderColor: shade.border },
-                      ]}
-                    >
-                      <Text style={[styles.pesoSign, { color: shade.accent }]}>
-                        ₱
-                      </Text>
-                      <BillAmountInput
-                        value={bill.amount}
-                        shade={shade}
-                        onChange={(next) => onUpdateAmount(bill.id, next)}
-                      />
-                    </View>
-
-                    <ScalePressable
-                      onPress={() => {
-                        triggerLightHaptic();
-                        setPendingDeleteBill(bill);
-                      }}
-                      accessibilityLabel={`Remove ${bill.name}`}
-                      hitSlop={9}
-                      style={[styles.removeBtn, { backgroundColor: shade.bg }]}
-                    >
-                      <AppIcon name="x" size={13} color={shade.muted} />
-                    </ScalePressable>
-                  </View>
-                </View>
-
-                {enableTracking && (
-                  <View style={styles.billTrackRow}>
-                    <View style={styles.billTrackLeft}>
-                      <ScalePressable
-                        onPress={() => {
-                          if (!onUpdateDueDay) return;
-                          triggerLightHaptic();
-                          setDueEditBill(bill);
-                        }}
-                        style={[
-                          styles.dueChip,
-                          {
-                            backgroundColor: shade.card,
-                            borderColor: shade.border,
-                          },
-                        ]}
-                      >
-                        <AppIcon name="calendar" size={11} color={shade.muted} />
-                        <Text style={[styles.dueChipText, { color: shade.muted }]}>
-                          {typeof bill.dueDay === 'number'
-                            ? `Due ${formatOrdinal(bill.dueDay)}`
-                            : '+ Due day'}
-                        </Text>
-                      </ScalePressable>
-
-                      {onUpdateBillItem && (
-                        <ScalePressable
-                          onPress={() => openEditBillModal(bill)}
-                          accessibilityLabel={`Edit ${bill.name}`}
-                          style={[
-                            styles.dueChip,
-                            {
-                              backgroundColor: shade.card,
-                              borderColor: shade.border,
-                            },
-                          ]}
-                        >
-                          <AppIcon name="edit-2" size={10} color={shade.muted} />
-                          <Text style={[styles.dueChipText, { color: shade.muted }]}>
-                            Edit
-                          </Text>
-                        </ScalePressable>
-                      )}
-                    </View>
-
-                    {isPaid ? (
-                      <View
-                        style={[
-                          styles.paidBadge,
-                          { backgroundColor: shade.positiveSoft },
-                        ]}
-                      >
-                        <AppIcon name="check" size={11} color={shade.positive} />
-                        <Text
-                          style={[
-                            styles.paidBadgeText,
-                            { color: shade.positive },
-                          ]}
-                        >
-                          Paid
-                        </Text>
-                      </View>
-                    ) : (
-                      <ScalePressable
-                        onPress={() => {
-                          triggerLightHaptic();
-                          onRequestPayBill?.(bill);
-                        }}
-                        style={[
-                          styles.markPaidBtn,
-                          {
-                            backgroundColor: isUrgent
-                              ? shade.warningSoft
-                              : shade.card,
-                            borderColor: isUrgent ? shade.warning : shade.border,
-                          },
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            styles.markPaidText,
-                            { color: isUrgent ? shade.warning : shade.text },
-                          ]}
-                        >
-                          {daysLeft === 0
-                            ? 'Mark Paid • Due Today'
-                            : isUrgent
-                            ? `Mark Paid • ${daysLeft}d`
-                            : 'Mark Paid'}
-                        </Text>
-                      </ScalePressable>
-                    )}
-                  </View>
-                )}
-              </View>
-            );
-          })
-        )}
+                bill={bill}
+                activeMonthKey={activeMonthKey}
+                shade={shade}
+                privacyMode={privacyMode}
+                enableTracking={enableTracking}
+                canEditBill={Boolean(onUpdateBillItem)}
+                canEditDueDay={Boolean(onUpdateDueDay)}
+                onUpdateAmount={onUpdateAmount}
+                onEditBill={openEditBillModal}
+                onEditDueDay={setDueEditBill}
+                onPayBill={(target) => onRequestPayBill?.(target)}
+                onRequestDelete={setPendingDeleteBill}
+              />
+            ))
+          )}
         </View>
       )}
 
-      {/* Quick Presets + Custom Bill Modal Trigger (kept in Onboarding; hidden in compact Setup) */}
       {expanded && !collapsible && (
         <View style={styles.presetSection}>
           <View style={styles.headerRow}>
@@ -418,6 +234,9 @@ const MonthlyBillsBreakdownCardBase: React.FC<
             </Text>
             <ScalePressable
               onPress={openAddBillModal}
+              accessibilityRole="button"
+              accessibilityLabel="Add custom monthly bill"
+              hitSlop={8}
               style={[styles.customToggle, { backgroundColor: shade.surface }]}
             >
               <AppIcon name="plus" size={12} color={shade.dopamine} />
@@ -427,22 +246,14 @@ const MonthlyBillsBreakdownCardBase: React.FC<
             </ScalePressable>
           </View>
 
-          <View style={styles.presetChips}>
-            {QUICK_BILL_PRESETS.map((preset) => (
-              <ScalePressable
-                key={preset.name}
-                onPress={() =>
-                  onAddBill(preset.name, preset.icon, preset.amount)
-                }
-                style={[styles.presetChip, { backgroundColor: shade.surface }]}
-              >
-                <AppIcon name={preset.icon} size={12} color={shade.text} />
-                <Text style={[styles.presetChipText, { color: shade.text }]}>
-                  {preset.name} {formatPeso(preset.amount)}
-                </Text>
-              </ScalePressable>
-            ))}
-          </View>
+          <QuickPresetChips
+            presets={quickPresets}
+            shade={shade}
+            accentColor={shade.text}
+            onSelect={(preset) =>
+              onAddBill(preset.name, preset.icon, preset.amount)
+            }
+          />
         </View>
       )}
 
@@ -469,7 +280,10 @@ const MonthlyBillsBreakdownCardBase: React.FC<
         title="Remove Monthly Bill?"
         message={
           pendingDeleteBill
-            ? `Remove "${pendingDeleteBill.name}" (${formatPeso(pendingDeleteBill.amount)}/mo) from your fixed bills?`
+            ? `Remove "${pendingDeleteBill.name}" (${formatPesoDisplay(
+                pendingDeleteBill.amount,
+                privacyMode
+              )}/mo) from your fixed bills?`
             : ''
         }
         confirmLabel="Remove"
@@ -520,6 +334,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    flexShrink: 0,
   },
   paidCountPill: {
     paddingHorizontal: 8,
@@ -545,111 +360,7 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 11,
-  },
-  billRowCard: {
-    borderRadius: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    gap: 7,
-  },
-  billMainRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-  billTrackRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-  billTrackLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  dueChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-    borderWidth: 1,
-  },
-  dueChipText: {
-    fontSize: 10,
-    fontWeight: '700',
-  },
-  paidBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-    borderRadius: 8,
-  },
-  paidBadgeText: {
-    fontSize: 10,
-    fontWeight: '800',
-  },
-  markPaidBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 8,
-    borderWidth: 1,
-  },
-  markPaidText: {
-    fontSize: 10,
-    fontWeight: '800',
-  },
-  billLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    flex: 1,
-    minWidth: 0,
-  },
-  billName: {
-    fontSize: 12,
-    fontWeight: '700',
-    flex: 1,
-    minWidth: 0,
-  },
-  billRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexShrink: 0,
-    gap: 6,
-  },
-  amountBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderRadius: 9,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    width: 132,
-  },
-  pesoSign: {
-    fontSize: 12,
-    fontWeight: '800',
-    marginRight: 3,
-  },
-  amountInput: {
-    flex: 1,
-    minWidth: 0,
-    fontSize: 13,
-    fontWeight: '800',
-    paddingVertical: 0,
-  },
-  removeBtn: {
-    width: 26,
-    height: 26,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
+    textAlign: 'center',
   },
   presetSection: {
     gap: 7,
@@ -664,29 +375,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    paddingHorizontal: 9,
-    paddingVertical: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
     borderRadius: 8,
   },
   customToggleText: {
     fontSize: 11,
     fontWeight: '800',
-  },
-  presetChips: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
-  presetChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 9,
-    paddingVertical: 6,
-    borderRadius: 9,
-  },
-  presetChipText: {
-    fontSize: 11,
-    fontWeight: '700',
   },
 });

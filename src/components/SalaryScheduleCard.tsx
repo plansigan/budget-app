@@ -98,6 +98,9 @@ export const SalaryScheduleCard: React.FC<SalaryScheduleCardProps> = ({
             triggerLightHaptic();
             onChange(1, payday1, payday2);
           }}
+          accessibilityRole="tab"
+          accessibilityLabel="Paid once per month"
+          accessibilityState={{ selected: frequency === 1 }}
           style={[
             styles.freqBtn,
             {
@@ -120,6 +123,9 @@ export const SalaryScheduleCard: React.FC<SalaryScheduleCardProps> = ({
             triggerLightHaptic();
             onChange(2, payday1, payday2);
           }}
+          accessibilityRole="tab"
+          accessibilityLabel="Paid twice per month"
+          accessibilityState={{ selected: frequency === 2 }}
           style={[
             styles.freqBtn,
             {
@@ -152,6 +158,9 @@ export const SalaryScheduleCard: React.FC<SalaryScheduleCardProps> = ({
             maxLength={2}
             placeholder="15"
             placeholderTextColor={shade.muted}
+            accessibilityLabel={
+              frequency === 2 ? 'First payday day of month' : 'Payday day of month'
+            }
             selectTextOnFocus
             style={[
               styles.dayInput,
@@ -178,6 +187,7 @@ export const SalaryScheduleCard: React.FC<SalaryScheduleCardProps> = ({
               maxLength={2}
               placeholder="30"
               placeholderTextColor={shade.muted}
+              accessibilityLabel="Second payday day of month"
               selectTextOnFocus
               style={[
                 styles.dayInput,
@@ -191,6 +201,12 @@ export const SalaryScheduleCard: React.FC<SalaryScheduleCardProps> = ({
           </View>
         )}
       </View>
+
+      {frequency === 2 && payday1 === payday2 && (
+        <Text style={[styles.sameDayWarn, { color: shade.warning }]}>
+          1st and 2nd payday are set to the same day ({payday1}). Use distinct days or switch to 1x / Month.
+        </Text>
+      )}
     </View>
   );
 };
@@ -223,6 +239,7 @@ const styles = StyleSheet.create({
     paddingVertical: 9,
     borderRadius: 11,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   freqText: {
     fontSize: 12,
@@ -248,5 +265,10 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '800',
     textAlign: 'center',
+  },
+  sameDayWarn: {
+    fontSize: 11,
+    fontWeight: '700',
+    lineHeight: 16,
   },
 });

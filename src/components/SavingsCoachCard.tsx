@@ -135,6 +135,9 @@ export const SavingsCoachCard: React.FC = React.memo(() => {
         </Text>
         <ScalePressable
           onPress={handleNextTip}
+          accessibilityRole="button"
+          accessibilityLabel="Next savings tip"
+          hitSlop={8}
           style={[styles.nextChip, { backgroundColor: shade.surface }]}
         >
           <Text style={[styles.nextChipText, { color: shade.text }]}>

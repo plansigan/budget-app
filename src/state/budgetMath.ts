@@ -6,7 +6,10 @@ import {
   SpendingEnvelopeItem,
   TransactionEntry,
 } from '../types/budget';
-import { formatLocalDateKey } from '../utils/transactionDisplay';
+import {
+  formatEntryDateLocal,
+  formatLocalDateKey,
+} from '../utils/transactionDisplay';
 
 export function sumBills(items: BillItem[]): number {
   return roundCurrency(
@@ -39,12 +42,14 @@ export function safeNum(
   return Math.max(min, Math.min(max, value));
 }
 
-export function getDaysInMonth(date: Date = new Date()): number {
+function getDaysInMonth(date: Date = new Date()): number {
   return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
 }
 
 export function roundCurrency(value: number): number {
-  return Math.round(value * 100) / 100;
+  if (!Number.isFinite(value)) return 0;
+  const rounded = Math.round(value * 100) / 100;
+  return rounded === 0 ? 0 : rounded;
 }
 
 export function getBudgetedInstallmentsTotal(
@@ -87,7 +92,7 @@ export function computeBaseDailyAllowance(
     Math.max(0, extraMonthlyFixed) -
     settings.monthlySavingsGoal;
   const days = getDaysInMonth(referenceDate);
-  return Math.max(0, Math.round((discretionary / days) * 100) / 100);
+  return Math.max(0, roundCurrency(discretionary / days));
 }
 
 export function computeDayMetricsFromDayEntries(
@@ -152,7 +157,7 @@ export function computeDayMetricsFromEntries(
   fallbackDateKey: string
 ): DaySummary {
   const dayEntries = entries.filter(
-    (e) => (e.dateKey || fallbackDateKey) === dateKey
+    (e) => formatEntryDateLocal(e, fallbackDateKey) === dateKey
   );
 
   return computeDayMetricsFromDayEntries(

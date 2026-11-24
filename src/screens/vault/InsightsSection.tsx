@@ -15,10 +15,15 @@ import {
   useThemePrefs,
   useWallet,
 } from '../../context/BudgetContext';
+import {
+  getBudgetedInstallmentsTotal,
+  getTotalMonthlyEnvelopes,
+} from '../../state/budgetMath';
 import { MonthlyArchiveSnapshot } from '../../types/budget';
 import { triggerLightHaptic } from '../../utils/haptics';
 import { formatMonthKeyLabel } from '../../utils/insightsEngine';
 import { ALL_MILESTONES, computeBudgetHealth } from '../../utils/savingsCoach';
+import { formatEntryDateLocal } from '../../utils/transactionDisplay';
 
 interface InsightsSectionProps {
   onOpenWrap: (archive?: MonthlyArchiveSnapshot | null) => void;
@@ -32,8 +37,8 @@ export const InsightsSection: React.FC<InsightsSectionProps> = ({
   onOpenWrap,
 }) => {
   const { shade, formatVisiblePeso } = useThemePrefs();
-  const { settings, entries } = useDailyBudget();
-  const { cashOnHand, banks } = useWallet();
+  const { settings, envelopes, entries } = useDailyBudget();
+  const { cashOnHand, banks, installments } = useWallet();
   const {
     monthlySaved,
     monthlyArchives,
@@ -61,7 +66,24 @@ export const InsightsSection: React.FC<InsightsSectionProps> = ({
 
   const lastArchive = sortedArchives[0] || null;
 
-  const health = computeBudgetHealth(settings);
+  const extraMonthlyCommitments = useMemo(
+    () =>
+      getTotalMonthlyEnvelopes(envelopes, settings.salaryFrequency) +
+      getBudgetedInstallmentsTotal(installments),
+    [envelopes, settings.salaryFrequency, installments]
+  );
+
+  const filteredEntriesCount = useMemo(
+    () =>
+      !selectedArchive
+        ? entries.length
+        : entries.filter((e) =>
+            formatEntryDateLocal(e).startsWith(selectedArchive.monthKey)
+          ).length,
+    [entries, selectedArchive]
+  );
+
+  const health = computeBudgetHealth(settings, extraMonthlyCommitments);
   const liquidTotal =
     Math.max(0, cashOnHand) +
     banks.reduce((sum, b) => sum + Math.max(0, b.balance), 0);
@@ -149,7 +171,7 @@ export const InsightsSection: React.FC<InsightsSectionProps> = ({
                     styles.monthGradeBadge,
                     {
                       backgroundColor: active
-                        ? shade.positive
+                        ? shade.positiveBtnBg
                         : shade.positiveSoft,
                     },
                   ]}
@@ -183,7 +205,7 @@ export const InsightsSection: React.FC<InsightsSectionProps> = ({
         ]}
       >
         <View style={{ flex: 1, gap: 4 }}>
-          <Text style={[styles.kicker, { color: '#4ADE80' }]}>
+          <Text style={[styles.kicker, { color: shade.heroPositive }]}>
             {selectedArchive
               ? selectedArchive.monthTitle
               : 'MONTHLY REPORT CARD'}
@@ -201,7 +223,12 @@ export const InsightsSection: React.FC<InsightsSectionProps> = ({
                   { backgroundColor: shade.heroSurface },
                 ]}
               >
-                <Text style={[styles.archiveStatText, { color: '#4ADE80' }]}>
+                <Text
+                  style={[
+                    styles.archiveStatText,
+                    { color: shade.heroPositive },
+                  ]}
+                >
                   Saved {formatVisiblePeso(selectedArchive.totalSaved)}
                 </Text>
               </View>
@@ -231,7 +258,7 @@ export const InsightsSection: React.FC<InsightsSectionProps> = ({
         <IconBadge
           name="award"
           size={22}
-          color="#4ADE80"
+          color={shade.heroPositive}
           bg={shade.heroSurface}
           boxSize={46}
         />
@@ -323,7 +350,7 @@ export const InsightsSection: React.FC<InsightsSectionProps> = ({
 
             <View style={styles.splitLegendRow}>
               <Text style={[styles.legendItem, { color: shade.muted }]}>
-                Bills {health.billsPct}%
+                Bills & Plan {health.billsPct}%
               </Text>
               <Text style={[styles.legendItem, { color: shade.positive }]}>
                 Save {health.savingsPct}%
@@ -432,11 +459,14 @@ export const InsightsSection: React.FC<InsightsSectionProps> = ({
             Activity History
           </Text>
           <Text style={[styles.accordionSub, { color: shade.muted }]}>
-            Search & filter all {entries.length}{' '}
-            {entries.length === 1 ? 'logged entry' : 'logged entries'}
+            Search & filter{' '}
             {selectedArchive
-              ? ` • filtered to ${formatMonthKeyLabel(selectedArchive.monthKey)}`
-              : ''}
+              ? `${filteredEntriesCount} ${
+                  filteredEntriesCount === 1 ? 'logged entry' : 'logged entries'
+                } in ${formatMonthKeyLabel(selectedArchive.monthKey)}`
+              : `all ${entries.length} ${
+                  entries.length === 1 ? 'logged entry' : 'logged entries'
+                }`}
           </Text>
         </View>
         <AppIcon name="chevron-right" size={18} color={shade.muted} />

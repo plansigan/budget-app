@@ -1,4 +1,5 @@
 import { Platform, Share } from 'react-native';
+import { BACKUP_SCHEMA_VERSION } from '../state/autoSnapshots';
 import { PersistedBudgetState } from '../state/defaults';
 import { normalizePersistedState } from '../state/persistence';
 import { VELVET_SHADE } from '../theme/palette';
@@ -68,7 +69,7 @@ export function buildTransactionsCsv(entries: TransactionEntry[]): string {
 export function serializeBackupJson(state: unknown): string {
   return JSON.stringify(
     {
-      version: 6,
+      version: BACKUP_SCHEMA_VERSION,
       exportedAt: new Date().toISOString(),
       data: state,
     },
@@ -128,13 +129,28 @@ export function parseBackupJson(
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
       return { ok: false, error: 'Invalid backup format.' };
     }
+    const rawObj = parsed as Record<string, unknown>;
+    if ('version' in rawObj && rawObj.version !== undefined) {
+      if (
+        typeof rawObj.version !== 'number' ||
+        !Number.isFinite(rawObj.version) ||
+        rawObj.version < 1 ||
+        rawObj.version > BACKUP_SCHEMA_VERSION
+      ) {
+        return {
+          ok: false,
+          error: 'Unsupported backup file version.',
+        };
+      }
+    }
+
     const candidate =
       'data' in parsed &&
       parsed.data &&
       typeof parsed.data === 'object' &&
       !Array.isArray(parsed.data)
         ? (parsed.data as Record<string, unknown>)
-        : (parsed as Record<string, unknown>);
+        : rawObj;
 
     const exportedAt =
       'exportedAt' in parsed &&
@@ -172,7 +188,7 @@ export function parseBackupJson(
     }
 
     for (const key of NUMERIC_TOP_KEYS) {
-      if (!isValidOptionalFiniteNumber(candidate[key])) {
+      if (!isValidOptionalNonNegativeNumber(candidate[key])) {
         return {
           ok: false,
           error: `Backup contains invalid numeric value for ${key}.`,
@@ -302,17 +318,21 @@ export function pickJsonFileTextOnWeb(): Promise<
       finish({ ok: false, cancelled: true });
     };
 
+    const supportsNativeCancel =
+      typeof (input as { oncancel?: unknown }).oncancel !== 'undefined';
+
     const handleWindowFocus = () => {
+      if (supportsNativeCancel) return;
       setTimeout(() => {
         if (!settled && (!input.files || input.files.length === 0)) {
           finish({ ok: false, cancelled: true });
         }
-      }, 400);
+      }, 2000);
     };
 
     input.addEventListener('change', handleChange);
     input.addEventListener('cancel', handleCancel);
-    if (typeof window !== 'undefined') {
+    if (!supportsNativeCancel && typeof window !== 'undefined') {
       window.addEventListener('focus', handleWindowFocus, { once: true });
     }
 
@@ -340,7 +360,10 @@ export async function shareOrDownloadText(
       document.body.appendChild(anchor);
       anchor.click();
       document.body.removeChild(anchor);
-      URL.revokeObjectURL(url);
+      // Defer revocation so Safari / iOS Safari finishes initiating the blob download
+      setTimeout(() => {
+        URL.revokeObjectURL(url);
+      }, 10_000);
       return true;
     }
 

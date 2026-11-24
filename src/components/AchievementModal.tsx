@@ -140,7 +140,9 @@ export const AchievementModal: React.FC<AchievementModalProps> = ({
             {hasAction && (
               <ScalePressable
                 onPress={handleAction}
-                style={[styles.actionBtn, { backgroundColor: shade.positive }]}
+                accessibilityRole="button"
+                accessibilityLabel={pendingMilestone.actionLabel}
+                style={[styles.actionBtn, { backgroundColor: shade.positiveBtnBg }]}
               >
                 <Text style={[styles.actionText, { color: '#FFFFFF' }]}>
                   {pendingMilestone.actionLabel}
@@ -150,6 +152,8 @@ export const AchievementModal: React.FC<AchievementModalProps> = ({
 
             <ScalePressable
               onPress={dismissMilestone}
+              accessibilityRole="button"
+              accessibilityLabel={hasAction ? 'Later' : 'Keep Going'}
               style={[
                 styles.doneBtn,
                 {

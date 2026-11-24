@@ -10,7 +10,11 @@ import {
   View,
   ViewStyle,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useThemePrefs } from '../context/BudgetContext';
 import { useWebKeyboardInset } from '../utils/useWebKeyboardInset';
+
+const openModalStack: symbol[] = [];
 
 interface BaseModalProps {
   visible: boolean;
@@ -29,7 +33,7 @@ interface BaseModalProps {
 
 /**
  * Shared cross-platform centered modal shell handling fade/spring entry,
- * backdrop press dismissal, iOS/Android/Web keyboard lifting, and Web Escape key close.
+ * backdrop press dismissal, iOS/Android/Web keyboard lifting, safe areas, and stacked Web Escape key close.
  */
 export const BaseModal: React.FC<BaseModalProps> = ({
   visible,
@@ -38,13 +42,15 @@ export const BaseModal: React.FC<BaseModalProps> = ({
   cardStyle,
   backdropStyle,
   avoidKeyboard = true,
-  androidAvoidHeight = false,
+  androidAvoidHeight = true,
   initialScale = 0.94,
   springSpeed = 28,
   springBounciness = 7,
   minKeyboardCardHeight = 240,
   children,
 }) => {
+  const { shade } = useThemePrefs();
+  const insets = useSafeAreaInsets();
   const cardScale = useRef(new Animated.Value(initialScale)).current;
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
@@ -65,29 +71,51 @@ export const BaseModal: React.FC<BaseModalProps> = ({
   }, [visible, cardScale, initialScale, springSpeed, springBounciness]);
 
   useEffect(() => {
-    if (
-      Platform.OS !== 'web' ||
-      !visible ||
-      typeof window === 'undefined' ||
-      typeof window.addEventListener !== 'function'
-    ) {
-      return;
-    }
+    if (!visible) return;
+    const modalToken = Symbol('base-modal');
+    openModalStack.push(modalToken);
+
+    const canListenWeb =
+      Platform.OS === 'web' &&
+      typeof window !== 'undefined' &&
+      typeof window.addEventListener === 'function';
+
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
+        const topModal = openModalStack[openModalStack.length - 1];
+        if (topModal !== modalToken) return;
         event.preventDefault();
         onCloseRef.current();
       }
     };
-    window.addEventListener('keydown', handleKeyDown);
+
+    if (canListenWeb) {
+      window.addEventListener('keydown', handleKeyDown);
+    }
     return () => {
-      window.removeEventListener('keydown', handleKeyDown);
+      const idx = openModalStack.lastIndexOf(modalToken);
+      if (idx !== -1) {
+        openModalStack.splice(idx, 1);
+      }
+      if (canListenWeb) {
+        window.removeEventListener('keydown', handleKeyDown);
+      }
     };
   }, [visible]);
 
   if (!visible) {
     return null;
   }
+
+  const backdropScrim = {
+    backgroundColor: shade.dark
+      ? 'rgba(4, 6, 12, 0.72)'
+      : 'rgba(17, 24, 39, 0.45)',
+    paddingTop: Math.max(12, insets.top + 8),
+    paddingBottom: Math.max(12, insets.bottom + 8),
+    paddingLeft: Math.max(18, insets.left + 12),
+    paddingRight: Math.max(18, insets.right + 12),
+  };
 
   const webKeyboardBackdrop =
     avoidKeyboard && Platform.OS === 'web' && keyboardInset > 0
@@ -109,9 +137,11 @@ export const BaseModal: React.FC<BaseModalProps> = ({
       <Pressable
         style={StyleSheet.absoluteFill}
         onPress={onClose}
+        accessibilityRole="button"
         accessibilityLabel={dismissLabel}
       />
       <Animated.View
+        accessibilityViewIsModal
         style={[
           styles.card,
           cardStyle,
@@ -140,12 +170,19 @@ export const BaseModal: React.FC<BaseModalProps> = ({
               ? 'height'
               : undefined
           }
-          style={[styles.backdrop, backdropStyle, webKeyboardBackdrop]}
+          style={[
+            styles.backdrop,
+            backdropScrim,
+            backdropStyle,
+            webKeyboardBackdrop,
+          ]}
         >
           {content}
         </KeyboardAvoidingView>
       ) : (
-        <View style={[styles.backdrop, backdropStyle]}>{content}</View>
+        <View style={[styles.backdrop, backdropScrim, backdropStyle]}>
+          {content}
+        </View>
       )}
     </Modal>
   );
@@ -154,10 +191,8 @@ export const BaseModal: React.FC<BaseModalProps> = ({
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: 'rgba(17, 24, 39, 0.45)',
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 18,
   },
   card: {
     width: '100%',

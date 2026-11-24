@@ -1,14 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
-import {
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { StyleSheet, Text, TextInput, View } from 'react-native';
 import { ScalePressable } from '../../components/AnimatedPrimitives';
-import { AppIcon, SPEND_CATEGORIES } from '../../components/AppIcon';
 import { FormModal } from '../../components/FormModal';
+import { PaymentSourcePicker } from '../../components/form/PaymentSourcePicker';
+import { PesoAmountInput } from '../../components/form/PesoAmountInput';
+import { SpendCategoryPicker } from '../../components/form/SpendCategoryPicker';
+import { SPEND_CATEGORIES } from '../../components/AppIcon';
 import {
   useBudgetActions,
   useThemePrefs,
@@ -19,12 +16,7 @@ import {
   CreditCardAccount,
   SpendCategoryKey,
 } from '../../types/budget';
-import { triggerLightHaptic } from '../../utils/haptics';
-import {
-  formatPesoInput,
-  formatPesoNumber,
-  parsePesoInput,
-} from '../../utils/numberFormat';
+import { formatPesoNumber, parsePesoInput } from '../../utils/numberFormat';
 
 export type AccountActionMode = 'deposit' | 'spend' | 'adjust' | null;
 
@@ -33,6 +25,7 @@ interface AccountActionModalProps {
   selectedAccountId: string;
   accountTitle: string;
   isCreditCard: boolean;
+  currentBalance: number;
   onClose: () => void;
 }
 
@@ -40,7 +33,14 @@ const AccountActionModalContent: React.FC<
   Omit<AccountActionModalProps, 'mode'> & {
     mode: Exclude<AccountActionMode, null>;
   }
-> = ({ mode, selectedAccountId, accountTitle, isCreditCard, onClose }) => {
+> = ({
+  mode,
+  selectedAccountId,
+  accountTitle,
+  isCreditCard,
+  currentBalance,
+  onClose,
+}) => {
   const { shade, formatVisiblePeso } = useThemePrefs();
   const { cashOnHand, banks } = useWallet();
   const {
@@ -50,25 +50,31 @@ const AccountActionModalContent: React.FC<
     logSpend,
   } = useBudgetActions();
 
-  const [amountText, setAmountText] = useState('');
+  const [amountText, setAmountText] = useState(() =>
+    mode === 'adjust' ? formatPesoNumber(currentBalance) : ''
+  );
   const [note, setNote] = useState('');
   const [category, setCategory] = useState<SpendCategoryKey>('food');
   const [icon, setIcon] = useState<string>('shopping-bag');
   const [payFromSourceId, setPayFromSourceId] = useState<string>('external');
 
-  const fundingRef = useRef({ banks, cashOnHand });
-  fundingRef.current = { banks, cashOnHand };
+  const snapshotRef = useRef({ banks, cashOnHand, currentBalance });
+  snapshotRef.current = { banks, cashOnHand, currentBalance };
 
   useEffect(() => {
-    setAmountText('');
+    setAmountText(
+      mode === 'adjust'
+        ? formatPesoNumber(snapshotRef.current.currentBalance)
+        : ''
+    );
     setNote('');
     setCategory('food');
     setIcon('shopping-bag');
     if (mode === 'deposit' && isCreditCard) {
-      const fundedBank = fundingRef.current.banks.find((b) => b.balance > 0);
+      const fundedBank = snapshotRef.current.banks.find((b) => b.balance > 0);
       if (fundedBank) {
         setPayFromSourceId(fundedBank.id);
-      } else if (fundingRef.current.cashOnHand > 0) {
+      } else if (snapshotRef.current.cashOnHand > 0) {
         setPayFromSourceId('cash');
       } else {
         setPayFromSourceId('external');
@@ -78,22 +84,49 @@ const AccountActionModalContent: React.FC<
 
   const numericActionAmt = parsePesoInput(amountText);
 
+  const isCardTransfer =
+    mode === 'deposit' && isCreditCard && payFromSourceId !== 'external';
+  const sourceBalance = isCardTransfer
+    ? payFromSourceId === 'cash'
+      ? cashOnHand
+      : banks.find((b) => b.id === payFromSourceId)?.balance ?? 0
+    : 0;
+  const sourceLabel = isCardTransfer
+    ? payFromSourceId === 'cash'
+      ? 'Physical Cash'
+      : banks.find((b) => b.id === payFromSourceId)?.name || 'Bank Account'
+    : '';
+  const isOverdraft =
+    isCardTransfer && numericActionAmt > 0 && numericActionAmt > sourceBalance;
+
+  const isSubmitDisabled =
+    mode === 'adjust'
+      ? !amountText.trim()
+      : numericActionAmt <= 0 || isOverdraft;
+
   const handleSubmit = () => {
+    if (isSubmitDisabled) return;
+
     if (mode === 'adjust') {
       setAccountBalanceWithLog(
         selectedAccountId,
         numericActionAmt,
         note.trim() || undefined
       );
-    } else if (mode === 'deposit') {
+      onClose();
+      return;
+    }
+
+    if (mode === 'deposit') {
       if (numericActionAmt <= 0) return;
-      if (isCreditCard && payFromSourceId !== 'external') {
-        transferBetweenAccounts(
+      if (isCardTransfer) {
+        const ok = transferBetweenAccounts(
           payFromSourceId,
           selectedAccountId,
           numericActionAmt,
           note.trim() || undefined
         );
+        if (!ok) return;
       } else {
         depositToWalletAccount(
           selectedAccountId,
@@ -101,21 +134,42 @@ const AccountActionModalContent: React.FC<
           note.trim() || undefined
         );
       }
-    } else if (mode === 'spend') {
-      if (numericActionAmt <= 0) return;
-      const defaultCatLabel =
-        SPEND_CATEGORIES.find((c) => c.key === category)?.label ||
-        'Wallet Spend';
-      logSpend(
-        numericActionAmt,
-        note.trim() || defaultCatLabel,
-        icon,
-        selectedAccountId,
-        category
-      );
+      onClose();
+      return;
     }
+
+    const defaultCatLabel =
+      SPEND_CATEGORIES.find((c) => c.key === category)?.label || 'Wallet Spend';
+    logSpend(
+      numericActionAmt,
+      note.trim() || defaultCatLabel,
+      icon,
+      selectedAccountId,
+      category
+    );
     onClose();
   };
+
+  const accentColor =
+    mode === 'deposit'
+      ? shade.positive
+      : mode === 'adjust'
+      ? shade.dopamine
+      : shade.accent;
+
+  const submitBg = isSubmitDisabled
+    ? shade.surface
+    : mode === 'deposit'
+    ? shade.positiveBtnBg
+    : mode === 'spend'
+    ? shade.accent
+    : shade.dopamineBtnBg;
+
+  const submitFg = isSubmitDisabled
+    ? shade.muted
+    : mode === 'spend'
+    ? shade.accentText
+    : '#FFFFFF';
 
   return (
     <FormModal
@@ -127,6 +181,8 @@ const AccountActionModalContent: React.FC<
             : `Deposit to ${accountTitle}`
           : mode === 'spend'
           ? `Spend from ${accountTitle}`
+          : isCreditCard
+          ? `Update ${accountTitle} Used`
           : `Update ${accountTitle}`
       }
       subtitle="Enter exact peso amount"
@@ -137,205 +193,63 @@ const AccountActionModalContent: React.FC<
           ? 'arrow-up-right'
           : 'edit-2'
       }
-      accentColor={
-        mode === 'deposit'
-          ? shade.positive
-          : mode === 'adjust'
-          ? shade.dopamine
-          : shade.accent
-      }
+      accentColor={accentColor}
       onClose={onClose}
     >
-      <View
-        style={[
-          styles.fullAmountBox,
-          { backgroundColor: shade.surface, borderColor: shade.border },
-        ]}
-      >
-        <Text style={[styles.pesoPrefix, { color: shade.accent }]}>₱</Text>
-        <TextInput
-          value={amountText}
-          onChangeText={(t) => setAmountText(formatPesoInput(t))}
-          keyboardType="decimal-pad"
-          inputMode="decimal"
-          placeholder="Enter exact amount"
-          placeholderTextColor={shade.muted}
-          autoFocus
-          style={[styles.amountInput, { color: shade.text }]}
-        />
-      </View>
+      <PesoAmountInput
+        value={amountText}
+        onChangeText={setAmountText}
+        shade={shade}
+        accentColor={accentColor}
+        placeholder="Enter exact amount"
+        autoFocus
+        selectTextOnFocus={mode === 'adjust'}
+        inputAccessibilityLabel={
+          mode === 'adjust'
+            ? isCreditCard
+              ? 'New credit card used balance'
+              : 'New account balance'
+            : 'Amount in pesos'
+        }
+      />
 
       {mode === 'deposit' && isCreditCard && (
-        <View style={{ gap: 6 }}>
-          <Text style={[styles.catLabel, { color: shade.muted }]}>
-            PAY FROM ACCOUNT
-          </Text>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={styles.horizontalScroll}
-            contentContainerStyle={styles.payFromScroll}
-          >
-            {banks.map((b) => {
-              const active = payFromSourceId === b.id;
-              return (
-                <ScalePressable
-                  key={b.id}
-                  onPress={() => {
-                    triggerLightHaptic();
-                    setPayFromSourceId(b.id);
-                  }}
-                  style={[
-                    styles.payFromPill,
-                    {
-                      backgroundColor: active ? shade.positive : shade.surface,
-                    },
-                  ]}
-                >
-                  <Text
-                    numberOfLines={1}
-                    style={[
-                      styles.payFromTitle,
-                      { color: active ? '#FFFFFF' : shade.text },
-                    ]}
-                  >
-                    {b.name}
-                  </Text>
-                  <Text
-                    style={[
-                      styles.payFromSub,
-                      { color: active ? '#FFFFFF' : shade.muted },
-                    ]}
-                  >
-                    {formatVisiblePeso(b.balance)}
-                  </Text>
-                </ScalePressable>
-              );
-            })}
+        <PaymentSourcePicker
+          selectedId={payFromSourceId}
+          onSelect={setPayFromSourceId}
+          cashOnHand={cashOnHand}
+          banks={banks}
+          creditCards={[]}
+          shade={shade}
+          formatVisiblePeso={formatVisiblePeso}
+          activeColor={shade.positiveBtnBg}
+          includeCash
+          includeTrackOnly
+          trackOnlyId="external"
+          trackOnlyLabel="Track Only"
+          trackOnlySubLabel="External"
+          trackOnlyActiveColor={shade.accent}
+          label="PAY FROM ACCOUNT"
+        />
+      )}
 
-            <ScalePressable
-              onPress={() => {
-                triggerLightHaptic();
-                setPayFromSourceId('cash');
-              }}
-              style={[
-                styles.payFromPill,
-                {
-                  backgroundColor:
-                    payFromSourceId === 'cash' ? shade.positive : shade.surface,
-                },
-              ]}
-            >
-              <Text
-                style={[
-                  styles.payFromTitle,
-                  {
-                    color: payFromSourceId === 'cash' ? '#FFFFFF' : shade.text,
-                  },
-                ]}
-              >
-                Cash
-              </Text>
-              <Text
-                style={[
-                  styles.payFromSub,
-                  {
-                    color:
-                      payFromSourceId === 'cash' ? '#FFFFFF' : shade.muted,
-                  },
-                ]}
-              >
-                {formatVisiblePeso(cashOnHand)}
-              </Text>
-            </ScalePressable>
-
-            <ScalePressable
-              onPress={() => {
-                triggerLightHaptic();
-                setPayFromSourceId('external');
-              }}
-              style={[
-                styles.payFromPill,
-                {
-                  backgroundColor:
-                    payFromSourceId === 'external'
-                      ? shade.accent
-                      : shade.surface,
-                },
-              ]}
-            >
-              <Text
-                style={[
-                  styles.payFromTitle,
-                  {
-                    color:
-                      payFromSourceId === 'external'
-                        ? shade.accentText
-                        : shade.text,
-                  },
-                ]}
-              >
-                Track Only
-              </Text>
-              <Text
-                style={[
-                  styles.payFromSub,
-                  {
-                    color:
-                      payFromSourceId === 'external'
-                        ? shade.accentText
-                        : shade.muted,
-                  },
-                ]}
-              >
-                External
-              </Text>
-            </ScalePressable>
-          </ScrollView>
-        </View>
+      {isOverdraft && (
+        <Text style={[styles.formErrorText, { color: shade.warning }]}>
+          Exceeds {sourceLabel} balance ({formatVisiblePeso(sourceBalance)}). Use
+          Track Only or choose another source.
+        </Text>
       )}
 
       {mode === 'spend' && (
-        <View style={{ gap: 6 }}>
-          <Text style={[styles.catLabel, { color: shade.muted }]}>
-            CATEGORY
-          </Text>
-          <View style={styles.tagRow}>
-            {SPEND_CATEGORIES.map((cat) => {
-              const active = category === cat.key;
-              return (
-                <ScalePressable
-                  key={cat.key}
-                  onPress={() => {
-                    triggerLightHaptic();
-                    setCategory(cat.key);
-                    setIcon(cat.icon);
-                  }}
-                  style={[
-                    styles.tagPill,
-                    {
-                      backgroundColor: active ? shade.accent : shade.surface,
-                    },
-                  ]}
-                >
-                  <AppIcon
-                    name={cat.icon}
-                    size={12}
-                    color={active ? shade.accentText : shade.text}
-                  />
-                  <Text
-                    style={[
-                      styles.tagText,
-                      { color: active ? shade.accentText : shade.text },
-                    ]}
-                  >
-                    {cat.label}
-                  </Text>
-                </ScalePressable>
-              );
-            })}
-          </View>
-        </View>
+        <SpendCategoryPicker
+          selectedKey={category}
+          onSelect={(cat) => {
+            setCategory(cat.key);
+            setIcon(cat.icon);
+          }}
+          shade={shade}
+          label="CATEGORY"
+        />
       )}
 
       <TextInput
@@ -360,36 +274,18 @@ const AccountActionModalContent: React.FC<
       />
 
       <ScalePressable
-        disabled={mode !== 'adjust' && numericActionAmt <= 0}
+        disabled={isSubmitDisabled}
         onPress={handleSubmit}
+        accessibilityState={{ disabled: isSubmitDisabled }}
         style={[
           styles.submitBtn,
           {
-            backgroundColor:
-              mode !== 'adjust' && numericActionAmt <= 0
-                ? shade.surface
-                : mode === 'deposit'
-                ? shade.positive
-                : mode === 'spend'
-                ? shade.accent
-                : shade.dopamine,
-            opacity: mode !== 'adjust' && numericActionAmt <= 0 ? 0.65 : 1,
+            backgroundColor: submitBg,
+            opacity: isSubmitDisabled ? 0.65 : 1,
           },
         ]}
       >
-        <Text
-          style={[
-            styles.submitText,
-            {
-              color:
-                mode !== 'adjust' && numericActionAmt <= 0
-                  ? shade.muted
-                  : mode === 'spend'
-                  ? shade.accentText
-                  : '#FFFFFF',
-            },
-          ]}
-        >
+        <Text style={[styles.submitText, { color: submitFg }]}>
           {mode === 'deposit'
             ? isCreditCard
               ? payFromSourceId !== 'external'
@@ -398,6 +294,8 @@ const AccountActionModalContent: React.FC<
               : 'Confirm Deposit & Log'
             : mode === 'spend'
             ? 'Spend & Log Transaction'
+            : isCreditCard
+            ? 'Save Used'
             : 'Save Balance'}
         </Text>
       </ScalePressable>
@@ -405,6 +303,9 @@ const AccountActionModalContent: React.FC<
   );
 };
 
+/**
+ * Modal for depositing, paying a credit card, spending, or adjusting an account balance.
+ */
 export const AccountActionModal: React.FC<AccountActionModalProps> = (
   props
 ) => {
@@ -470,15 +371,17 @@ const EditAccountModalContent: React.FC<
         setEditError('Please enter a credit limit greater than ₱0.');
         return;
       }
-      const cutoff = Math.max(
-        1,
-        Math.min(
-          31,
-          parseInt(editCutoffText.replace(/[^0-9]/g, ''), 10) ||
-            selectedCard.cutoffDay
-        )
-      );
-      updateCreditCard(selectedCard.id, trimmed, limit, cutoff);
+      const parsedCutoff = parseInt(editCutoffText.replace(/[^0-9]/g, ''), 10);
+      if (
+        !editCutoffText.trim() ||
+        !Number.isFinite(parsedCutoff) ||
+        parsedCutoff < 1 ||
+        parsedCutoff > 31
+      ) {
+        setEditError('Statement cut-off day must be between 1 and 31.');
+        return;
+      }
+      updateCreditCard(selectedCard.id, trimmed, limit, parsedCutoff);
       onClose();
     }
   };
@@ -510,6 +413,7 @@ const EditAccountModalContent: React.FC<
         }
         placeholderTextColor={shade.muted}
         autoFocus
+        accessibilityLabel="Account name"
         style={[
           styles.textInput,
           {
@@ -526,28 +430,17 @@ const EditAccountModalContent: React.FC<
             <Text style={[styles.catLabel, { color: shade.muted }]}>
               CREDIT LIMIT
             </Text>
-            <View
-              style={[
-                styles.fullAmountBox,
-                { backgroundColor: shade.surface, borderColor: shade.border },
-              ]}
-            >
-              <Text style={[styles.pesoPrefix, { color: shade.dopamine }]}>
-                ₱
-              </Text>
-              <TextInput
-                value={editLimitText}
-                onChangeText={(t) => {
-                  setEditLimitText(formatPesoInput(t));
-                  if (editError) setEditError(null);
-                }}
-                keyboardType="decimal-pad"
-                inputMode="decimal"
-                placeholder="Limit"
-                placeholderTextColor={shade.muted}
-                style={[styles.amountInput, { color: shade.text }]}
-              />
-            </View>
+            <PesoAmountInput
+              value={editLimitText}
+              onChangeText={(t) => {
+                setEditLimitText(t);
+                if (editError) setEditError(null);
+              }}
+              shade={shade}
+              accentColor={shade.dopamine}
+              placeholder="Limit"
+              inputAccessibilityLabel="Credit limit"
+            />
           </View>
 
           <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
@@ -556,13 +449,15 @@ const EditAccountModalContent: React.FC<
             </Text>
             <TextInput
               value={editCutoffText}
-              onChangeText={(t) =>
-                setEditCutoffText(t.replace(/[^0-9]/g, '').slice(0, 2))
-              }
+              onChangeText={(t) => {
+                setEditCutoffText(t.replace(/[^0-9]/g, '').slice(0, 2));
+                if (editError) setEditError(null);
+              }}
               keyboardType="numeric"
               maxLength={2}
               placeholder="1–31"
               placeholderTextColor={shade.muted}
+              accessibilityLabel="Statement cut-off day"
               style={[
                 styles.textInput,
                 {
@@ -589,7 +484,9 @@ const EditAccountModalContent: React.FC<
         style={[
           styles.submitBtn,
           {
-            backgroundColor: selectedCard ? shade.dopamine : shade.accent,
+            backgroundColor: selectedCard
+              ? shade.dopamineBtnBg
+              : shade.accent,
           },
         ]}
       >
@@ -606,6 +503,9 @@ const EditAccountModalContent: React.FC<
   );
 };
 
+/**
+ * Modal for renaming a bank account or editing a credit card's limit and cut-off date.
+ */
 export const EditAccountModal: React.FC<EditAccountModalProps> = ({
   visible,
   selectedBank,
@@ -623,70 +523,10 @@ export const EditAccountModal: React.FC<EditAccountModalProps> = ({
 };
 
 const styles = StyleSheet.create({
-  horizontalScroll: {
-    width: '100%',
-    flexGrow: 0,
-    flexShrink: 0,
-  },
-  payFromScroll: {
-    gap: 8,
-  },
-  payFromPill: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 12,
-    minWidth: 92,
-  },
-  payFromTitle: {
-    fontSize: 12,
-    fontWeight: '800',
-  },
-  payFromSub: {
-    fontSize: 10,
-    fontWeight: '600',
-    marginTop: 2,
-  },
-  fullAmountBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-  },
-  pesoPrefix: {
-    fontSize: 14,
-    fontWeight: '800',
-    marginRight: 5,
-  },
-  amountInput: {
-    flex: 1,
-    minWidth: 0,
-    fontSize: 15,
-    fontWeight: '800',
-    paddingVertical: 1,
-  },
   catLabel: {
     fontSize: 10,
     fontWeight: '800',
     letterSpacing: 0.8,
-  },
-  tagRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
-  tagPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    borderRadius: 11,
-  },
-  tagText: {
-    fontSize: 12,
-    fontWeight: '700',
   },
   textInput: {
     minWidth: 0,

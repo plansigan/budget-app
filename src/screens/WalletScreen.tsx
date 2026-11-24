@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
 import { ConfirmModal } from '../components/ConfirmModal';
 import {
@@ -52,6 +52,10 @@ export const WalletScreen: React.FC<WalletScreenProps> = ({
     [isControlled, onSelectAccount]
   );
 
+  const [subTab, setSubTab] = useState<'accounts' | 'installments' | 'debts'>(
+    'accounts'
+  );
+  const lastHandledFocusDebtsKeyRef = useRef(0);
   const [showAddBank, setShowAddBank] = useState(false);
   const [showAddCard, setShowAddCard] = useState(false);
   const [showAddInst, setShowAddInst] = useState(false);
@@ -70,8 +74,10 @@ export const WalletScreen: React.FC<WalletScreenProps> = ({
     useState<WalletConfirmRequest | null>(null);
 
   useEffect(() => {
-    if (focusDebtsKey > 0) {
+    if (focusDebtsKey > lastHandledFocusDebtsKeyRef.current) {
+      lastHandledFocusDebtsKeyRef.current = focusDebtsKey;
       setSelectedAccountId(null);
+      setSubTab('debts');
     }
   }, [focusDebtsKey, setSelectedAccountId]);
 
@@ -106,7 +112,8 @@ export const WalletScreen: React.FC<WalletScreenProps> = ({
         />
       ) : (
         <WalletOverview
-          focusDebtsKey={focusDebtsKey}
+          subTab={subTab}
+          onChangeSubTab={setSubTab}
           onOpenAccount={openAccountPage}
           onOpenAddBank={() => setShowAddBank(true)}
           onOpenAddCard={() => setShowAddCard(true)}
@@ -170,7 +177,8 @@ export const WalletScreen: React.FC<WalletScreenProps> = ({
         title={pendingConfirm?.title || ''}
         message={pendingConfirm?.message || ''}
         confirmLabel={pendingConfirm?.confirmLabel || 'Delete'}
-        destructive
+        destructive={pendingConfirm?.destructive ?? true}
+        icon={pendingConfirm?.icon}
         onCancel={() => setPendingConfirm(null)}
         onConfirm={() => {
           pendingConfirm?.onConfirm();
