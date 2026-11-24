@@ -90,7 +90,7 @@ export const BaseModal: React.FC<BaseModalProps> = ({
     };
 
     if (canListenWeb) {
-      window.addEventListener('keydown', handleKeyDown);
+      window.addEventListener('keydown', handleKeyDown, true);
     }
     return () => {
       const idx = openModalStack.lastIndexOf(modalToken);
@@ -98,7 +98,7 @@ export const BaseModal: React.FC<BaseModalProps> = ({
         openModalStack.splice(idx, 1);
       }
       if (canListenWeb) {
-        window.removeEventListener('keydown', handleKeyDown);
+        window.removeEventListener('keydown', handleKeyDown, true);
       }
     };
   }, [visible]);

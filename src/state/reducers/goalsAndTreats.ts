@@ -2,10 +2,12 @@ import {
   SinkingFundItem,
   TransactionEntry,
   TreatVaultItem,
+  WantToBuyItem,
 } from '../../types/budget';
-import { getTodayKey, roundCurrency } from '../budgetMath';
+import { addDaysToDateKey, getTodayKey, roundCurrency } from '../budgetMath';
 import {
   applyDaytimeCheckIn,
+  applyWalletDelta,
   findActiveUnclaimedTreat,
   makeUid,
 } from './helpers';
@@ -208,6 +210,209 @@ export const handleGoalsAndTreatsAction: SliceReducer = (state, action) => {
         ...state,
         monthlySaved: roundCurrency(state.monthlySaved + refund),
         sinkingFunds: state.sinkingFunds.filter((f) => f.id !== action.id),
+      };
+    }
+
+    case 'ADD_WANT_TO_BUY': {
+      const trimmedName = action.name.trim();
+      if (!Number.isFinite(action.price)) return state;
+      const cleanPrice = roundCurrency(action.price);
+      if (!trimmedName || cleanPrice <= 0) return state;
+
+      const todayKey = action.todayKey || getTodayKey();
+      const coolDays =
+        typeof action.coolOffDays === 'number' &&
+        Number.isFinite(action.coolOffDays)
+          ? Math.max(1, Math.min(90, Math.round(action.coolOffDays)))
+          : 7;
+      const trimmedNote = action.note?.trim();
+
+      const newItem: WantToBuyItem = {
+        id: makeUid('wtb'),
+        name: trimmedName,
+        price: cleanPrice,
+        icon: action.icon || 'shopping-bag',
+        ...(trimmedNote ? { note: trimmedNote } : {}),
+        createdAt: todayKey,
+        reevaluateOn: addDaysToDateKey(todayKey, coolDays),
+        status: 'waiting',
+      };
+
+      return {
+        ...state,
+        wantToBuyItems: [newItem, ...(state.wantToBuyItems || [])],
+      };
+    }
+
+    case 'EXTEND_WANT_TO_BUY': {
+      const items = state.wantToBuyItems || [];
+      const target = items.find(
+        (w) => w.id === action.id && w.status === 'waiting'
+      );
+      if (!target) return state;
+
+      const todayKey = action.todayKey || getTodayKey();
+      const extraDays =
+        typeof action.extraDays === 'number' &&
+        Number.isFinite(action.extraDays)
+          ? Math.max(1, Math.min(90, Math.round(action.extraDays)))
+          : 7;
+      const nextDate = addDaysToDateKey(todayKey, extraDays);
+
+      return {
+        ...state,
+        wantToBuyItems: items.map((w) =>
+          w.id === action.id ? { ...w, reevaluateOn: nextDate } : w
+        ),
+      };
+    }
+
+    case 'SKIP_WANT_TO_BUY': {
+      const items = state.wantToBuyItems || [];
+      const target = items.find(
+        (w) => w.id === action.id && w.status === 'waiting'
+      );
+      if (!target) return state;
+      const todayKey = action.todayKey || getTodayKey();
+
+      return {
+        ...state,
+        disciplineScore: Math.min(999, state.disciplineScore + 15),
+        wantToBuyItems: items.map((w) =>
+          w.id === action.id
+            ? { ...w, status: 'skipped', resolvedAt: todayKey }
+            : w
+        ),
+      };
+    }
+
+    case 'DELETE_WANT_TO_BUY': {
+      const items = state.wantToBuyItems || [];
+      if (!items.some((w) => w.id === action.id)) return state;
+      return {
+        ...state,
+        wantToBuyItems: items.filter((w) => w.id !== action.id),
+      };
+    }
+
+    case 'BUY_WANT_TO_BUY': {
+      const items = state.wantToBuyItems || [];
+      const target = items.find(
+        (w) => w.id === action.id && w.status === 'waiting'
+      );
+      if (!target) return state;
+
+      const todayKey = action.todayKey || getTodayKey();
+      const chosenSourceId = action.paymentSourceId;
+      const wallet = applyWalletDelta(
+        state,
+        chosenSourceId,
+        'outflow',
+        target.price
+      );
+
+      let nextMonthlySaved = state.monthlySaved;
+      let nextFunds = state.sinkingFunds;
+      let nextCheckedIn = state.checkedInToday;
+      let nextStreak = state.streakDays;
+      let nextShields = state.bufferShields;
+      let entry: TransactionEntry;
+
+      if (action.fundingChoice === 'daily') {
+        const checkIn = applyDaytimeCheckIn(state, true);
+        nextCheckedIn = checkIn.checkedInToday;
+        nextStreak = checkIn.streakDays;
+        nextShields = checkIn.bufferShields;
+        entry = {
+          id: makeUid('wtb-buy'),
+          type: 'spend',
+          amount: target.price,
+          label: target.name,
+          icon: target.icon || 'shopping-bag',
+          timestamp: new Date().toISOString(),
+          dateKey: todayKey,
+          category: action.category || 'shop',
+          paymentSourceId: wallet.effectiveSourceId,
+          paymentSourceLabel: wallet.sourceLabel,
+          appliedWalletDelta: wallet.appliedDelta,
+          wantToBuyId: target.id,
+        };
+      } else if (action.fundingChoice === 'sinking_fund') {
+        const bucket = state.sinkingFunds.find(
+          (f) => f.id === action.sinkingFundId
+        );
+        if (!bucket) return state;
+        const deducted = roundCurrency(Math.min(bucket.saved, target.price));
+        nextFunds = state.sinkingFunds.map((f) =>
+          f.id === bucket.id
+            ? { ...f, saved: Math.max(0, roundCurrency(f.saved - deducted)) }
+            : f
+        );
+        entry = {
+          id: makeUid('wtb-buy'),
+          type: 'savings_spend',
+          amount: target.price,
+          label: `${target.name} (From ${bucket.name})`,
+          icon: target.icon || 'shopping-bag',
+          timestamp: new Date().toISOString(),
+          dateKey: todayKey,
+          paymentSourceId: wallet.effectiveSourceId,
+          paymentSourceLabel: wallet.sourceLabel,
+          appliedWalletDelta: wallet.appliedDelta,
+          sinkingFundId: bucket.id,
+          savingsDelta: deducted,
+          wantToBuyId: target.id,
+        };
+      } else {
+        const deducted = roundCurrency(
+          Math.min(state.monthlySaved, target.price)
+        );
+        nextMonthlySaved = Math.max(
+          0,
+          roundCurrency(state.monthlySaved - deducted)
+        );
+        entry = {
+          id: makeUid('wtb-buy'),
+          type: 'savings_spend',
+          amount: target.price,
+          label: `${target.name} (From Savings Jar)`,
+          icon: target.icon || 'shopping-bag',
+          timestamp: new Date().toISOString(),
+          dateKey: todayKey,
+          paymentSourceId: wallet.effectiveSourceId,
+          paymentSourceLabel: wallet.sourceLabel,
+          appliedWalletDelta: wallet.appliedDelta,
+          savingsDelta: deducted,
+          wantToBuyId: target.id,
+        };
+      }
+
+      return {
+        ...state,
+        cashOnHand: wallet.cashOnHand,
+        banks: wallet.banks,
+        creditCards: wallet.creditCards,
+        lastPaymentSourceId: wallet.effectiveSourceId || state.lastPaymentSourceId,
+        monthlySaved: nextMonthlySaved,
+        sinkingFunds: nextFunds,
+        checkedInToday: nextCheckedIn,
+        streakDays: nextStreak,
+        bufferShields: nextShields,
+        wantToBuyItems: items.map((w) =>
+          w.id === target.id
+            ? {
+                ...w,
+                status: 'bought',
+                resolvedAt: todayKey,
+                fundingChoice: action.fundingChoice,
+                ...(action.fundingChoice === 'sinking_fund' &&
+                action.sinkingFundId
+                  ? { sinkingFundId: action.sinkingFundId }
+                  : {}),
+              }
+            : w
+        ),
+        entries: [entry, ...state.entries],
       };
     }
 

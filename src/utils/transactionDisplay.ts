@@ -92,6 +92,16 @@ export function getTransactionPresentation(
       };
     }
 
+    case 'savings_spend': {
+      const amt = Math.abs(entry.amount);
+      return {
+        deltaText: maskIfNeeded(`-${formatPeso(amt)}`),
+        deltaColor: shade.dopamine,
+        csvSignedAmount: -amt,
+        isTreatHighlight: false,
+      };
+    }
+
     case 'envelope_refill': {
       const amt = Math.abs(entry.amount);
       return {

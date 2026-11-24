@@ -22,6 +22,7 @@ export const handleUndoEntryAction: SliceReducer = (state, action) => {
   let nextBillItems = state.billItems;
   let nextEnvelopes = state.envelopes || [];
   let nextDebts = state.debts || [];
+  let nextWantToBuy = state.wantToBuyItems || [];
   let nextLastPaydayCheckInKey = state.lastPaydayCheckInKey;
 
   const remainingEntries = state.entries.filter((e) => e.id !== action.entryId);
@@ -255,6 +256,40 @@ export const handleUndoEntryAction: SliceReducer = (state, action) => {
           : c
       );
     }
+  } else if (freshTarget.type === 'savings_spend') {
+    const restoreWalletAmt =
+      typeof freshTarget.appliedWalletDelta === 'number'
+        ? freshTarget.appliedWalletDelta
+        : freshTarget.paymentSourceId
+        ? freshTarget.amount
+        : 0;
+    const rev = applyWalletDelta(
+      { cashOnHand: nextCash, banks: nextBanks, creditCards: nextCards },
+      freshTarget.paymentSourceId,
+      'inflow',
+      restoreWalletAmt,
+      { allowCardInflow: true }
+    );
+    nextCash = rev.cashOnHand;
+    nextBanks = rev.banks;
+    nextCards = rev.creditCards;
+
+    const restoreSavingsAmt =
+      typeof freshTarget.savingsDelta === 'number'
+        ? freshTarget.savingsDelta
+        : freshTarget.amount;
+    const hasBucket =
+      freshTarget.sinkingFundId &&
+      nextSinkingFunds.some((f) => f.id === freshTarget.sinkingFundId);
+    if (hasBucket) {
+      nextSinkingFunds = nextSinkingFunds.map((f) =>
+        f.id === freshTarget.sinkingFundId
+          ? { ...f, saved: roundCurrency(f.saved + restoreSavingsAmt) }
+          : f
+      );
+    } else {
+      nextSaved = roundCurrency(nextSaved + restoreSavingsAmt);
+    }
   } else if (freshTarget.type === 'installment_paid') {
     if (freshTarget.installmentId) {
       nextInstallments = state.installments.map((item) =>
@@ -391,6 +426,22 @@ export const handleUndoEntryAction: SliceReducer = (state, action) => {
     }
   }
 
+  if (freshTarget.wantToBuyId) {
+    nextWantToBuy = nextWantToBuy.map((w) => {
+      if (w.id !== freshTarget.wantToBuyId) return w;
+      return {
+        id: w.id,
+        name: w.name,
+        price: w.price,
+        icon: w.icon,
+        ...(w.note ? { note: w.note } : {}),
+        createdAt: w.createdAt,
+        reevaluateOn: w.reevaluateOn,
+        status: 'waiting',
+      };
+    });
+  }
+
   return {
     ...state,
     cashOnHand: nextCash,
@@ -404,6 +455,7 @@ export const handleUndoEntryAction: SliceReducer = (state, action) => {
     rolloverBalance: nextRollover,
     disciplineScore: nextScore,
     treats: nextTreats,
+    wantToBuyItems: nextWantToBuy,
     installments: nextInstallments,
     sinkingFunds: nextSinkingFunds,
     entries: remainingEntries,

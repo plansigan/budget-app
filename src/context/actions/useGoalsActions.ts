@@ -8,6 +8,7 @@ import {
 } from '../../utils/haptics';
 import { formatPeso } from '../../utils/numberFormat';
 import { ActionHookDeps } from './types';
+import { SpendCategoryKey } from '../../types/budget';
 
 export function useGoalsActions({
   dispatch,
@@ -225,6 +226,101 @@ export function useGoalsActions({
     [dispatch, stateRef, showToast]
   );
 
+  const addWantToBuy = useCallback(
+    (name: string, icon: string, price: number, note?: string) => {
+      const trimmed = name.trim();
+      if (!trimmed || !Number.isFinite(price)) return;
+      const cleanPrice = roundCurrency(price);
+      if (cleanPrice <= 0) return;
+
+      triggerSuccessHaptic();
+      dispatch({
+        type: 'ADD_WANT_TO_BUY',
+        name: trimmed,
+        icon,
+        price: cleanPrice,
+        note,
+        todayKey: getTodayKey(),
+        coolOffDays: 7,
+      });
+      showToast(`Added "${trimmed}" • 7-day cool-off started`, true);
+    },
+    [dispatch, showToast]
+  );
+
+  const extendWantToBuy = useCallback(
+    (id: string, extraDays: number = 7) => {
+      const target = (stateRef.current.wantToBuyItems || []).find(
+        (w) => w.id === id
+      );
+      if (!target) return;
+      triggerLightHaptic();
+      dispatch({
+        type: 'EXTEND_WANT_TO_BUY',
+        id,
+        extraDays,
+        todayKey: getTodayKey(),
+      });
+      showToast(`Paused "${target.name}" for ${extraDays} more days`, false);
+    },
+    [dispatch, stateRef, showToast]
+  );
+
+  const skipWantToBuy = useCallback(
+    (id: string) => {
+      const target = (stateRef.current.wantToBuyItems || []).find(
+        (w) => w.id === id && w.status === 'waiting'
+      );
+      if (!target) return;
+      triggerCelebrationHaptic();
+      dispatch({ type: 'SKIP_WANT_TO_BUY', id, todayKey: getTodayKey() });
+      showToast(
+        `Skipped "${target.name}" — saved ${formatPeso(target.price)}!`,
+        true
+      );
+    },
+    [dispatch, stateRef, showToast]
+  );
+
+  const buyWantToBuy = useCallback(
+    (
+      id: string,
+      options: {
+        fundingChoice: 'daily' | 'savings_jar' | 'sinking_fund';
+        sinkingFundId?: string;
+        paymentSourceId?: string;
+        category?: SpendCategoryKey;
+      }
+    ) => {
+      const target = (stateRef.current.wantToBuyItems || []).find(
+        (w) => w.id === id && w.status === 'waiting'
+      );
+      if (!target) return;
+
+      triggerSuccessHaptic();
+      dispatch({
+        type: 'BUY_WANT_TO_BUY',
+        id,
+        fundingChoice: options.fundingChoice,
+        sinkingFundId: options.sinkingFundId,
+        paymentSourceId: options.paymentSourceId,
+        category: options.category,
+        todayKey: getTodayKey(),
+      });
+      showToast(`Added "${target.name}" to your dashboard!`, false);
+    },
+    [dispatch, stateRef, showToast]
+  );
+
+  const deleteWantToBuy = useCallback(
+    (id: string) => {
+      triggerLightHaptic();
+      dispatch({ type: 'DELETE_WANT_TO_BUY', id });
+      showToast('Removed wish list item', false);
+    },
+    [dispatch, showToast]
+  );
+
   return useMemo(
     () => ({
       boostSavingsGoal,
@@ -236,6 +332,11 @@ export function useGoalsActions({
       addSinkingFund,
       depositToSinkingFund,
       deleteSinkingFund,
+      addWantToBuy,
+      extendWantToBuy,
+      skipWantToBuy,
+      buyWantToBuy,
+      deleteWantToBuy,
     }),
     [
       boostSavingsGoal,
@@ -247,6 +348,11 @@ export function useGoalsActions({
       addSinkingFund,
       depositToSinkingFund,
       deleteSinkingFund,
+      addWantToBuy,
+      extendWantToBuy,
+      skipWantToBuy,
+      buyWantToBuy,
+      deleteWantToBuy,
     ]
   );
 }

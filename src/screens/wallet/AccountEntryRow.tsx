@@ -34,6 +34,7 @@ export const AccountEntryRow: React.FC<AccountEntryRowProps> = React.memo(
     const isAdjust = entry.type === 'wallet_adjust';
     const isBillPaid = entry.type === 'bill_paid';
     const isEnvelopeSpend = entry.type === 'envelope_spend';
+    const isSavingsSpend = entry.type === 'savings_spend';
     const isDebtInflow = entry.type === 'debt_inflow';
     const isDebtOutflow = entry.type === 'debt_outflow';
     const isTransfer = entry.type === 'wallet_transfer';
@@ -83,6 +84,8 @@ export const AccountEntryRow: React.FC<AccountEntryRowProps> = React.memo(
       ? 'Bill Paid'
       : isEnvelopeSpend
       ? 'Allowance Spend'
+      : isSavingsSpend
+      ? 'From Savings'
       : 'Spent';
 
     return (

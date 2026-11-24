@@ -41,6 +41,7 @@ import {
   ThemeMode,
   TransactionEntry,
   TreatVaultItem,
+  WantToBuyItem,
   getCardTier,
 } from '../types/budget';
 import { triggerCelebrationHaptic, triggerLightHaptic } from '../utils/haptics';
@@ -113,6 +114,7 @@ export interface GoalsContextValue {
   treats: TreatVaultItem[];
   activeTreat: TreatVaultItem | null;
   sinkingFunds: SinkingFundItem[];
+  wantToBuyItems: WantToBuyItem[];
   monthlySaved: number;
   monthlyArchives: MonthlyArchiveSnapshot[];
   streakDays: number;
@@ -512,11 +514,17 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
     ]
   );
 
+  const wantToBuyItems = useMemo(
+    () => state.wantToBuyItems || [],
+    [state.wantToBuyItems]
+  );
+
   const goalsValue = useMemo<GoalsContextValue>(
     () => ({
       treats: state.treats,
       activeTreat,
       sinkingFunds: state.sinkingFunds,
+      wantToBuyItems,
       monthlySaved: state.monthlySaved,
       monthlyArchives: state.monthlyArchives,
       streakDays: state.streakDays,
@@ -530,6 +538,7 @@ export const BudgetProvider: React.FC<{ children: React.ReactNode }> = ({
       state.treats,
       activeTreat,
       state.sinkingFunds,
+      wantToBuyItems,
       state.monthlySaved,
       state.monthlyArchives,
       state.streakDays,
