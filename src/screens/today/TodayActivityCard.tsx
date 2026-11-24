@@ -4,10 +4,14 @@ import {
   FadeSlideIn,
   ScalePressable,
 } from '../../components/AnimatedPrimitives';
-import { IconBadge } from '../../components/AppIcon';
+import { AppIcon, IconBadge } from '../../components/AppIcon';
 import { useThemePrefs } from '../../context/BudgetContext';
-import { isEditableEntryType } from '../../state/budgetReducer';
-import { TransactionEntry, TreatVaultItem } from '../../types/budget';
+import { canEditEntry, getUndoEligibility } from '../../state/budgetReducer';
+import {
+  DebtItem,
+  TransactionEntry,
+  TreatVaultItem,
+} from '../../types/budget';
 import { triggerLightHaptic } from '../../utils/haptics';
 import { getTransactionPresentation } from '../../utils/transactionDisplay';
 
@@ -17,10 +21,10 @@ interface TodayActivityCardProps {
   selectedDayEntries: TransactionEntry[];
   totalEntriesCount: number;
   treats: TreatVaultItem[];
+  debts: DebtItem[];
   onOpenAllActivity: () => void;
   onEditEntry: (entry: TransactionEntry) => void;
   onRequestUndo: (entry: TransactionEntry) => void;
-  onDirectUndo: (entryId: string) => void;
 }
 
 export const TodayActivityCard: React.FC<TodayActivityCardProps> = React.memo(
@@ -30,10 +34,10 @@ export const TodayActivityCard: React.FC<TodayActivityCardProps> = React.memo(
     selectedDayEntries,
     totalEntriesCount,
     treats,
+    debts,
     onOpenAllActivity,
     onEditEntry,
     onRequestUndo,
-    onDirectUndo,
   }) => {
     const { shade, privacyMode } = useThemePrefs();
 
@@ -53,7 +57,7 @@ export const TodayActivityCard: React.FC<TodayActivityCardProps> = React.memo(
             </Text>
             <View style={styles.activityHeaderRight}>
               <Text style={[styles.sectionSubHint, { color: shade.muted }]}>
-                {selectedDayEntries.length} today
+                {selectedDayEntries.length} logged
               </Text>
               {totalEntriesCount > 0 && (
                 <ScalePressable
@@ -61,7 +65,9 @@ export const TodayActivityCard: React.FC<TodayActivityCardProps> = React.memo(
                     triggerLightHaptic();
                     onOpenAllActivity();
                   }}
-                  hitSlop={6}
+                  accessibilityRole="button"
+                  accessibilityLabel={`View all ${totalEntriesCount} logged entries`}
+                  hitSlop={8}
                   style={[
                     styles.viewAllChip,
                     {
@@ -83,7 +89,9 @@ export const TodayActivityCard: React.FC<TodayActivityCardProps> = React.memo(
               style={[styles.activityEmpty, { backgroundColor: shade.surface }]}
             >
               <Text style={[styles.activityEmptyText, { color: shade.muted }]}>
-                Nothing logged yet. Tap Spend! or Savings Jar above.
+                {isTodaySelected
+                  ? 'Nothing logged today yet. Tap Spend! or Savings Jar above.'
+                  : 'No entries logged on this day.'}
               </Text>
             </View>
           ) : (
@@ -94,11 +102,8 @@ export const TodayActivityCard: React.FC<TodayActivityCardProps> = React.memo(
                   shade,
                   privacyMode
                 );
-                const editable =
-                  isEditableEntryType(entry) &&
-                  (entry.type !== 'treat_direct' ||
-                    !entry.treatId ||
-                    !treats.some((t) => t.id === entry.treatId && t.claimed));
+                const editable = canEditEntry(entry, treats);
+                const undoable = getUndoEligibility(entry, treats, debts).ok;
                 const sourceText =
                   entry.type === 'wallet_transfer' &&
                   entry.paymentSourceLabel &&
@@ -118,94 +123,117 @@ export const TodayActivityCard: React.FC<TodayActivityCardProps> = React.memo(
                       { backgroundColor: shade.surface },
                     ]}
                   >
-                    <View style={styles.activityContent}>
-                      <View style={styles.rowBetween}>
-                        <ScalePressable
-                          disabled={!editable}
-                          onPress={() => {
-                            if (!editable) return;
-                            triggerLightHaptic();
-                            onEditEntry(entry);
-                          }}
-                          style={{
-                            flex: 1,
-                            minWidth: 0,
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            gap: 10,
-                          }}
-                        >
-                          <IconBadge
-                            name={entry.icon}
-                            size={14}
-                            color={deltaColor}
-                            bg={shade.card}
-                            boxSize={34}
-                          />
+                    <ScalePressable
+                      disabled={!editable}
+                      onPress={() => {
+                        if (!editable) return;
+                        triggerLightHaptic();
+                        onEditEntry(entry);
+                      }}
+                      accessibilityRole={editable ? 'button' : 'text'}
+                      accessibilityLabel={
+                        editable
+                          ? `Edit ${entry.label}, ${deltaText}`
+                          : `${entry.label}, ${deltaText}`
+                      }
+                      style={styles.activityTapArea}
+                    >
+                      <IconBadge
+                        name={entry.icon}
+                        size={14}
+                        color={deltaColor}
+                        bg={shade.card}
+                        boxSize={34}
+                      />
+                      <View style={styles.activityContent}>
+                        <View style={styles.labelRow}>
                           <Text
                             numberOfLines={1}
-                            style={[
-                              styles.rowTitle,
-                              { color: shade.text, flex: 1 },
-                            ]}
+                            style={[styles.rowTitle, { color: shade.text }]}
                           >
                             {entry.label}
                           </Text>
-                        </ScalePressable>
-                        <ScalePressable
-                          onPress={() => {
-                            const linkedClaimed =
-                              (entry.type === 'treat_direct' ||
-                                entry.type === 'impulse_skipped' ||
-                                entry.type === 'midnight_split') &&
-                              Boolean(entry.treatId) &&
-                              treats.some(
-                                (t) => t.id === entry.treatId && t.claimed
-                              );
-                            if (linkedClaimed) {
-                              onDirectUndo(entry.id);
-                              return;
-                            }
-                            triggerLightHaptic();
-                            onRequestUndo(entry);
-                          }}
-                          accessibilityLabel={`Undo ${entry.label}`}
-                          hitSlop={6}
-                          style={[
-                            styles.undoMini,
-                            { backgroundColor: shade.card },
-                          ]}
-                        >
+                          {editable && (
+                            <AppIcon
+                              name="edit-2"
+                              size={11}
+                              color={shade.muted}
+                            />
+                          )}
+                        </View>
+                        <View style={styles.rowBottomWrap}>
                           <Text
-                            style={[styles.undoMiniText, { color: shade.muted }]}
+                            numberOfLines={1}
+                            style={[styles.rowSub, { color: shade.muted }]}
                           >
-                            Undo
+                            {sourceText}
                           </Text>
-                        </ScalePressable>
+                          <Text
+                            style={[styles.rowDelta, { color: deltaColor }]}
+                          >
+                            {deltaText}
+                          </Text>
+                        </View>
                       </View>
+                    </ScalePressable>
+
+                    {undoable ? (
                       <ScalePressable
-                        disabled={!editable}
                         onPress={() => {
-                          if (!editable) return;
                           triggerLightHaptic();
-                          onEditEntry(entry);
+                          onRequestUndo(entry);
                         }}
-                        style={styles.rowBottomWrap}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Undo ${entry.label}`}
+                        hitSlop={8}
+                        style={[
+                          styles.undoMini,
+                          { backgroundColor: shade.card },
+                        ]}
                       >
                         <Text
-                          numberOfLines={1}
-                          style={[styles.rowSub, { color: shade.muted }]}
+                          style={[styles.undoMiniText, { color: shade.muted }]}
                         >
-                          {sourceText}
-                        </Text>
-                        <Text style={[styles.rowDelta, { color: deltaColor }]}>
-                          {deltaText}
+                          Undo
                         </Text>
                       </ScalePressable>
-                    </View>
+                    ) : (
+                      <View
+                        accessible
+                        accessibilityLabel={`${entry.label} cannot be undone`}
+                        style={[
+                          styles.undoMini,
+                          { backgroundColor: shade.card, opacity: 0.55 },
+                        ]}
+                      >
+                        <Text
+                          style={[styles.undoMiniText, { color: shade.muted }]}
+                        >
+                          Locked
+                        </Text>
+                      </View>
+                    )}
                   </View>
                 );
               })}
+
+              {selectedDayEntries.length > 4 && (
+                <ScalePressable
+                  onPress={() => {
+                    triggerLightHaptic();
+                    onOpenAllActivity();
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Show all ${selectedDayEntries.length} entries`}
+                  style={[styles.showAllBtn, { backgroundColor: shade.surface }]}
+                >
+                  <Text
+                    style={[styles.showAllText, { color: shade.dopamine }]}
+                  >
+                    Show all {selectedDayEntries.length} entries ›
+                  </Text>
+                </ScalePressable>
+              )}
             </View>
           )}
         </View>
@@ -272,12 +300,24 @@ const styles = StyleSheet.create({
     paddingVertical: 11,
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 8,
+  },
+  activityTapArea: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 10,
   },
   activityContent: {
     flex: 1,
     minWidth: 0,
-    gap: 4,
+    gap: 3,
+  },
+  labelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
   },
   rowBottomWrap: {
     flexDirection: 'row',
@@ -289,7 +329,7 @@ const styles = StyleSheet.create({
   rowTitle: {
     fontSize: 13,
     fontWeight: '700',
-    minWidth: 0,
+    flexShrink: 1,
   },
   rowSub: {
     fontSize: 11,
@@ -304,11 +344,21 @@ const styles = StyleSheet.create({
   },
   undoMini: {
     paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingVertical: 5,
     borderRadius: 8,
+    flexShrink: 0,
   },
   undoMiniText: {
     fontSize: 11,
     fontWeight: '700',
+  },
+  showAllBtn: {
+    borderRadius: 12,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  showAllText: {
+    fontSize: 12,
+    fontWeight: '800',
   },
 });

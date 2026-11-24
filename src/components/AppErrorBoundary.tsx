@@ -2,11 +2,13 @@ import React from 'react';
 import {
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
 import { readRawPersistedState } from '../state/persistence';
+import { VELVET_DARK_SHADE } from '../theme/palette';
 import { shareOrDownloadText } from '../utils/backupExport';
 
 interface AppErrorBoundaryProps {
@@ -88,17 +90,49 @@ export class AppErrorBoundary extends React.Component<
     }
 
     return (
-      <View style={styles.screen}>
-        <View style={styles.card}>
-          <Text style={styles.kicker}>VELVET RECOVERY MODE</Text>
-          <Text style={styles.title}>Something went wrong</Text>
-          <Text style={styles.body}>
-            Don’t worry — your saved budget data stays stored on this device. Export an emergency backup first, then reload the app.
+      <ScrollView
+        style={{ backgroundColor: VELVET_DARK_SHADE.bg }}
+        contentContainerStyle={styles.screen}
+      >
+        <View
+          style={[
+            styles.card,
+            {
+              backgroundColor: VELVET_DARK_SHADE.card,
+              borderColor: VELVET_DARK_SHADE.border,
+            },
+          ]}
+        >
+          <Text
+            style={[styles.kicker, { color: VELVET_DARK_SHADE.heroPositive }]}
+          >
+            VELVET RECOVERY MODE
+          </Text>
+          <Text style={[styles.title, { color: VELVET_DARK_SHADE.text }]}>
+            Something went wrong
+          </Text>
+          <Text style={[styles.body, { color: VELVET_DARK_SHADE.muted }]}>
+            Don’t worry — your saved budget data stays stored on this device.
+            Export an emergency backup first, then reload the app.
           </Text>
 
           {Boolean(this.state.errorMessage) && (
-            <View style={styles.errorBox}>
-              <Text numberOfLines={3} style={styles.errorDetail}>
+            <View
+              style={[
+                styles.errorBox,
+                {
+                  backgroundColor: VELVET_DARK_SHADE.bg,
+                  borderColor: VELVET_DARK_SHADE.border,
+                },
+              ]}
+            >
+              <Text
+                numberOfLines={3}
+                style={[
+                  styles.errorDetail,
+                  { color: VELVET_DARK_SHADE.heroAmber },
+                ]}
+              >
                 {this.state.errorMessage}
               </Text>
             </View>
@@ -108,7 +142,12 @@ export class AppErrorBoundary extends React.Component<
             onPress={() => {
               void this.handleEmergencyExport();
             }}
-            style={styles.primaryBtn}
+            accessibilityRole="button"
+            accessibilityLabel="Export emergency backup as JSON"
+            style={[
+              styles.primaryBtn,
+              { backgroundColor: VELVET_DARK_SHADE.positiveBtnBg },
+            ]}
           >
             <Text style={styles.primaryBtnText}>
               {this.state.exporting
@@ -117,23 +156,44 @@ export class AppErrorBoundary extends React.Component<
             </Text>
           </Pressable>
 
-          <Pressable onPress={this.handleReload} style={styles.secondaryBtn}>
-            <Text style={styles.secondaryBtnText}>Reload App</Text>
+          <Pressable
+            onPress={this.handleReload}
+            accessibilityRole="button"
+            accessibilityLabel="Reload Velvet Budget"
+            style={[
+              styles.secondaryBtn,
+              {
+                backgroundColor: VELVET_DARK_SHADE.surface,
+                borderColor: VELVET_DARK_SHADE.border,
+              },
+            ]}
+          >
+            <Text
+              style={[styles.secondaryBtnText, { color: VELVET_DARK_SHADE.text }]}
+            >
+              Reload App
+            </Text>
           </Pressable>
 
           {this.state.statusText && (
-            <Text style={styles.statusText}>{this.state.statusText}</Text>
+            <Text
+              style={[
+                styles.statusText,
+                { color: VELVET_DARK_SHADE.heroPositive },
+              ]}
+            >
+              {this.state.statusText}
+            </Text>
           )}
         </View>
-      </View>
+      </ScrollView>
     );
   }
 }
 
 const styles = StyleSheet.create({
   screen: {
-    flex: 1,
-    backgroundColor: '#0B0C10',
+    flexGrow: 1,
     alignItems: 'center',
     justifyContent: 'center',
     padding: 20,
@@ -141,68 +201,55 @@ const styles = StyleSheet.create({
   card: {
     width: '100%',
     maxWidth: 380,
-    backgroundColor: '#15171F',
-    borderColor: '#262A36',
     borderWidth: 1,
     borderRadius: 24,
     padding: 22,
     gap: 12,
   },
   kicker: {
-    color: '#22C55E',
     fontSize: 10,
     fontWeight: '800',
     letterSpacing: 1.1,
   },
   title: {
-    color: '#F5F7FA',
     fontSize: 20,
     fontWeight: '800',
   },
   body: {
-    color: '#A1A7B5',
     fontSize: 13,
     lineHeight: 19,
   },
   errorBox: {
-    backgroundColor: '#0E1016',
-    borderColor: '#262A36',
     borderWidth: 1,
     borderRadius: 12,
     padding: 10,
   },
   errorDetail: {
-    color: '#F59E0B',
     fontSize: 11,
     fontWeight: '600',
   },
   primaryBtn: {
-    backgroundColor: '#22C55E',
     borderRadius: 14,
     paddingVertical: 13,
     alignItems: 'center',
     marginTop: 4,
   },
   primaryBtnText: {
-    color: '#07140D',
+    color: '#FFFFFF',
     fontSize: 13,
     fontWeight: '800',
   },
   secondaryBtn: {
-    backgroundColor: '#1E212B',
-    borderColor: '#2E3342',
     borderWidth: 1,
     borderRadius: 14,
     paddingVertical: 12,
     alignItems: 'center',
   },
   secondaryBtnText: {
-    color: '#F5F7FA',
     fontSize: 13,
     fontWeight: '700',
   },
   statusText: {
-    color: '#4ADE80',
     fontSize: 12,
     fontWeight: '700',
     textAlign: 'center',

@@ -2,6 +2,7 @@ import { BudgetSettings, TreatVaultItem } from '../../types/budget';
 import { roundCurrency, sumBills } from '../budgetMath';
 import { createDemoState, createNewUserState } from '../defaults';
 import { normalizePersistedState } from '../persistence';
+import { makeUid } from './helpers';
 import { SliceReducer } from './types';
 
 export const handleLifecycleAndPrefsAction: SliceReducer = (state, action) => {
@@ -12,7 +13,9 @@ export const handleLifecycleAndPrefsAction: SliceReducer = (state, action) => {
     case 'COMPLETE_ONBOARDING': {
       const { params } = action;
       const trimmedTreat = (params.treatName || '').trim();
-      const cleanTreatTarget = roundCurrency(params.treatTarget || 0);
+      const cleanTreatTarget = Number.isFinite(params.treatTarget)
+        ? roundCurrency(params.treatTarget || 0)
+        : 0;
       const preserve = Boolean(params.preserveExistingData);
       const nextBills = params.billItems ? params.billItems : state.billItems;
       const totalBills = params.billItems
@@ -32,7 +35,7 @@ export const handleLifecycleAndPrefsAction: SliceReducer = (state, action) => {
         let updatedTreats = state.treats;
         let updatedActiveId = state.activeTreatId;
         if (trimmedTreat && cleanTreatTarget > 0 && state.treats.length < 3) {
-          const newId = `treat-${Date.now()}`;
+          const newId = makeUid('treat');
           updatedTreats = [
             {
               id: newId,
@@ -62,13 +65,13 @@ export const handleLifecycleAndPrefsAction: SliceReducer = (state, action) => {
       let nextTreats: TreatVaultItem[] = [];
       let nextActiveTreatId = '';
       if (trimmedTreat && cleanTreatTarget > 0) {
-        const newId = `treat-${Date.now()}`;
+        const newId = makeUid('treat');
         nextTreats = [
           {
             id: newId,
             name: trimmedTreat,
             icon: params.treatIcon || 'gift',
-            target: cleanTreatTarget,
+            target: cleanTarget(cleanTreatTarget),
             funded: 0,
             fromImpulses: 0,
             fromRollovers: 0,
@@ -82,11 +85,16 @@ export const handleLifecycleAndPrefsAction: SliceReducer = (state, action) => {
         ...state,
         hasCompletedOnboarding: true,
         hasSeenTutorial: false,
+        lastPaydayCheckInKey: '',
         billItems: nextBills,
         cashOnHand: Math.max(0, roundCurrency(params.cashOnHand)),
         settings: nextSettings,
         monthlySaved: 0,
         rolloverBalance: 0,
+        checkedInToday: false,
+        streakDays: 0,
+        bufferShields: 0,
+        disciplineScore: 800,
         entries: [],
         monthlyArchives: [],
         activeTreatId: nextActiveTreatId,
@@ -94,7 +102,9 @@ export const handleLifecycleAndPrefsAction: SliceReducer = (state, action) => {
         installments: [],
         envelopes: [],
         sinkingFunds: [],
+        debts: [],
         unlockedMilestones: [],
+        lastPaymentSourceId: undefined,
       };
     }
 
@@ -135,3 +145,7 @@ export const handleLifecycleAndPrefsAction: SliceReducer = (state, action) => {
       return undefined;
   }
 };
+
+function cleanTarget(val: number): number {
+  return Math.max(0.01, roundCurrency(val));
+}

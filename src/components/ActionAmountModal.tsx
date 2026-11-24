@@ -15,14 +15,13 @@ import {
 } from '../context/BudgetContext';
 import { SpendCategoryKey } from '../types/budget';
 import { triggerLightHaptic } from '../utils/haptics';
-import {
-  formatPeso,
-  formatPesoInput,
-  parsePesoInput,
-} from '../utils/numberFormat';
+import { parsePesoInput } from '../utils/numberFormat';
 import { ScalePressable } from './AnimatedPrimitives';
 import { AppIcon, SPEND_CATEGORIES } from './AppIcon';
 import { BaseModal } from './BaseModal';
+import { PaymentSourcePicker } from './form/PaymentSourcePicker';
+import { PesoAmountInput } from './form/PesoAmountInput';
+import { SpendCategoryPicker } from './form/SpendCategoryPicker';
 
 export type ActionModalMode = 'spend' | 'save' | 'treat';
 
@@ -33,12 +32,9 @@ interface ActionAmountModalProps {
   onClose: () => void;
 }
 
-const ActionAmountModalContent: React.FC<ActionAmountModalProps> = ({
-  visible,
-  mode,
-  initialEnvelopeId = null,
-  onClose,
-}) => {
+const ActionAmountModalContent: React.FC<
+  Omit<ActionAmountModalProps, 'visible'>
+> = ({ mode, initialEnvelopeId = null, onClose }) => {
   const { shade, formatVisiblePeso } = useThemePrefs();
   const { cashOnHand, banks, creditCards, lastPaymentSourceId } = useWallet();
   const { envelopes, selectedDateKey } = useDailyBudget();
@@ -57,19 +53,25 @@ const ActionAmountModalContent: React.FC<ActionAmountModalProps> = ({
     null
   );
 
-  const sourceDefaultsRef = useRef({
+  const defaultsRef = useRef({
     lastPaymentSourceId,
     banks,
     creditCards,
+    envelopes,
   });
-  sourceDefaultsRef.current = { lastPaymentSourceId, banks, creditCards };
+  defaultsRef.current = {
+    lastPaymentSourceId,
+    banks,
+    creditCards,
+    envelopes,
+  };
 
   const resolveSmartDefaultSource = () => {
     const {
       lastPaymentSourceId: savedSrc,
       banks: bList,
       creditCards: cList,
-    } = sourceDefaultsRef.current;
+    } = defaultsRef.current;
     if (savedSrc === 'cash') return 'cash';
     if (
       savedSrc &&
@@ -82,16 +84,19 @@ const ActionAmountModalContent: React.FC<ActionAmountModalProps> = ({
   };
 
   useEffect(() => {
-    if (visible) {
-      setAmountText('');
-      setCustomNote('');
-      setSelectedCategory('food');
-      setSelectedIcon('shopping-bag');
-      setSelectedLabel('Food');
-      setPaymentSourceId(resolveSmartDefaultSource());
-      setSelectedEnvelopeId(initialEnvelopeId ?? null);
-    }
-  }, [visible, mode, initialEnvelopeId]);
+    const initEnv =
+      mode === 'spend' && initialEnvelopeId
+        ? defaultsRef.current.envelopes.find((e) => e.id === initialEnvelopeId) ||
+          null
+        : null;
+    setAmountText('');
+    setCustomNote('');
+    setSelectedCategory('food');
+    setSelectedLabel('Food');
+    setSelectedIcon(initEnv ? initEnv.icon : 'shopping-bag');
+    setPaymentSourceId(resolveSmartDefaultSource());
+    setSelectedEnvelopeId(initEnv ? initEnv.id : null);
+  }, [mode, initialEnvelopeId]);
 
   const numericAmount = parsePesoInput(amountText);
   const activeEnvelope =
@@ -105,6 +110,16 @@ const ActionAmountModalContent: React.FC<ActionAmountModalProps> = ({
       : mode === 'save'
       ? shade.positive
       : shade.accent;
+
+  const filledBtnBg =
+    mode === 'treat' || activeEnvelope
+      ? shade.dopamineBtnBg
+      : mode === 'save'
+      ? shade.positiveBtnBg
+      : shade.accent;
+
+  const filledBtnFg =
+    mode === 'spend' && !activeEnvelope ? shade.accentText : '#FFFFFF';
 
   const modalTitle =
     mode === 'spend'
@@ -120,7 +135,8 @@ const ActionAmountModalContent: React.FC<ActionAmountModalProps> = ({
   const handleConfirm = () => {
     if (numericAmount <= 0) return;
     const finalLabel =
-      customNote.trim() || (activeEnvelope ? activeEnvelope.name : selectedLabel);
+      customNote.trim() ||
+      (activeEnvelope ? activeEnvelope.name : selectedLabel);
 
     if (mode === 'spend') {
       if (activeEnvelope) {
@@ -149,519 +165,302 @@ const ActionAmountModalContent: React.FC<ActionAmountModalProps> = ({
     onClose();
   };
 
+  const handleSelectDailyBudget = () => {
+    triggerLightHaptic();
+    setSelectedEnvelopeId(null);
+    const catOption = SPEND_CATEGORIES.find((c) => c.key === selectedCategory);
+    setSelectedIcon(catOption?.icon || 'shopping-bag');
+    if (paymentSourceId === 'none') {
+      setPaymentSourceId(resolveSmartDefaultSource());
+    }
+  };
+
   return (
     <BaseModal
-      visible={visible}
+      visible
       onClose={onClose}
       avoidKeyboard
       androidAvoidHeight
-      backdropStyle={styles.backdrop}
       cardStyle={[
         styles.card,
         { backgroundColor: shade.card, borderColor: accentColor },
       ]}
     >
       <View style={styles.headerRow}>
-            <View>
-              <Text style={[styles.title, { color: shade.text }]}>
-                {modalTitle}
-              </Text>
-              <Text style={[styles.dateHint, { color: shade.muted }]}>
-                Logging for {selectedDateKey}
-              </Text>
-            </View>
-            <ScalePressable
-              onPress={() => {
-                triggerLightHaptic();
-                onClose();
-              }}
-              accessibilityLabel="Close modal"
-              hitSlop={8}
-              style={[styles.closePill, { backgroundColor: shade.surface }]}
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text numberOfLines={1} style={[styles.title, { color: shade.text }]}>
+            {modalTitle}
+          </Text>
+          <Text style={[styles.dateHint, { color: shade.muted }]}>
+            Logging for {selectedDateKey}
+          </Text>
+        </View>
+        <ScalePressable
+          onPress={() => {
+            triggerLightHaptic();
+            onClose();
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="Close modal"
+          hitSlop={8}
+          style={[styles.closePill, { backgroundColor: shade.surface }]}
+        >
+          <Text style={[styles.closeText, { color: shade.muted }]}>
+            ✕ Cancel
+          </Text>
+        </ScalePressable>
+      </View>
+
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        style={styles.modalScroll}
+        contentContainerStyle={styles.scrollBody}
+      >
+        <PesoAmountInput
+          value={amountText}
+          onChangeText={setAmountText}
+          shade={shade}
+          accentColor={accentColor}
+          borderColor={accentColor}
+          backgroundColor={shade.bg}
+          placeholder="How much? (₱)"
+          autoFocus
+          inputAccessibilityLabel="Transaction amount in pesos"
+          containerStyle={styles.amountBox}
+          inputStyle={styles.amountInput}
+        />
+
+        {mode === 'spend' && envelopes.length > 0 && (
+          <View style={styles.sectionBlock}>
+            <Text style={[styles.sectionLabel, { color: shade.muted }]}>
+              SPEND FROM
+            </Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.horizontalScroll}
+              contentContainerStyle={styles.sourceScroll}
             >
-              <Text style={[styles.closeText, { color: shade.muted }]}>
-                ✕ Cancel
-              </Text>
-            </ScalePressable>
-          </View>
-
-          <ScrollView
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-            style={styles.modalScroll}
-            contentContainerStyle={styles.scrollBody}
-          >
-            {/* Exact Amount Input (Always Specify) */}
-            <View
-              style={[
-                styles.amountBox,
-                { backgroundColor: shade.bg, borderColor: accentColor },
-              ]}
-            >
-              <Text style={[styles.pesoBig, { color: accentColor }]}>₱</Text>
-              <TextInput
-                value={amountText}
-                onChangeText={(t) => setAmountText(formatPesoInput(t))}
-                keyboardType="decimal-pad"
-                inputMode="decimal"
-                placeholder="How much? (₱)"
-                placeholderTextColor={shade.muted}
-                autoFocus
-                style={[styles.amountInput, { color: shade.text }]}
-              />
-            </View>
-
-            {mode === 'spend' && envelopes.length > 0 && (
-              <View style={styles.sectionBlock}>
-                <Text style={[styles.sectionLabel, { color: shade.muted }]}>
-                  SPEND FROM
-                </Text>
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  style={styles.horizontalScroll}
-                  contentContainerStyle={styles.sourceScroll}
-                >
-                  <ScalePressable
-                    onPress={() => {
-                      triggerLightHaptic();
-                      setSelectedEnvelopeId(null);
-                      if (paymentSourceId === 'none') {
-                        setPaymentSourceId(resolveSmartDefaultSource());
-                      }
-                    }}
-                    style={[
-                      styles.sourcePill,
-                      {
-                        backgroundColor:
-                          selectedEnvelopeId === null
-                            ? shade.accent
-                            : shade.surface,
-                      },
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.sourceTitle,
-                        {
-                          color:
-                            selectedEnvelopeId === null
-                              ? shade.accentText
-                              : shade.text,
-                        },
-                      ]}
-                    >
-                      Daily Budget
-                    </Text>
-                    <Text
-                      style={[
-                        styles.sourceSub,
-                        {
-                          color:
-                            selectedEnvelopeId === null
-                              ? shade.accentText
-                              : shade.muted,
-                        },
-                      ]}
-                    >
-                      Regular daily
-                    </Text>
-                  </ScalePressable>
-
-                  {envelopes.map((env) => {
-                    const active = selectedEnvelopeId === env.id;
-                    return (
-                      <ScalePressable
-                        key={env.id}
-                        onPress={() => {
-                          triggerLightHaptic();
-                          setSelectedEnvelopeId(env.id);
-                          setSelectedIcon(env.icon);
-                        }}
-                        style={[
-                          styles.sourcePill,
-                          {
-                            backgroundColor: active
-                              ? shade.dopamine
-                              : shade.surface,
-                          },
-                        ]}
-                      >
-                        <View style={styles.inlineIconTitle}>
-                          <AppIcon
-                            name={env.icon}
-                            size={12}
-                            color={active ? '#FFFFFF' : shade.dopamine}
-                          />
-                          <Text
-                            style={[
-                              styles.sourceTitle,
-                              { color: active ? '#FFFFFF' : shade.text },
-                            ]}
-                          >
-                            {env.name}
-                          </Text>
-                        </View>
-                        <Text
-                          style={[
-                            styles.sourceSub,
-                            { color: active ? '#FFFFFF' : shade.muted },
-                          ]}
-                        >
-                          {formatVisiblePeso(env.balance)} left
-                        </Text>
-                      </ScalePressable>
-                    );
-                  })}
-                </ScrollView>
-
-                {activeEnvelope && (
-                  <Text
-                    style={[
-                      styles.envelopeHint,
-                      {
-                        color:
-                          numericAmount > activeEnvelope.balance
-                            ? shade.warning
-                            : shade.dopamine,
-                      },
-                    ]}
-                  >
-                    {numericAmount > activeEnvelope.balance
-                      ? `Exceeds ${activeEnvelope.name} balance by ${formatPeso(numericAmount - activeEnvelope.balance)} (still won't touch daily Safe-to-Spend).`
-                      : `Guilt-free allowance • won't reduce today's Safe-to-Spend`}
-                  </Text>
-                )}
-              </View>
-            )}
-
-            {mode === 'spend' && (
-              <>
-                <Text style={[styles.sectionLabel, { color: shade.muted }]}>
-                  CATEGORY & NOTE
-                </Text>
-                <View style={styles.tagRow}>
-                  {SPEND_CATEGORIES.map((cat) => {
-                    const active = selectedCategory === cat.key;
-                    return (
-                      <ScalePressable
-                        key={cat.key}
-                        onPress={() => {
-                          triggerLightHaptic();
-                          setSelectedCategory(cat.key);
-                          setSelectedIcon(cat.icon);
-                          setSelectedLabel(cat.label);
-                        }}
-                        style={[
-                          styles.tagPill,
-                          {
-                            backgroundColor: active ? accentColor : shade.surface,
-                          },
-                        ]}
-                      >
-                        <AppIcon
-                          name={cat.icon}
-                          size={13}
-                          color={active ? shade.accentText : shade.text}
-                        />
-                        <Text
-                          style={[
-                            styles.tagText,
-                            { color: active ? shade.accentText : shade.text },
-                          ]}
-                        >
-                          {cat.label}
-                        </Text>
-                      </ScalePressable>
-                    );
-                  })}
-                </View>
-
-                <TextInput
-                  value={customNote}
-                  onChangeText={setCustomNote}
-                  placeholder="Optional note (e.g., GrabFood, Jollibee, Milk Tea)"
-                  placeholderTextColor={shade.muted}
+              <ScalePressable
+                onPress={handleSelectDailyBudget}
+                accessibilityRole="button"
+                accessibilityLabel="Spend from Daily Budget"
+                accessibilityState={{ selected: selectedEnvelopeId === null }}
+                style={[
+                  styles.sourcePill,
+                  {
+                    backgroundColor:
+                      selectedEnvelopeId === null ? shade.accent : shade.surface,
+                  },
+                ]}
+              >
+                <Text
+                  numberOfLines={1}
                   style={[
-                    styles.noteInput,
+                    styles.sourceTitle,
                     {
-                      backgroundColor: shade.bg,
-                      color: shade.text,
-                      borderColor: shade.border,
+                      color:
+                        selectedEnvelopeId === null
+                          ? shade.accentText
+                          : shade.text,
                     },
                   ]}
-                />
-              </>
-            )}
-
-            {mode === 'spend' && (
-              <View style={styles.sectionBlock}>
-                <Text style={[styles.sectionLabel, { color: shade.muted }]}>
-                  HOW DID YOU PAY?
-                </Text>
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  style={styles.horizontalScroll}
-                  contentContainerStyle={styles.sourceScroll}
                 >
-                  {activeEnvelope && (
-                    <ScalePressable
-                      onPress={() => {
-                        triggerLightHaptic();
-                        setPaymentSourceId('none');
-                      }}
-                      style={[
-                        styles.sourcePill,
-                        {
-                          backgroundColor:
-                            paymentSourceId === 'none'
-                              ? shade.accent
-                              : shade.surface,
-                        },
-                      ]}
-                    >
-                      <View style={styles.inlineIconTitle}>
-                        <AppIcon
-                          name="check"
-                          size={12}
-                          color={
-                            paymentSourceId === 'none'
-                              ? shade.accentText
-                              : shade.text
-                          }
-                        />
-                        <Text
-                          style={[
-                            styles.sourceTitle,
-                            {
-                              color:
-                                paymentSourceId === 'none'
-                                  ? shade.accentText
-                                  : shade.text,
-                            },
-                          ]}
-                        >
-                          Track Only
-                        </Text>
-                      </View>
-                      <Text
-                        style={[
-                          styles.sourceSub,
-                          {
-                            color:
-                              paymentSourceId === 'none'
-                                ? shade.accentText
-                                : shade.muted,
-                          },
-                        ]}
-                      >
-                        Allowance only
-                      </Text>
-                    </ScalePressable>
-                  )}
+                  Daily Budget
+                </Text>
+                <Text
+                  numberOfLines={1}
+                  style={[
+                    styles.sourceSub,
+                    {
+                      color:
+                        selectedEnvelopeId === null
+                          ? shade.accentText
+                          : shade.muted,
+                    },
+                  ]}
+                >
+                  Regular daily
+                </Text>
+              </ScalePressable>
+
+              {envelopes.map((env) => {
+                const active = selectedEnvelopeId === env.id;
+                return (
                   <ScalePressable
+                    key={env.id}
                     onPress={() => {
                       triggerLightHaptic();
-                      setPaymentSourceId('cash');
+                      setSelectedEnvelopeId(env.id);
+                      setSelectedIcon(env.icon);
                     }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Spend from ${env.name}: ${formatVisiblePeso(
+                      env.balance
+                    )} left`}
+                    accessibilityState={{ selected: active }}
                     style={[
                       styles.sourcePill,
                       {
-                        backgroundColor:
-                          paymentSourceId === 'cash'
-                            ? shade.accent
-                            : shade.surface,
+                        backgroundColor: active
+                          ? shade.dopamineBtnBg
+                          : shade.surface,
                       },
                     ]}
                   >
                     <View style={styles.inlineIconTitle}>
                       <AppIcon
-                        name="dollar-sign"
+                        name={env.icon}
                         size={12}
-                        color={
-                          paymentSourceId === 'cash'
-                            ? shade.accentText
-                            : shade.text
-                        }
+                        color={active ? '#FFFFFF' : shade.dopamine}
                       />
                       <Text
+                        numberOfLines={1}
                         style={[
                           styles.sourceTitle,
-                          {
-                            color:
-                              paymentSourceId === 'cash'
-                                ? shade.accentText
-                                : shade.text,
-                          },
+                          { color: active ? '#FFFFFF' : shade.text },
                         ]}
                       >
-                        Cash
+                        {env.name}
                       </Text>
                     </View>
                     <Text
+                      numberOfLines={1}
                       style={[
                         styles.sourceSub,
-                        {
-                          color:
-                            paymentSourceId === 'cash'
-                              ? shade.accentText
-                              : shade.muted,
-                        },
+                        { color: active ? '#FFFFFF' : shade.muted },
                       ]}
                     >
-                      {formatVisiblePeso(cashOnHand)}
+                      {formatVisiblePeso(env.balance)} left
                     </Text>
                   </ScalePressable>
+                );
+              })}
+            </ScrollView>
 
-                  {banks.map((bank) => {
-                    const active = paymentSourceId === bank.id;
-                    return (
-                      <ScalePressable
-                        key={bank.id}
-                        onPress={() => {
-                          triggerLightHaptic();
-                          setPaymentSourceId(bank.id);
-                        }}
-                        style={[
-                          styles.sourcePill,
-                          {
-                            backgroundColor: active ? shade.accent : shade.surface,
-                          },
-                        ]}
-                      >
-                        <View style={styles.inlineIconTitle}>
-                          <AppIcon
-                            name="briefcase"
-                            size={12}
-                            color={active ? shade.accentText : shade.text}
-                          />
-                          <Text
-                            style={[
-                              styles.sourceTitle,
-                              { color: active ? shade.accentText : shade.text },
-                            ]}
-                          >
-                            {bank.name}
-                          </Text>
-                        </View>
-                        <Text
-                          style={[
-                            styles.sourceSub,
-                            { color: active ? shade.accentText : shade.muted },
-                          ]}
-                        >
-                          {formatVisiblePeso(bank.balance)}
-                        </Text>
-                      </ScalePressable>
-                    );
-                  })}
-
-                  {creditCards.map((card) => {
-                    const active = paymentSourceId === card.id;
-                    const avail = Math.max(0, card.limit - card.used);
-                    return (
-                      <ScalePressable
-                        key={card.id}
-                        onPress={() => {
-                          triggerLightHaptic();
-                          setPaymentSourceId(card.id);
-                        }}
-                        style={[
-                          styles.sourcePill,
-                          {
-                            backgroundColor: active
-                              ? shade.dopamine
-                              : shade.surface,
-                          },
-                        ]}
-                      >
-                        <View style={styles.inlineIconTitle}>
-                          <AppIcon
-                            name="credit-card"
-                            size={12}
-                            color={active ? '#FFFFFF' : shade.text}
-                          />
-                          <Text
-                            style={[
-                              styles.sourceTitle,
-                              { color: active ? '#FFFFFF' : shade.text },
-                            ]}
-                          >
-                            {card.name}
-                          </Text>
-                        </View>
-                        <Text
-                          style={[
-                            styles.sourceSub,
-                            { color: active ? '#FFFFFF' : shade.muted },
-                          ]}
-                        >
-                          {formatVisiblePeso(avail)} avail
-                        </Text>
-                      </ScalePressable>
-                    );
-                  })}
-                </ScrollView>
-              </View>
-            )}
-
-            <ScalePressable
-              disabled={numericAmount <= 0}
-              onPress={handleConfirm}
-              style={[
-                styles.confirmBtn,
-                {
-                  backgroundColor:
-                    numericAmount > 0 ? accentColor : shade.surface,
-                  opacity: numericAmount > 0 ? 1 : 0.6,
-                },
-              ]}
-            >
+            {activeEnvelope && (
               <Text
                 style={[
-                  styles.confirmText,
+                  styles.envelopeHint,
                   {
                     color:
-                      numericAmount > 0
-                        ? mode === 'spend' && !activeEnvelope
-                          ? shade.accentText
-                          : '#FFFFFF'
-                        : shade.muted,
+                      numericAmount > activeEnvelope.balance
+                        ? shade.warning
+                        : shade.dopamine,
                   },
                 ]}
               >
-                {mode === 'spend'
-                  ? numericAmount > 0
-                    ? `Spend ${formatPeso(numericAmount)}!`
-                    : 'Enter Amount to Spend!'
-                  : mode === 'treat'
-                  ? numericAmount > 0
-                    ? `Add ${formatPeso(numericAmount)} to Treat`
-                    : 'Enter Treat Amount'
-                  : numericAmount > 0
-                  ? `Save ${formatPeso(numericAmount)} to Jar`
-                  : 'Enter Amount to Save'}
+                {numericAmount > activeEnvelope.balance
+                  ? `Exceeds ${activeEnvelope.name} balance by ${formatVisiblePeso(
+                      numericAmount - activeEnvelope.balance
+                    )} (still won't touch daily Safe-to-Spend).`
+                  : "Guilt-free allowance • won't reduce today's Safe-to-Spend"}
               </Text>
-            </ScalePressable>
-          </ScrollView>
+            )}
+          </View>
+        )}
+
+        {mode === 'spend' && (
+          <>
+            <SpendCategoryPicker
+              label="CATEGORY & NOTE"
+              selectedKey={selectedCategory}
+              onSelect={(cat) => {
+                setSelectedCategory(cat.key);
+                setSelectedIcon(cat.icon);
+                setSelectedLabel(cat.label);
+              }}
+              shade={shade}
+              activeColor={filledBtnBg}
+              activeTextColor={filledBtnFg}
+            />
+
+            <TextInput
+              value={customNote}
+              onChangeText={setCustomNote}
+              placeholder="Optional note (e.g., GrabFood, Jollibee, Milk Tea)"
+              placeholderTextColor={shade.muted}
+              accessibilityLabel="Transaction note"
+              style={[
+                styles.noteInput,
+                {
+                  backgroundColor: shade.bg,
+                  color: shade.text,
+                  borderColor: shade.border,
+                },
+              ]}
+            />
+
+            <PaymentSourcePicker
+              label="HOW DID YOU PAY?"
+              selectedId={paymentSourceId}
+              onSelect={setPaymentSourceId}
+              cashOnHand={cashOnHand}
+              banks={banks}
+              creditCards={creditCards}
+              shade={shade}
+              formatVisiblePeso={formatVisiblePeso}
+              includeTrackOnly={Boolean(activeEnvelope)}
+              trackOnlyId="none"
+              trackOnlyLabel="Track Only"
+              trackOnlySubLabel="Allowance only"
+              creditCardSubMode="avail"
+            />
+          </>
+        )}
+
+        <ScalePressable
+          disabled={numericAmount <= 0}
+          onPress={handleConfirm}
+          accessibilityRole="button"
+          style={[
+            styles.confirmBtn,
+            {
+              backgroundColor: numericAmount > 0 ? filledBtnBg : shade.surface,
+              opacity: numericAmount > 0 ? 1 : 0.65,
+            },
+          ]}
+        >
+          <Text
+            style={[
+              styles.confirmText,
+              { color: numericAmount > 0 ? filledBtnFg : shade.muted },
+            ]}
+          >
+            {mode === 'spend'
+              ? numericAmount > 0
+                ? `Spend ${formatVisiblePeso(numericAmount)}!`
+                : 'Enter Amount to Spend!'
+              : mode === 'treat'
+              ? numericAmount > 0
+                ? `Add ${formatVisiblePeso(numericAmount)} to Treat`
+                : 'Enter Treat Amount'
+              : numericAmount > 0
+              ? `Save ${formatVisiblePeso(numericAmount)} to Jar`
+              : 'Enter Amount to Save'}
+          </Text>
+        </ScalePressable>
+      </ScrollView>
     </BaseModal>
   );
 };
 
 /**
- * Exact-amount entry modal (zero preset amount chips) for Spend!, Fund Treat,
- * and Save to Jar, with Daily Budget / Spending Envelope and Cash / Bank / Card selection.
+ * Exact-amount entry modal for Spend!, Fund Treat, and Save to Jar.
  */
 export const ActionAmountModal: React.FC<ActionAmountModalProps> = (props) => {
   if (!props.visible) return null;
-  return <ActionAmountModalContent {...props} />;
+  return (
+    <ActionAmountModalContent
+      mode={props.mode}
+      initialEnvelopeId={props.initialEnvelopeId}
+      onClose={props.onClose}
+    />
+  );
 };
 
 const styles = StyleSheet.create({
-  backdrop: {
-    backgroundColor: 'rgba(17, 24, 39, 0.42)',
-  },
   card: {
     maxHeight: '88%',
     alignSelf: 'center',
@@ -715,53 +514,23 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   amountBox: {
-    width: '100%',
-    minWidth: 0,
-    flexDirection: 'row',
-    alignItems: 'center',
     borderRadius: 16,
     borderWidth: 1.5,
     paddingHorizontal: 14,
     paddingVertical: 10,
   },
-  pesoBig: {
-    fontSize: 26,
-    fontWeight: '800',
-    marginRight: 8,
-  },
   amountInput: {
-    flex: 1,
-    minWidth: 0,
-    fontSize: 24,
-    fontWeight: '800',
-    paddingVertical: 2,
+    fontSize: 22,
   },
   sectionLabel: {
     fontSize: 10,
     fontWeight: '800',
     letterSpacing: 0.8,
   },
-  tagRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
-  tagPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    borderRadius: 11,
-  },
   inlineIconTitle: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-  },
-  tagText: {
-    fontSize: 12,
-    fontWeight: '700',
   },
   noteInput: {
     width: '100%',
@@ -777,9 +546,10 @@ const styles = StyleSheet.create({
   },
   sourcePill: {
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingVertical: 9,
     borderRadius: 13,
     minWidth: 96,
+    maxWidth: 170,
   },
   sourceTitle: {
     fontSize: 12,

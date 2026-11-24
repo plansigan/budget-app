@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { getMonthlyEnvelopeAllocation } from '../state/budgetMath';
+import { getMonthlyEnvelopeAllocation, roundCurrency } from '../state/budgetMath';
 import { ThemeShade } from '../theme/palette';
 import {
   EnvelopeCadence,
@@ -10,9 +10,11 @@ import {
 import { triggerLightHaptic } from '../utils/haptics';
 import { formatPeso, formatPesoDisplay } from '../utils/numberFormat';
 import { PopValueText, ScalePressable } from './AnimatedPrimitives';
-import { AppIcon, IconBadge } from './AppIcon';
+import { AppIcon } from './AppIcon';
 import { ConfirmModal } from './ConfirmModal';
 import { AddEditEnvelopeModal, ENVELOPE_PRESETS } from './EnvelopeModal';
+import { EnvelopeRowCard } from './envelopes/EnvelopeRowCard';
+import { QuickPresetChips } from './form/QuickPresetChips';
 
 export interface SpendingEnvelopesCardProps {
   envelopes: SpendingEnvelopeItem[];
@@ -44,7 +46,7 @@ export interface SpendingEnvelopesCardProps {
 
 /**
  * Interactive card in the Budget setup tab for creating and refilling
- * dedicated guilt-free Spending Envelopes (e.g., Date Fund every cutoff).
+ * dedicated guilt-free Spending Allowances (e.g., Date Fund every cutoff).
  */
 const SpendingEnvelopesCardBase: React.FC<SpendingEnvelopesCardProps> = ({
   envelopes,
@@ -66,10 +68,13 @@ const SpendingEnvelopesCardBase: React.FC<SpendingEnvelopesCardProps> = ({
       setExpanded(true);
     }
   }, [focusSignal]);
+
   const [envelopeModalState, setEnvelopeModalState] = useState<{
     envelope: SpendingEnvelopeItem | null;
   } | null>(null);
   const [pendingDelete, setPendingDelete] =
+    useState<SpendingEnvelopeItem | null>(null);
+  const [pendingRefill, setPendingRefill] =
     useState<SpendingEnvelopeItem | null>(null);
 
   const mask = (amt: number) => formatPesoDisplay(amt, privacyMode);
@@ -85,9 +90,13 @@ const SpendingEnvelopesCardBase: React.FC<SpendingEnvelopesCardProps> = ({
   };
 
   const openEditModal = (env: SpendingEnvelopeItem) => {
-    triggerLightHaptic();
     setEnvelopeModalState({ envelope: env });
   };
+
+  const quickPresets = ENVELOPE_PRESETS.map((p) => ({
+    ...p,
+    label: `${p.name} ${formatPeso(p.amount)}`,
+  }));
 
   return (
     <View
@@ -103,7 +112,9 @@ const SpendingEnvelopesCardBase: React.FC<SpendingEnvelopesCardProps> = ({
             triggerLightHaptic();
             setExpanded((v) => !v);
           }}
-          style={{ flex: 1 }}
+          accessibilityRole={collapsible ? 'button' : 'text'}
+          accessibilityState={collapsible ? { expanded } : undefined}
+          style={{ flex: 1, minWidth: 0 }}
         >
           <Text style={[styles.title, { color: shade.text }]}>
             Allowances ({envelopes.length})
@@ -119,6 +130,9 @@ const SpendingEnvelopesCardBase: React.FC<SpendingEnvelopesCardProps> = ({
           <View style={styles.headerActions}>
             <ScalePressable
               onPress={openCreateModal}
+              accessibilityRole="button"
+              accessibilityLabel="Add new allowance"
+              hitSlop={8}
               style={[
                 styles.customToggle,
                 { backgroundColor: shade.dopamineSoft },
@@ -134,6 +148,11 @@ const SpendingEnvelopesCardBase: React.FC<SpendingEnvelopesCardProps> = ({
                 triggerLightHaptic();
                 setExpanded((v) => !v);
               }}
+              accessibilityRole="button"
+              accessibilityLabel={
+                expanded ? 'Collapse allowances' : 'Expand allowances'
+              }
+              accessibilityState={{ expanded }}
               hitSlop={8}
             >
               <AppIcon
@@ -156,116 +175,27 @@ const SpendingEnvelopesCardBase: React.FC<SpendingEnvelopesCardProps> = ({
 
       {expanded && (
         <View style={styles.list}>
-        {envelopes.length === 0 ? (
-          <View style={[styles.emptyRow, { backgroundColor: shade.bg }]}>
-            <Text style={[styles.emptyText, { color: shade.muted }]}>
-              No allowances yet (e.g., Date Night or Coffee). Tap + Add above.
-            </Text>
-          </View>
-        ) : (
-          envelopes.map((env) => {
-            const cadenceLabel =
-              env.cadence === 'per_payday' ? 'cutoff' : 'mo';
-            const modeLabel =
-              env.rolloverMode === 'rollover' ? 'Rollover' : 'Reset';
-            return (
-              <View
+          {envelopes.length === 0 ? (
+            <View style={[styles.emptyRow, { backgroundColor: shade.bg }]}>
+              <Text style={[styles.emptyText, { color: shade.muted }]}>
+                {collapsible
+                  ? 'No allowances yet (e.g., Date Night or Coffee). Tap + Add above.'
+                  : 'No allowances yet. Tap a starter below or + Custom Allowance.'}
+              </Text>
+            </View>
+          ) : (
+            envelopes.map((env) => (
+              <EnvelopeRowCard
                 key={env.id}
-                style={[styles.envCard, { backgroundColor: shade.surface }]}
-              >
-                <View style={styles.envTopRow}>
-                  <View style={styles.envLeft}>
-                    <IconBadge
-                      name={env.icon}
-                      size={14}
-                      color={shade.dopamine}
-                      bg={shade.dopamineSoft}
-                      boxSize={30}
-                    />
-                    <View style={{ flex: 1, minWidth: 0 }}>
-                      <Text
-                        numberOfLines={1}
-                        style={[styles.envName, { color: shade.text }]}
-                      >
-                        {env.name}
-                      </Text>
-                      <Text
-                        numberOfLines={1}
-                        style={[styles.envMeta, { color: shade.muted }]}
-                      >
-                        {mask(env.amountPerCycle)} / {cadenceLabel} • {modeLabel}
-                      </Text>
-                    </View>
-                  </View>
-
-                  <View
-                    style={[
-                      styles.balancePill,
-                      { backgroundColor: shade.card, borderColor: shade.border },
-                    ]}
-                  >
-                    <Text
-                      numberOfLines={1}
-                      style={[styles.balanceText, { color: shade.dopamine }]}
-                    >
-                      {mask(env.balance)} left
-                    </Text>
-                  </View>
-                </View>
-
-                <View style={styles.envActionsRow}>
-                  <ScalePressable
-                    onPress={() => onRefillEnvelope(env.id)}
-                    style={[
-                      styles.actionChip,
-                      {
-                        backgroundColor: shade.card,
-                        borderColor: shade.border,
-                      },
-                    ]}
-                  >
-                    <AppIcon name="rotate-ccw" size={11} color={shade.positive} />
-                    <Text
-                      style={[styles.actionChipText, { color: shade.positive }]}
-                    >
-                      {env.rolloverMode === 'rollover' ? '+ Refill' : 'Reset'}
-                    </Text>
-                  </ScalePressable>
-
-                  <ScalePressable
-                    onPress={() => openEditModal(env)}
-                    style={[
-                      styles.actionChip,
-                      {
-                        backgroundColor: shade.card,
-                        borderColor: shade.border,
-                      },
-                    ]}
-                  >
-                    <AppIcon name="edit-2" size={11} color={shade.text} />
-                    <Text style={[styles.actionChipText, { color: shade.text }]}>
-                      Edit
-                    </Text>
-                  </ScalePressable>
-
-                  <ScalePressable
-                    onPress={() => {
-                      triggerLightHaptic();
-                      setPendingDelete(env);
-                    }}
-                    accessibilityLabel={`Remove ${env.name}`}
-                    style={[
-                      styles.removeBtn,
-                      { backgroundColor: shade.card, borderColor: shade.border },
-                    ]}
-                  >
-                    <AppIcon name="trash-2" size={12} color={shade.warning} />
-                  </ScalePressable>
-                </View>
-              </View>
-            );
-          })
-        )}
+                env={env}
+                shade={shade}
+                privacyMode={privacyMode}
+                onRequestRefill={setPendingRefill}
+                onEdit={openEditModal}
+                onRequestDelete={setPendingDelete}
+              />
+            ))
+          )}
         </View>
       )}
 
@@ -277,6 +207,9 @@ const SpendingEnvelopesCardBase: React.FC<SpendingEnvelopesCardProps> = ({
             </Text>
             <ScalePressable
               onPress={openCreateModal}
+              accessibilityRole="button"
+              accessibilityLabel="Add custom allowance"
+              hitSlop={8}
               style={[styles.customToggle, { backgroundColor: shade.surface }]}
             >
               <AppIcon name="plus" size={12} color={shade.dopamine} />
@@ -286,28 +219,20 @@ const SpendingEnvelopesCardBase: React.FC<SpendingEnvelopesCardProps> = ({
             </ScalePressable>
           </View>
 
-          <View style={styles.presetChips}>
-            {ENVELOPE_PRESETS.map((preset) => (
-              <ScalePressable
-                key={preset.name}
-                onPress={() =>
-                  onAddEnvelope(
-                    preset.name,
-                    preset.icon,
-                    preset.amount,
-                    preset.cadence,
-                    preset.rolloverMode
-                  )
-                }
-                style={[styles.presetChip, { backgroundColor: shade.surface }]}
-              >
-                <AppIcon name={preset.icon} size={12} color={shade.dopamine} />
-                <Text style={[styles.presetChipText, { color: shade.text }]}>
-                  {preset.name} {formatPeso(preset.amount)}
-                </Text>
-              </ScalePressable>
-            ))}
-          </View>
+          <QuickPresetChips
+            presets={quickPresets}
+            shade={shade}
+            accentColor={shade.dopamine}
+            onSelect={(preset) =>
+              onAddEnvelope(
+                preset.name,
+                preset.icon,
+                preset.amount,
+                preset.cadence,
+                preset.rolloverMode
+              )
+            }
+          />
         </View>
       )}
 
@@ -321,6 +246,46 @@ const SpendingEnvelopesCardBase: React.FC<SpendingEnvelopesCardProps> = ({
         onAddEnvelope={onAddEnvelope}
         onUpdateEnvelope={onUpdateEnvelope}
         onClose={() => setEnvelopeModalState(null)}
+      />
+
+      <ConfirmModal
+        visible={pendingRefill !== null}
+        title={
+          pendingRefill
+            ? pendingRefill.rolloverMode === 'reset'
+              ? `Reset ${pendingRefill.name}?`
+              : `Refill ${pendingRefill.name}?`
+            : 'Confirm Refill'
+        }
+        message={
+          pendingRefill
+            ? pendingRefill.rolloverMode === 'reset'
+              ? `Reset current balance (${mask(
+                  pendingRefill.balance
+                )}) back to ${mask(pendingRefill.amountPerCycle)}?`
+              : `Add ${mask(pendingRefill.amountPerCycle)} cycle refill to ${
+                  pendingRefill.name
+                } (new balance: ${mask(
+                  roundCurrency(
+                    pendingRefill.balance + pendingRefill.amountPerCycle
+                  )
+                )})?`
+            : ''
+        }
+        confirmLabel={
+          pendingRefill?.rolloverMode === 'reset'
+            ? 'Reset Balance'
+            : 'Add Refill'
+        }
+        destructive={false}
+        icon="rotate-ccw"
+        onCancel={() => setPendingRefill(null)}
+        onConfirm={() => {
+          if (pendingRefill) {
+            onRefillEnvelope(pendingRefill.id);
+          }
+          setPendingRefill(null);
+        }}
       />
 
       <ConfirmModal
@@ -364,6 +329,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    flexShrink: 0,
   },
   title: {
     fontSize: 15,
@@ -396,72 +362,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 16,
   },
-  envCard: {
-    borderRadius: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 9,
-    gap: 8,
-  },
-  envTopRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-  envLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    flex: 1,
-    minWidth: 0,
-  },
-  envName: {
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  envMeta: {
-    fontSize: 10,
-    fontWeight: '600',
-  },
-  balancePill: {
-    flexShrink: 0,
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-    borderRadius: 9,
-    borderWidth: 1,
-  },
-  balanceText: {
-    fontSize: 11,
-    fontWeight: '800',
-    fontVariant: ['tabular-nums'],
-  },
-  envActionsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    gap: 6,
-  },
-  actionChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-    borderRadius: 8,
-    borderWidth: 1,
-  },
-  actionChipText: {
-    fontSize: 10,
-    fontWeight: '800',
-  },
-  removeBtn: {
-    width: 24,
-    height: 24,
-    borderRadius: 8,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   presetSection: {
     gap: 7,
     paddingTop: 2,
@@ -475,29 +375,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    paddingHorizontal: 9,
-    paddingVertical: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
     borderRadius: 8,
   },
   customToggleText: {
     fontSize: 11,
     fontWeight: '800',
-  },
-  presetChips: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
-  presetChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 9,
-    paddingVertical: 6,
-    borderRadius: 9,
-  },
-  presetChipText: {
-    fontSize: 11,
-    fontWeight: '700',
   },
 });

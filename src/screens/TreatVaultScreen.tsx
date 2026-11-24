@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
-import { ScalePressable } from '../components/AnimatedPrimitives';
-import { AppIcon } from '../components/AppIcon';
+import { ScrollView, StyleSheet } from 'react-native';
+import { ActionAmountModal } from '../components/ActionAmountModal';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { MonthlyWrapUpModal } from '../components/MonthlyWrapUpModal';
-import { useThemePrefs } from '../context/BudgetContext';
+import { SegmentedTabBar } from '../components/form/SegmentedTabBar';
+import {
+  useBudgetActions,
+  useThemePrefs,
+} from '../context/BudgetContext';
 import { MonthlyArchiveSnapshot, SinkingFundItem } from '../types/budget';
-import { triggerLightHaptic } from '../utils/haptics';
 import { GoalsSection, VaultConfirmRequest } from './vault/GoalsSection';
 import { InsightsSection } from './vault/InsightsSection';
 import { VaultModals } from './vault/VaultModals';
@@ -16,12 +18,14 @@ import { VaultModals } from './vault/VaultModals';
  */
 export const TreatVaultScreen: React.FC = () => {
   const { shade } = useThemePrefs();
+  const { setActiveTreat } = useBudgetActions();
 
   const [subTab, setSubTab] = useState<'goals' | 'insights'>('goals');
   const [wrapVisible, setWrapVisible] = useState(false);
   const [selectedWrapArchive, setSelectedWrapArchive] =
     useState<MonthlyArchiveSnapshot | null>(null);
   const [showAddTreat, setShowAddTreat] = useState(false);
+  const [showFundTreatModal, setShowFundTreatModal] = useState(false);
   const [showAddFund, setShowAddFund] = useState(false);
   const [depositTargetFund, setDepositTargetFund] =
     useState<SinkingFundItem | null>(null);
@@ -33,74 +37,25 @@ export const TreatVaultScreen: React.FC = () => {
       contentContainerStyle={styles.scrollContent}
       showsVerticalScrollIndicator={false}
     >
-      <View
-        style={[
-          styles.subTabBar,
-          { backgroundColor: shade.surface, borderColor: shade.border },
+      <SegmentedTabBar
+        value={subTab}
+        onChange={setSubTab}
+        shade={shade}
+        variant="card"
+        containerStyle={{ marginBottom: 2 }}
+        options={[
+          { key: 'goals', label: 'Goals & Buckets', icon: 'target' },
+          { key: 'insights', label: 'Insights & Coach', icon: 'bar-chart-2' },
         ]}
-      >
-        <ScalePressable
-          onPress={() => {
-            triggerLightHaptic();
-            setSubTab('goals');
-          }}
-          accessibilityRole="tab"
-          accessibilityState={{ selected: subTab === 'goals' }}
-          style={[
-            styles.subTabBtn,
-            subTab === 'goals' && { backgroundColor: shade.card },
-          ]}
-        >
-          <View style={styles.inlineRow}>
-            <AppIcon
-              name="target"
-              size={14}
-              color={subTab === 'goals' ? shade.text : shade.muted}
-            />
-            <Text
-              style={[
-                styles.subTabText,
-                { color: subTab === 'goals' ? shade.text : shade.muted },
-              ]}
-            >
-              Goals & Buckets
-            </Text>
-          </View>
-        </ScalePressable>
-
-        <ScalePressable
-          onPress={() => {
-            triggerLightHaptic();
-            setSubTab('insights');
-          }}
-          accessibilityRole="tab"
-          accessibilityState={{ selected: subTab === 'insights' }}
-          style={[
-            styles.subTabBtn,
-            subTab === 'insights' && { backgroundColor: shade.card },
-          ]}
-        >
-          <View style={styles.inlineRow}>
-            <AppIcon
-              name="bar-chart-2"
-              size={14}
-              color={subTab === 'insights' ? shade.text : shade.muted}
-            />
-            <Text
-              style={[
-                styles.subTabText,
-                { color: subTab === 'insights' ? shade.text : shade.muted },
-              ]}
-            >
-              Insights & Coach
-            </Text>
-          </View>
-        </ScalePressable>
-      </View>
+      />
 
       {subTab === 'goals' && (
         <GoalsSection
           onOpenAddTreat={() => setShowAddTreat(true)}
+          onFundTreat={(treatId) => {
+            setActiveTreat(treatId);
+            setShowFundTreatModal(true);
+          }}
           onOpenAddFund={() => setShowAddFund(true)}
           onOpenDepositFund={setDepositTargetFund}
           onRequestConfirm={setPendingConfirm}
@@ -125,6 +80,12 @@ export const TreatVaultScreen: React.FC = () => {
         onCloseDepositFund={() => setDepositTargetFund(null)}
       />
 
+      <ActionAmountModal
+        visible={showFundTreatModal}
+        mode="treat"
+        onClose={() => setShowFundTreatModal(false)}
+      />
+
       <MonthlyWrapUpModal
         visible={wrapVisible}
         archiveSnapshot={selectedWrapArchive}
@@ -139,7 +100,8 @@ export const TreatVaultScreen: React.FC = () => {
         title={pendingConfirm?.title || ''}
         message={pendingConfirm?.message || ''}
         confirmLabel={pendingConfirm?.confirmLabel || 'Confirm'}
-        destructive
+        destructive={pendingConfirm?.destructive ?? true}
+        icon={pendingConfirm?.icon}
         onCancel={() => setPendingConfirm(null)}
         onConfirm={() => {
           pendingConfirm?.onConfirm();
@@ -154,28 +116,5 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingBottom: 40,
     gap: 14,
-  },
-  inlineRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  subTabBar: {
-    flexDirection: 'row',
-    borderRadius: 15,
-    borderWidth: 1,
-    padding: 4,
-    gap: 4,
-    marginBottom: 2,
-  },
-  subTabBtn: {
-    flex: 1,
-    paddingVertical: 10,
-    borderRadius: 11,
-    alignItems: 'center',
-  },
-  subTabText: {
-    fontSize: 13,
-    fontWeight: '800',
   },
 });

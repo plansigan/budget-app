@@ -2,17 +2,13 @@ import React, { useEffect, useState } from 'react';
 import { StyleSheet, Text, TextInput, View } from 'react-native';
 import { useBudgetActions, useThemePrefs } from '../context/BudgetContext';
 import { SpendCategoryKey, TransactionEntry } from '../types/budget';
-import { triggerLightHaptic } from '../utils/haptics';
 import { classifySpendCategory } from '../utils/insightsEngine';
-import {
-  formatPesoInput,
-  formatPesoNumber,
-  parsePesoInput,
-} from '../utils/numberFormat';
+import { formatPesoNumber, parsePesoInput } from '../utils/numberFormat';
 import { formatEntryDateLocal } from '../utils/transactionDisplay';
 import { ScalePressable } from './AnimatedPrimitives';
-import { AppIcon, SPEND_CATEGORIES } from './AppIcon';
 import { FormModal } from './FormModal';
+import { PesoAmountInput } from './form/PesoAmountInput';
+import { SpendCategoryPicker } from './form/SpendCategoryPicker';
 
 interface EditTransactionModalProps {
   entry: TransactionEntry | null;
@@ -20,8 +16,8 @@ interface EditTransactionModalProps {
 }
 
 /**
- * Spacious modal to edit a logged transaction's amount, label/note, and category
- * while automatically reconciling linked Wallet, Envelope, Savings, or Treat balances.
+ * Modal to edit a logged transaction's amount, label/note, and category
+ * while automatically reconciling linked Wallet, Allowance, Savings, or Treat balances.
  */
 export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
   entry,
@@ -34,6 +30,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
   const [labelText, setLabelText] = useState('');
   const [category, setCategory] = useState<SpendCategoryKey>('other');
   const [icon, setIcon] = useState<string>('tag');
+  const [formError, setFormError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!entry) return;
@@ -45,6 +42,7 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
     ) as SpendCategoryKey;
     setCategory(resolvedCat);
     setIcon(entry.icon || classified.icon);
+    setFormError(null);
   }, [entry]);
 
   if (!entry) return null;
@@ -58,15 +56,34 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
     ? `${dateStr} • ${entry.paymentSourceLabel} — Balances update automatically`
     : `${dateStr} — Balances update automatically`;
 
-  const accentColor =
-    entry.type === 'envelope_spend' || entry.type === 'treat_direct'
-      ? shade.dopamine
-      : entry.type === 'save_direct' || entry.type === 'wallet_deposit'
-      ? shade.positive
-      : shade.accent;
+  const isDopamine =
+    entry.type === 'envelope_spend' || entry.type === 'treat_direct';
+  const isPositive =
+    entry.type === 'save_direct' || entry.type === 'wallet_deposit';
+
+  const borderAccent = isDopamine
+    ? shade.dopamine
+    : isPositive
+    ? shade.positive
+    : shade.accent;
+  const filledBtnBg = isDopamine
+    ? shade.dopamineBtnBg
+    : isPositive
+    ? shade.positiveBtnBg
+    : shade.accent;
+  const filledBtnFg =
+    !isDopamine && !isPositive ? shade.accentText : '#FFFFFF';
 
   const handleSave = () => {
-    if (!canSave) return;
+    if (numericAmount <= 0) {
+      setFormError('Please enter an amount greater than ₱0.00.');
+      return;
+    }
+    if (!labelText.trim()) {
+      setFormError('Please enter a note or description.');
+      return;
+    }
+    setFormError(null);
     editEntry(entry.id, {
       amount: numericAmount,
       label: labelText.trim(),
@@ -81,81 +98,37 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
       title="Edit Transaction"
       subtitle={contextLine}
       icon={icon || entry.icon}
-      accentColor={accentColor}
+      accentColor={borderAccent}
       onClose={onClose}
     >
-      <View
-        style={[
-          styles.amountBox,
-          { backgroundColor: shade.surface, borderColor: accentColor },
-        ]}
-      >
-        <Text style={[styles.pesoPrefix, { color: accentColor }]}>₱</Text>
-        <TextInput
-          value={amountText}
-          onChangeText={(t) => setAmountText(formatPesoInput(t))}
-          keyboardType="decimal-pad"
-          inputMode="decimal"
-          placeholder="Enter exact amount"
-          placeholderTextColor={shade.muted}
-          autoFocus
-          style={[styles.amountInput, { color: shade.text }]}
-        />
-      </View>
+      <PesoAmountInput
+        value={amountText}
+        onChangeText={(formatted) => {
+          setAmountText(formatted);
+          if (formError) setFormError(null);
+        }}
+        shade={shade}
+        accentColor={borderAccent}
+        borderColor={formError ? shade.warning : borderAccent}
+        placeholder="Enter exact amount"
+        autoFocus
+        inputAccessibilityLabel="Edited transaction amount"
+        containerStyle={styles.amountBox}
+        inputStyle={styles.amountInput}
+      />
 
       {isSpendEntry && (
-        <View style={{ gap: 7 }}>
-          <Text style={[styles.sectionLabel, { color: shade.muted }]}>
-            CATEGORY
-          </Text>
-          <View style={styles.tagRow}>
-            {SPEND_CATEGORIES.map((cat) => {
-              const active = category === cat.key;
-              return (
-                <ScalePressable
-                  key={cat.key}
-                  onPress={() => {
-                    triggerLightHaptic();
-                    setCategory(cat.key);
-                    setIcon(cat.icon);
-                  }}
-                  style={[
-                    styles.tagPill,
-                    {
-                      backgroundColor: active ? accentColor : shade.surface,
-                    },
-                  ]}
-                >
-                  <AppIcon
-                    name={cat.icon}
-                    size={13}
-                    color={
-                      active
-                        ? entry.type === 'envelope_spend'
-                          ? '#FFFFFF'
-                          : shade.accentText
-                        : shade.text
-                    }
-                  />
-                  <Text
-                    style={[
-                      styles.tagText,
-                      {
-                        color: active
-                          ? entry.type === 'envelope_spend'
-                            ? '#FFFFFF'
-                            : shade.accentText
-                          : shade.text,
-                      },
-                    ]}
-                  >
-                    {cat.label}
-                  </Text>
-                </ScalePressable>
-              );
-            })}
-          </View>
-        </View>
+        <SpendCategoryPicker
+          label="CATEGORY"
+          selectedKey={category}
+          onSelect={(cat) => {
+            setCategory(cat.key);
+            setIcon(cat.icon);
+          }}
+          shade={shade}
+          activeColor={filledBtnBg}
+          activeTextColor={filledBtnFg}
+        />
       )}
 
       <View style={{ gap: 6 }}>
@@ -164,9 +137,13 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
         </Text>
         <TextInput
           value={labelText}
-          onChangeText={setLabelText}
+          onChangeText={(t) => {
+            setLabelText(t);
+            if (formError) setFormError(null);
+          }}
           placeholder="Description or merchant name"
           placeholderTextColor={shade.muted}
+          accessibilityLabel="Transaction note or label"
           style={[
             styles.noteInput,
             {
@@ -178,27 +155,27 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
         />
       </View>
 
+      {formError ? (
+        <Text style={[styles.errorText, { color: shade.warning }]}>
+          {formError}
+        </Text>
+      ) : null}
+
       <ScalePressable
-        disabled={!canSave}
         onPress={handleSave}
+        accessibilityRole="button"
         style={[
           styles.saveBtn,
           {
-            backgroundColor: canSave ? accentColor : shade.surface,
-            opacity: canSave ? 1 : 0.65,
+            backgroundColor: canSave ? filledBtnBg : shade.surface,
+            opacity: canSave ? 1 : 0.72,
           },
         ]}
       >
         <Text
           style={[
             styles.saveText,
-            {
-              color: canSave
-                ? accentColor === shade.accent
-                  ? shade.accentText
-                  : '#FFFFFF'
-                : shade.muted,
-            },
+            { color: canSave ? filledBtnFg : shade.muted },
           ]}
         >
           Save Changes
@@ -210,46 +187,18 @@ export const EditTransactionModal: React.FC<EditTransactionModalProps> = ({
 
 const styles = StyleSheet.create({
   amountBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
     borderWidth: 1.5,
     borderRadius: 14,
     paddingHorizontal: 14,
     paddingVertical: 11,
   },
-  pesoPrefix: {
-    fontSize: 22,
-    fontWeight: '800',
-    marginRight: 8,
-  },
   amountInput: {
-    flex: 1,
-    minWidth: 0,
     fontSize: 21,
-    fontWeight: '800',
-    paddingVertical: 2,
   },
   sectionLabel: {
     fontSize: 10,
     fontWeight: '800',
     letterSpacing: 0.8,
-  },
-  tagRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
-  tagPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    borderRadius: 11,
-  },
-  tagText: {
-    fontSize: 12,
-    fontWeight: '700',
   },
   noteInput: {
     width: '100%',
@@ -259,6 +208,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 14,
+  },
+  errorText: {
+    fontSize: 12,
+    fontWeight: '700',
   },
   saveBtn: {
     paddingVertical: 14,

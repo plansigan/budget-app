@@ -66,6 +66,11 @@ export const DebtsSection: React.FC<DebtsSectionProps> = ({
     return openDebts.filter((d) => d.direction === filter);
   }, [openDebts, filter]);
 
+  const filteredSettled = useMemo(() => {
+    if (filter === 'all') return settledDebts;
+    return settledDebts.filter((d) => d.direction === filter);
+  }, [settledDebts, filter]);
+
   return (
     <View style={styles.section}>
       {/* Two-Column Summary Strip */}
@@ -75,6 +80,9 @@ export const DebtsSection: React.FC<DebtsSectionProps> = ({
             triggerLightHaptic();
             setFilter((prev) => (prev === 'i_owe' ? 'all' : 'i_owe'));
           }}
+          accessibilityRole="button"
+          accessibilityLabel="Filter by I owe"
+          accessibilityState={{ selected: filter === 'i_owe' }}
           style={[
             styles.summaryBox,
             {
@@ -106,6 +114,9 @@ export const DebtsSection: React.FC<DebtsSectionProps> = ({
               prev === 'owed_to_me' ? 'all' : 'owed_to_me'
             );
           }}
+          accessibilityRole="button"
+          accessibilityLabel="Filter by owed to me"
+          accessibilityState={{ selected: filter === 'owed_to_me' }}
           style={[
             styles.summaryBox,
             {
@@ -134,7 +145,10 @@ export const DebtsSection: React.FC<DebtsSectionProps> = ({
 
       {/* Filter Pills + Add Debt Header */}
       <View style={styles.toolbarRow}>
-        <View style={[styles.filterBar, { backgroundColor: shade.surface }]}>
+        <View
+          accessibilityRole="tablist"
+          style={[styles.filterBar, { backgroundColor: shade.surface }]}
+        >
           {(
             [
               { key: 'all', label: 'All' },
@@ -150,6 +164,8 @@ export const DebtsSection: React.FC<DebtsSectionProps> = ({
                   triggerLightHaptic();
                   setFilter(item.key);
                 }}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: active }}
                 style={[
                   styles.filterPill,
                   active && { backgroundColor: shade.card },
@@ -349,7 +365,7 @@ export const DebtsSection: React.FC<DebtsSectionProps> = ({
       )}
 
       {/* Collapsible Settled History */}
-      {settledDebts.length > 0 && (
+      {filteredSettled.length > 0 && (
         <View style={styles.settledWrap}>
           <ScalePressable
             onPress={() => {
@@ -359,7 +375,7 @@ export const DebtsSection: React.FC<DebtsSectionProps> = ({
             style={styles.settledHeader}
           >
             <Text style={[styles.settledTitle, { color: shade.muted }]}>
-              SETTLED ({settledDebts.length})
+              SETTLED ({filteredSettled.length})
             </Text>
             <AppIcon
               name={showSettled ? 'chevron-down' : 'chevron-right'}
@@ -370,7 +386,7 @@ export const DebtsSection: React.FC<DebtsSectionProps> = ({
 
           {showSettled && (
             <View style={styles.listGap}>
-              {settledDebts.map((debt) => (
+              {filteredSettled.map((debt) => (
                 <View
                   key={debt.id}
                   style={[

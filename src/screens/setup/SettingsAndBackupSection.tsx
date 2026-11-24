@@ -1,10 +1,11 @@
 import React, { useMemo } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Platform, StyleSheet, Text, View } from 'react-native';
 import {
   FadeSlideIn,
   ScalePressable,
 } from '../../components/AnimatedPrimitives';
 import { AppIcon, IconBadge } from '../../components/AppIcon';
+import { SegmentedTabBar } from '../../components/form/SegmentedTabBar';
 import {
   useBudgetActions,
   useDailyBudget,
@@ -19,10 +20,10 @@ import {
 } from '../../utils/backupExport';
 import { triggerLightHaptic } from '../../utils/haptics';
 
-const THEME_OPTIONS: Array<{ mode: ThemeMode; label: string; icon: string }> = [
-  { mode: 'system', label: 'System', icon: 'monitor' },
-  { mode: 'light', label: 'Light', icon: 'sun' },
-  { mode: 'dark', label: 'Dark', icon: 'moon' },
+const THEME_OPTIONS: Array<{ key: ThemeMode; label: string; icon: string }> = [
+  { key: 'system', label: 'System', icon: 'monitor' },
+  { key: 'light', label: 'Light', icon: 'sun' },
+  { key: 'dark', label: 'Dark', icon: 'moon' },
 ];
 
 export interface SetupConfirmRequest {
@@ -152,40 +153,14 @@ export const SettingsAndBackupSection: React.FC<SettingsAndBackupSectionProps> =
                 Follow device theme or lock Light / Dark mode
               </Text>
             </View>
-            <View
-              style={[
-                styles.themeSegRow,
-                { backgroundColor: shade.surface },
-              ]}
-            >
-              {THEME_OPTIONS.map((opt) => {
-                const active = themeMode === opt.mode;
-                return (
-                  <ScalePressable
-                    key={opt.mode}
-                    onPress={() => setThemeMode(opt.mode)}
-                    style={[
-                      styles.themeSegBtn,
-                      active && { backgroundColor: shade.accent },
-                    ]}
-                  >
-                    <AppIcon
-                      name={opt.icon}
-                      size={14}
-                      color={active ? shade.accentText : shade.muted}
-                    />
-                    <Text
-                      style={[
-                        styles.themeSegText,
-                        { color: active ? shade.accentText : shade.text },
-                      ]}
-                    >
-                      {opt.label}
-                    </Text>
-                  </ScalePressable>
-                );
-              })}
-            </View>
+            <SegmentedTabBar<ThemeMode>
+              value={themeMode}
+              onChange={setThemeMode}
+              shade={shade}
+              variant="accent"
+              withBorder={false}
+              options={THEME_OPTIONS}
+            />
           </View>
 
           <View
@@ -221,6 +196,9 @@ export const SettingsAndBackupSection: React.FC<SettingsAndBackupSectionProps> =
                   triggerLightHaptic();
                   void captureAutoSnapshotNow();
                 }}
+                accessibilityRole="button"
+                accessibilityLabel="Save recovery snapshot now"
+                hitSlop={8}
                 style={[
                   styles.saveNowPill,
                   { backgroundColor: shade.positiveSoft },
@@ -237,6 +215,8 @@ export const SettingsAndBackupSection: React.FC<SettingsAndBackupSectionProps> =
                 triggerLightHaptic();
                 onOpenSnapshots();
               }}
+              accessibilityRole="button"
+              accessibilityLabel={`Auto-Snapshots, ${autoSnapshotCount} saved`}
               style={[styles.groupedRow, { borderBottomColor: shade.border }]}
             >
               <View style={styles.rowLeft}>
@@ -263,6 +243,8 @@ export const SettingsAndBackupSection: React.FC<SettingsAndBackupSectionProps> =
               onPress={() => {
                 void handleExportJson();
               }}
+              accessibilityRole="button"
+              accessibilityLabel="Export full backup as JSON"
               style={[styles.groupedRow, { borderBottomColor: shade.border }]}
             >
               <View style={styles.rowLeft}>
@@ -296,6 +278,8 @@ export const SettingsAndBackupSection: React.FC<SettingsAndBackupSectionProps> =
                 onSetBackupStatus(null);
                 onOpenRestore();
               }}
+              accessibilityRole="button"
+              accessibilityLabel="Restore backup from JSON"
               style={[styles.groupedRow, { borderBottomColor: shade.border }]}
             >
               <View style={styles.rowLeft}>
@@ -311,7 +295,9 @@ export const SettingsAndBackupSection: React.FC<SettingsAndBackupSectionProps> =
                     Restore Backup (JSON)
                   </Text>
                   <Text style={[styles.rowSub, { color: shade.muted }]}>
-                    Pick a .json file or paste exported data
+                    {Platform.OS === 'web'
+                      ? 'Pick a .json file or paste exported data'
+                      : 'Paste exported JSON backup data'}
                   </Text>
                 </View>
               </View>
@@ -322,6 +308,8 @@ export const SettingsAndBackupSection: React.FC<SettingsAndBackupSectionProps> =
               onPress={() => {
                 void handleExportCsv();
               }}
+              accessibilityRole="button"
+              accessibilityLabel="Export activity logs as CSV"
               style={[styles.groupedRow, { borderBottomWidth: 0 }]}
             >
               <View style={styles.rowLeft}>
@@ -365,6 +353,8 @@ export const SettingsAndBackupSection: React.FC<SettingsAndBackupSectionProps> =
           >
             <ScalePressable
               onPress={() => (onOpenFaq ? onOpenFaq() : openTutorial())}
+              accessibilityRole="button"
+              accessibilityLabel="Open App Guide and FAQ"
               style={[styles.groupedRow, { borderBottomColor: shade.border }]}
             >
               <View style={styles.rowLeft}>
@@ -383,6 +373,8 @@ export const SettingsAndBackupSection: React.FC<SettingsAndBackupSectionProps> =
 
             <ScalePressable
               onPress={reopenOnboarding}
+              accessibilityRole="button"
+              accessibilityLabel="Re-do setup questions"
               style={[styles.groupedRow, { borderBottomColor: shade.border }]}
             >
               <View style={styles.rowLeft}>
@@ -395,7 +387,20 @@ export const SettingsAndBackupSection: React.FC<SettingsAndBackupSectionProps> =
             </ScalePressable>
 
             <ScalePressable
-              onPress={simulateMidnightSplit}
+              onPress={() => {
+                triggerLightHaptic();
+                onRequestConfirm({
+                  title: 'Run 50/50 Midnight Split?',
+                  message:
+                    "This runs today's real 50/50 split on your remaining Safe-to-Spend allowance (you can undo the created entry anytime in Activity History).",
+                  confirmLabel: 'Run Split',
+                  destructive: false,
+                  icon: 'moon',
+                  onConfirm: simulateMidnightSplit,
+                });
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Test 50/50 Midnight Split"
               style={[styles.groupedRow, { borderBottomColor: shade.border }]}
             >
               <View style={styles.rowLeft}>
@@ -420,6 +425,8 @@ export const SettingsAndBackupSection: React.FC<SettingsAndBackupSectionProps> =
                   onConfirm: resetDemoState,
                 });
               }}
+              accessibilityRole="button"
+              accessibilityLabel="Load sample demo data"
               style={[styles.groupedRow, { borderBottomColor: shade.border }]}
             >
               <View style={styles.rowLeft}>
@@ -444,6 +451,8 @@ export const SettingsAndBackupSection: React.FC<SettingsAndBackupSectionProps> =
                   onConfirm: resetToNewUser,
                 });
               }}
+              accessibilityRole="button"
+              accessibilityLabel="Start fresh and reset all data"
               style={[styles.groupedRow, { borderBottomWidth: 0 }]}
             >
               <View style={styles.rowLeft}>
@@ -476,25 +485,6 @@ const styles = StyleSheet.create({
   },
   cardSub: {
     fontSize: 12,
-  },
-  themeSegRow: {
-    flexDirection: 'row',
-    borderRadius: 13,
-    padding: 4,
-    gap: 4,
-  },
-  themeSegBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 9,
-    borderRadius: 9,
-  },
-  themeSegText: {
-    fontSize: 12,
-    fontWeight: '800',
   },
   groupedCard: {
     borderRadius: 20,

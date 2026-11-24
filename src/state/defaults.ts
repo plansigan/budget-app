@@ -121,12 +121,12 @@ export const DEFAULT_BILLS: BillItem[] = [
   },
 ];
 
-export const DEFAULT_BANKS: BankAccount[] = [
+const DEFAULT_BANKS: BankAccount[] = [
   { id: 'bank-bpi', name: 'BPI', balance: 12000 },
   { id: 'bank-gcash', name: 'GCash', balance: 3500 },
 ];
 
-export const DEFAULT_CARDS: CreditCardAccount[] = [
+const DEFAULT_CARDS: CreditCardAccount[] = [
   { id: 'cc-bdo', name: 'BDO Visa', limit: 50000, used: 4500, cutoffDay: 15 },
 ];
 

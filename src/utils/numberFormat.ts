@@ -54,8 +54,12 @@ export function formatPesoDisplay(
   decimals = 2
 ): string {
   if (masked) {
-    const safe = Number.isFinite(amount) ? amount : 0;
-    return safe < 0 ? '-₱••••' : '₱••••';
+    const factor = 10 ** decimals;
+    const safe = Number.isFinite(amount)
+      ? Math.round(amount * factor) / factor
+      : 0;
+    const normalized = Math.abs(safe) === 0 ? 0 : safe;
+    return normalized < 0 ? '-₱••••' : '₱••••';
   }
   return formatPeso(amount, decimals);
 }

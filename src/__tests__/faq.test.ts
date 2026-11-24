@@ -68,4 +68,19 @@ describe('App Guide & FAQ data', () => {
       0
     );
   });
+
+  it('reflects current terminology and excludes removed labels', () => {
+    const joinedAll = FAQ_ITEMS.map(
+      (i) => `${i.question} ${i.summary} ${i.answer} ${i.tags.join(' ')}`
+    ).join('\n');
+
+    expect(joinedAll).not.toContain('Skip & Save');
+    expect(joinedAll).toContain('Spend!');
+    expect(joinedAll).toContain('Save to Jar');
+    expect(joinedAll).toContain('Fund Treat');
+    expect(joinedAll).toContain('Paid 1 Mo');
+    expect(joinedAll).toContain('Set Balance');
+    expect(joinedAll).toContain('Savings Buckets');
+    expect(joinedAll).toContain('Spend Here');
+  });
 });

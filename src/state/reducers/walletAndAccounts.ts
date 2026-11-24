@@ -4,92 +4,64 @@ import {
   TransactionEntry,
 } from '../../types/budget';
 import { getTodayKey, roundCurrency } from '../budgetMath';
-import { makeUid } from './helpers';
+import {
+  applyWalletDelta,
+  makeUid,
+  resolvePaymentSource,
+} from './helpers';
 import { SliceReducer } from './types';
 
 export const handleWalletAndAccountsAction: SliceReducer = (state, action) => {
   switch (action.type) {
     case 'DEPOSIT_TO_WALLET': {
+      if (!Number.isFinite(action.amount) || action.amount <= 0) return state;
       const cleanAmount = roundCurrency(Math.max(0.01, action.amount));
-      const isCash = action.sourceId === 'cash';
-      const matchedBank = state.banks.find((b) => b.id === action.sourceId);
-      const matchedCard = state.creditCards.find(
-        (c) => c.id === action.sourceId
+      const movement = applyWalletDelta(
+        state,
+        action.sourceId,
+        'inflow',
+        cleanAmount,
+        { allowCardInflow: true }
       );
-      if (!isCash && !matchedBank && !matchedCard) return state;
+      if (movement.sourceKind === 'none') return state;
 
-      const sourceLabel = isCash
-        ? 'Cash'
-        : matchedBank
-        ? matchedBank.name
-        : matchedCard!.name;
-
-      let appliedWalletDelta = cleanAmount;
-      let nextCards = state.creditCards;
-      if (matchedCard) {
-        nextCards = state.creditCards.map((c) => {
-          if (c.id !== action.sourceId) return c;
-          const nextUsed = Math.max(0, roundCurrency(c.used - cleanAmount));
-          appliedWalletDelta = roundCurrency(c.used - nextUsed);
-          return { ...c, used: nextUsed };
-        });
-      }
-
+      const isCard = movement.sourceKind === 'card';
       const entry: TransactionEntry = {
         id: makeUid('dep'),
         type: 'wallet_deposit',
         amount: cleanAmount,
         label:
           action.note?.trim() ||
-          (matchedCard ? 'Card Bill Payment' : 'Added Funds / Deposit'),
-        icon: matchedCard ? 'credit-card' : 'arrow-down-left',
+          (isCard ? 'Card Bill Payment' : 'Added Funds / Deposit'),
+        icon: isCard ? 'credit-card' : 'arrow-down-left',
         timestamp: new Date().toISOString(),
         dateKey: action.todayKey || getTodayKey(),
-        paymentSourceId: action.sourceId,
-        paymentSourceLabel: sourceLabel,
+        paymentSourceId: movement.effectiveSourceId,
+        paymentSourceLabel: movement.sourceLabel,
         signedDelta: cleanAmount,
-        appliedWalletDelta,
+        appliedWalletDelta: movement.appliedDelta,
+        ...(isCard ? { isCardPayment: true } : {}),
       };
 
       return {
         ...state,
-        cashOnHand: isCash
-          ? roundCurrency(state.cashOnHand + cleanAmount)
-          : state.cashOnHand,
-        banks: matchedBank
-          ? state.banks.map((b) =>
-              b.id === action.sourceId
-                ? { ...b, balance: roundCurrency(b.balance + cleanAmount) }
-                : b
-            )
-          : state.banks,
-        creditCards: nextCards,
+        cashOnHand: movement.cashOnHand,
+        banks: movement.banks,
+        creditCards: movement.creditCards,
         entries: [entry, ...state.entries],
       };
     }
 
     case 'SET_ACCOUNT_BALANCE': {
+      if (!Number.isFinite(action.newBalance)) return state;
       const cleanBalance = Math.max(0, roundCurrency(action.newBalance));
-      const isCash = action.sourceId === 'cash';
-      const matchedBank = state.banks.find((b) => b.id === action.sourceId);
-      const matchedCard = state.creditCards.find(
-        (c) => c.id === action.sourceId
-      );
-      if (!isCash && !matchedBank && !matchedCard) return state;
+      const resolved = resolvePaymentSource(state, action.sourceId);
+      if (resolved.kind === 'none') return state;
 
-      const oldBalance = isCash
-        ? state.cashOnHand
-        : matchedBank
-        ? matchedBank.balance
-        : matchedCard!.used;
+      const oldBalance =
+        resolved.kind === 'card' ? resolved.used : resolved.balance;
       const delta = roundCurrency(cleanBalance - oldBalance);
       if (delta === 0) return state;
-
-      const sourceLabel = isCash
-        ? 'Cash'
-        : matchedBank
-        ? matchedBank.name
-        : matchedCard!.name;
 
       const entry: TransactionEntry = {
         id: makeUid('adj'),
@@ -100,117 +72,100 @@ export const handleWalletAndAccountsAction: SliceReducer = (state, action) => {
         icon: 'rotate-ccw',
         timestamp: new Date().toISOString(),
         dateKey: action.todayKey || getTodayKey(),
-        paymentSourceId: action.sourceId,
-        paymentSourceLabel: sourceLabel,
+        paymentSourceId: resolved.id,
+        paymentSourceLabel: resolved.label,
       };
 
       return {
         ...state,
-        cashOnHand: isCash ? cleanBalance : state.cashOnHand,
-        banks: matchedBank
-          ? state.banks.map((b) =>
-              b.id === action.sourceId ? { ...b, balance: cleanBalance } : b
-            )
-          : state.banks,
-        creditCards: matchedCard
-          ? state.creditCards.map((c) =>
-              c.id === action.sourceId ? { ...c, used: cleanBalance } : c
-            )
-          : state.creditCards,
+        cashOnHand: resolved.kind === 'cash' ? cleanBalance : state.cashOnHand,
+        banks:
+          resolved.kind === 'bank'
+            ? state.banks.map((b) =>
+                b.id === resolved.id ? { ...b, balance: cleanBalance } : b
+              )
+            : state.banks,
+        creditCards:
+          resolved.kind === 'card'
+            ? state.creditCards.map((c) =>
+                c.id === resolved.id ? { ...c, used: cleanBalance } : c
+              )
+            : state.creditCards,
         entries: [entry, ...state.entries],
       };
     }
 
     case 'TRANSFER_BETWEEN_ACCOUNTS': {
+      if (!Number.isFinite(action.amount) || action.amount <= 0) return state;
       const cleanAmount = roundCurrency(Math.max(0.01, action.amount));
       const { fromSourceId, toSourceId } = action;
       if (!fromSourceId || !toSourceId || fromSourceId === toSourceId) {
         return state;
       }
 
-      const fromIsCash = fromSourceId === 'cash';
-      const fromBank = state.banks.find((b) => b.id === fromSourceId);
-      if (!fromIsCash && !fromBank) return state;
-
-      const toIsCash = toSourceId === 'cash';
-      const toBank = state.banks.find((b) => b.id === toSourceId);
-      const toCard = state.creditCards.find((c) => c.id === toSourceId);
-      if (!toIsCash && !toBank && !toCard) return state;
-
-      const fromLabel = fromIsCash ? 'Cash' : fromBank!.name;
-      const toLabel = toIsCash
-        ? 'Cash'
-        : toBank
-        ? toBank.name
-        : toCard!.name;
-
-      let nextCash = state.cashOnHand;
-      let nextBanks = state.banks;
-      let nextCards = state.creditCards;
-      let appliedWalletDelta = cleanAmount;
-
-      if (fromIsCash) {
-        nextCash = Math.max(0, roundCurrency(nextCash - cleanAmount));
-        appliedWalletDelta = roundCurrency(state.cashOnHand - nextCash);
-      } else {
-        nextBanks = nextBanks.map((b) => {
-          if (b.id !== fromSourceId) return b;
-          const nextBal = Math.max(0, roundCurrency(b.balance - cleanAmount));
-          appliedWalletDelta = roundCurrency(b.balance - nextBal);
-          return { ...b, balance: nextBal };
-        });
+      const fromResolved = resolvePaymentSource(state, fromSourceId);
+      if (fromResolved.kind !== 'cash' && fromResolved.kind !== 'bank') {
+        return state;
+      }
+      // Block transfer overdrafts so phantom net worth cannot be created
+      if (cleanAmount > fromResolved.balance) {
+        return state;
       }
 
-      let appliedToWalletDelta = cleanAmount;
-      if (toIsCash) {
-        nextCash = roundCurrency(nextCash + cleanAmount);
-      } else if (toBank) {
-        nextBanks = nextBanks.map((b) =>
-          b.id === toSourceId
-            ? { ...b, balance: roundCurrency(b.balance + cleanAmount) }
-            : b
-        );
-      } else if (toCard) {
-        nextCards = nextCards.map((c) => {
-          if (c.id !== toSourceId) return c;
-          const nextUsed = Math.max(0, roundCurrency(c.used - cleanAmount));
-          appliedToWalletDelta = roundCurrency(c.used - nextUsed);
-          return { ...c, used: nextUsed };
-        });
-      }
+      const toResolved = resolvePaymentSource(state, toSourceId);
+      if (toResolved.kind === 'none') return state;
 
-      const defaultLabel = toCard
-        ? `Paid ${toLabel} from ${fromLabel}`
-        : `Transfer: ${fromLabel} → ${toLabel}`;
+      const debit = applyWalletDelta(
+        state,
+        fromSourceId,
+        'outflow',
+        cleanAmount
+      );
+      const credit = applyWalletDelta(
+        {
+          cashOnHand: debit.cashOnHand,
+          banks: debit.banks,
+          creditCards: debit.creditCards,
+        },
+        toSourceId,
+        'inflow',
+        cleanAmount,
+        { allowCardInflow: true }
+      );
+
+      const isToCard = toResolved.kind === 'card';
+      const defaultLabel = isToCard
+        ? `Paid ${toResolved.label} from ${fromResolved.label}`
+        : `Transfer: ${fromResolved.label} → ${toResolved.label}`;
 
       const entry: TransactionEntry = {
         id: makeUid('xfer'),
         type: 'wallet_transfer',
         amount: cleanAmount,
         label: action.note?.trim() || defaultLabel,
-        icon: toCard ? 'credit-card' : 'repeat',
+        icon: isToCard ? 'credit-card' : 'repeat',
         timestamp: new Date().toISOString(),
         dateKey: action.todayKey || getTodayKey(),
         paymentSourceId: fromSourceId,
-        paymentSourceLabel: fromLabel,
+        paymentSourceLabel: fromResolved.label,
         toPaymentSourceId: toSourceId,
-        toPaymentSourceLabel: toLabel,
-        appliedWalletDelta,
-        appliedToWalletDelta,
+        toPaymentSourceLabel: toResolved.label,
+        appliedWalletDelta: debit.appliedDelta,
+        appliedToWalletDelta: credit.appliedDelta,
       };
 
       return {
         ...state,
-        cashOnHand: nextCash,
-        banks: nextBanks,
-        creditCards: nextCards,
+        cashOnHand: credit.cashOnHand,
+        banks: credit.banks,
+        creditCards: credit.creditCards,
         entries: [entry, ...state.entries],
       };
     }
 
     case 'ADD_BANK': {
       const trimmed = action.name.trim();
-      if (!trimmed) return state;
+      if (!trimmed || !Number.isFinite(action.balance)) return state;
       const newBank: BankAccount = {
         id: makeUid('bank'),
         name: trimmed,
@@ -234,11 +189,23 @@ export const handleWalletAndAccountsAction: SliceReducer = (state, action) => {
       return {
         ...state,
         banks: state.banks.filter((b) => b.id !== action.bankId),
+        lastPaymentSourceId:
+          state.lastPaymentSourceId === action.bankId
+            ? undefined
+            : state.lastPaymentSourceId,
       };
 
     case 'ADD_CREDIT_CARD': {
       const trimmed = action.name.trim();
-      if (!trimmed || action.limit <= 0) return state;
+      if (
+        !trimmed ||
+        !Number.isFinite(action.limit) ||
+        action.limit <= 0 ||
+        !Number.isFinite(action.used) ||
+        !Number.isFinite(action.cutoffDay)
+      ) {
+        return state;
+      }
       const newCard: CreditCardAccount = {
         id: makeUid('cc'),
         name: trimmed,
@@ -251,7 +218,14 @@ export const handleWalletAndAccountsAction: SliceReducer = (state, action) => {
 
     case 'UPDATE_CREDIT_CARD': {
       const trimmed = action.name.trim();
-      if (!trimmed || action.limit <= 0) return state;
+      if (
+        !trimmed ||
+        !Number.isFinite(action.limit) ||
+        action.limit <= 0 ||
+        !Number.isFinite(action.cutoffDay)
+      ) {
+        return state;
+      }
       return {
         ...state,
         creditCards: state.creditCards.map((c) =>
@@ -274,11 +248,18 @@ export const handleWalletAndAccountsAction: SliceReducer = (state, action) => {
       return {
         ...state,
         creditCards: state.creditCards.filter((c) => c.id !== action.cardId),
+        lastPaymentSourceId:
+          state.lastPaymentSourceId === action.cardId
+            ? undefined
+            : state.lastPaymentSourceId,
       };
 
     case 'LOG_PAYDAY_CHECKIN': {
+      if (!Number.isFinite(action.amount) || action.amount <= 0) return state;
       const cleanAmount = roundCurrency(Math.max(0.01, action.amount));
-      const cleanSavings = roundCurrency(Math.max(0, action.savingsAllocation));
+      const cleanSavings = Number.isFinite(action.savingsAllocation)
+        ? roundCurrency(Math.max(0, action.savingsAllocation))
+        : 0;
       const targetDateKey = action.todayKey || getTodayKey();
       const matchedBank = state.banks.find((b) => b.id === action.sourceId);
 

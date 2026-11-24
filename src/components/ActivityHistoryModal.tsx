@@ -13,9 +13,10 @@ import {
   useDailyBudget,
   useGoals,
   useThemePrefs,
+  useWallet,
 } from '../context/BudgetContext';
-import { isEditableEntryType } from '../state/budgetReducer';
-import { TransactionEntry, TransactionType } from '../types/budget';
+import { canEditEntry, getUndoEligibility } from '../state/budgetReducer';
+import { TransactionEntry } from '../types/budget';
 import { triggerLightHaptic } from '../utils/haptics';
 import { formatMonthKeyLabel } from '../utils/insightsEngine';
 import {
@@ -27,59 +28,14 @@ import { AppIcon, IconBadge } from './AppIcon';
 import { BaseModal } from './BaseModal';
 import { ConfirmModal } from './ConfirmModal';
 import { EditTransactionModal } from './EditTransactionModal';
-
-type HistoryFilterKey =
-  | 'all'
-  | 'spend'
-  | 'envelopes'
-  | 'bills'
-  | 'debts'
-  | 'savings'
-  | 'wallet';
-
-const HISTORY_FILTERS: Array<{ key: HistoryFilterKey; label: string }> = [
-  { key: 'all', label: 'All' },
-  { key: 'spend', label: 'Spends' },
-  { key: 'envelopes', label: 'Allowances' },
-  { key: 'bills', label: 'Bills' },
-  { key: 'debts', label: 'Debts' },
-  { key: 'savings', label: 'Savings' },
-  { key: 'wallet', label: 'Wallet' },
-];
+import { ActivityHistoryRow } from './history/ActivityHistoryRow';
+import {
+  HISTORY_FILTERS,
+  HistoryFilterKey,
+  filterHistoryEntries,
+} from './history/historyFilters';
 
 const HistoryRowSeparator: React.FC = () => <View style={{ height: 6 }} />;
-
-function matchesHistoryFilter(
-  type: TransactionType,
-  filter: HistoryFilterKey
-): boolean {
-  switch (filter) {
-    case 'all':
-      return true;
-    case 'spend':
-      return type === 'spend';
-    case 'envelopes':
-      return type === 'envelope_spend' || type === 'envelope_refill';
-    case 'bills':
-      return type === 'bill_paid' || type === 'installment_paid';
-    case 'debts':
-      return type === 'debt_outflow' || type === 'debt_inflow';
-    case 'savings':
-      return (
-        type === 'save_direct' ||
-        type === 'treat_direct' ||
-        type === 'impulse_skipped' ||
-        type === 'midnight_split' ||
-        type === 'sinking_fund'
-      );
-    case 'wallet':
-      return (
-        type === 'wallet_deposit' ||
-        type === 'wallet_adjust' ||
-        type === 'wallet_transfer'
-      );
-  }
-}
 
 interface ActivityHistoryModalProps {
   visible: boolean;
@@ -87,14 +43,13 @@ interface ActivityHistoryModalProps {
   onClose: () => void;
 }
 
-const ActivityHistoryModalContent: React.FC<ActivityHistoryModalProps> = ({
-  visible,
-  initialMonthKey = null,
-  onClose,
-}) => {
+const ActivityHistoryModalContent: React.FC<
+  Omit<ActivityHistoryModalProps, 'visible'>
+> = ({ initialMonthKey = null, onClose }) => {
   const { shade, privacyMode } = useThemePrefs();
   const { entries } = useDailyBudget();
   const { treats } = useGoals();
+  const { debts } = useWallet();
   const { undoEntry } = useBudgetActions();
 
   const [query, setQuery] = useState('');
@@ -107,13 +62,8 @@ const ActivityHistoryModalContent: React.FC<ActivityHistoryModalProps> = ({
     useState<TransactionEntry | null>(null);
 
   useEffect(() => {
-    if (!visible) {
-      setEditingEntry(null);
-      setPendingUndoEntry(null);
-      return;
-    }
     setMonthFilter(initialMonthKey || null);
-  }, [visible, initialMonthKey]);
+  }, [initialMonthKey]);
 
   const monthOptions = useMemo(() => {
     const keys = new Set<string>();
@@ -126,140 +76,30 @@ const ActivityHistoryModalContent: React.FC<ActivityHistoryModalProps> = ({
     return Array.from(keys).sort((a, b) => b.localeCompare(a));
   }, [entries]);
 
-  const filteredEntries = useMemo(() => {
-    const needle = query.trim().toLowerCase();
-    return entries.filter((entry) => {
-      if (!matchesHistoryFilter(entry.type, filterKey)) return false;
-      const entryDate = formatEntryDateLocal(entry);
-      if (monthFilter && !entryDate.startsWith(monthFilter)) return false;
-      if (needle) {
-        const haystack = [
-          entry.label,
-          entry.paymentSourceLabel || '',
-          entry.toPaymentSourceLabel || '',
-          entryDate,
-          entry.category || '',
-        ]
-          .join(' ')
-          .toLowerCase();
-        if (!haystack.includes(needle)) return false;
-      }
-      return true;
-    });
-  }, [entries, filterKey, monthFilter, query]);
+  const filteredEntries = useMemo(
+    () => filterHistoryEntries(entries, filterKey, monthFilter, query),
+    [entries, filterKey, monthFilter, query]
+  );
 
   const renderHistoryItem = useCallback(
-    ({ item: entry }: ListRenderItemInfo<TransactionEntry>) => {
-      const { deltaText, deltaColor, isTreatHighlight } =
-        getTransactionPresentation(entry, shade, privacyMode);
-      const dateStr = formatEntryDateLocal(entry);
-      const editable =
-        isEditableEntryType(entry) &&
-        (entry.type !== 'treat_direct' ||
-          !entry.treatId ||
-          !treats.some((t) => t.id === entry.treatId && t.claimed));
-      const sourceMeta =
-        entry.type === 'wallet_transfer' &&
-        entry.paymentSourceLabel &&
-        entry.toPaymentSourceLabel
-          ? `${entry.paymentSourceLabel} → ${entry.toPaymentSourceLabel}`
-          : entry.paymentSourceLabel || '';
-      return (
-        <View
-          style={[
-            styles.rowCard,
-            {
-              backgroundColor: shade.surface,
-              borderColor: isTreatHighlight ? shade.dopamine : shade.border,
-            },
-          ]}
-        >
-          <View style={styles.rowContent}>
-            <View style={styles.rowTop}>
-              <ScalePressable
-                disabled={!editable}
-                onPress={() => {
-                  if (!editable) return;
-                  triggerLightHaptic();
-                  setEditingEntry(entry);
-                }}
-                style={{
-                  flex: 1,
-                  minWidth: 0,
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: 10,
-                }}
-              >
-                <IconBadge
-                  name={entry.icon}
-                  size={13}
-                  color={deltaColor}
-                  bg={shade.card}
-                  boxSize={30}
-                />
-                <Text
-                  numberOfLines={1}
-                  style={[styles.rowLabel, { color: shade.text }]}
-                >
-                  {entry.label}
-                </Text>
-              </ScalePressable>
-              <ScalePressable
-                onPress={() => {
-                  const linkedClaimed =
-                    (entry.type === 'treat_direct' ||
-                      entry.type === 'impulse_skipped' ||
-                      entry.type === 'midnight_split') &&
-                    Boolean(entry.treatId) &&
-                    treats.some((t) => t.id === entry.treatId && t.claimed);
-                  if (linkedClaimed) {
-                    undoEntry(entry.id);
-                    return;
-                  }
-                  triggerLightHaptic();
-                  setPendingUndoEntry(entry);
-                }}
-                accessibilityLabel={`Undo ${entry.label}`}
-                hitSlop={6}
-                style={[styles.undoBtn, { backgroundColor: shade.card }]}
-              >
-                <Text style={[styles.undoText, { color: shade.muted }]}>
-                  Undo
-                </Text>
-              </ScalePressable>
-            </View>
-            <ScalePressable
-              disabled={!editable}
-              onPress={() => {
-                if (!editable) return;
-                triggerLightHaptic();
-                setEditingEntry(entry);
-              }}
-              style={styles.rowBottom}
-            >
-              <Text
-                numberOfLines={1}
-                style={[styles.rowSub, { color: shade.muted }]}
-              >
-                {dateStr}
-                {sourceMeta ? ` • ${sourceMeta}` : ''}
-              </Text>
-              <Text style={[styles.rowDelta, { color: deltaColor }]}>
-                {deltaText}
-              </Text>
-            </ScalePressable>
-          </View>
-        </View>
-      );
-    },
-    [shade, privacyMode, treats, undoEntry]
+    ({ item: entry }: ListRenderItemInfo<TransactionEntry>) => (
+      <ActivityHistoryRow
+        entry={entry}
+        editable={canEditEntry(entry, treats)}
+        undoable={getUndoEligibility(entry, treats, debts).ok}
+        shade={shade}
+        privacyMode={privacyMode}
+        onEdit={setEditingEntry}
+        onRequestUndo={setPendingUndoEntry}
+      />
+    ),
+    [shade, privacyMode, treats, debts]
   );
 
   return (
     <>
       <BaseModal
-        visible={visible && editingEntry === null && pendingUndoEntry === null}
+        visible={editingEntry === null && pendingUndoEntry === null}
         onClose={onClose}
         dismissLabel="Dismiss activity history"
         cardStyle={[
@@ -268,200 +108,215 @@ const ActivityHistoryModalContent: React.FC<ActivityHistoryModalProps> = ({
         ]}
       >
         <View style={styles.headerRow}>
-              <View style={styles.titleRow}>
-                <IconBadge
-                  name="list"
-                  size={16}
-                  color={shade.accent}
-                  bg={shade.surface}
-                  boxSize={36}
-                />
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.title, { color: shade.text }]}>
-                    Activity History
-                  </Text>
-                  <Text style={[styles.subtitle, { color: shade.muted }]}>
-                    {entries.length} total logged{' '}
-                    {entries.length === 1 ? 'entry' : 'entries'}
-                    {entries.length > 0 ? ' • Tap a log to edit' : ''}
-                  </Text>
-                </View>
-              </View>
+          <View style={styles.titleRow}>
+            <IconBadge
+              name="list"
+              size={16}
+              color={shade.accent}
+              bg={shade.surface}
+              boxSize={36}
+            />
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={[styles.title, { color: shade.text }]}>
+                Activity History
+              </Text>
+              <Text style={[styles.subtitle, { color: shade.muted }]}>
+                {entries.length} total logged{' '}
+                {entries.length === 1 ? 'entry' : 'entries'}
+                {entries.length > 0 ? ' • Tap a log to edit' : ''}
+              </Text>
+            </View>
+          </View>
 
+          <ScalePressable
+            onPress={() => {
+              triggerLightHaptic();
+              onClose();
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Close activity history"
+            hitSlop={8}
+            style={[styles.closeBtn, { backgroundColor: shade.surface }]}
+          >
+            <AppIcon name="x" size={16} color={shade.muted} />
+          </ScalePressable>
+        </View>
+
+        <View
+          style={[
+            styles.searchBox,
+            { backgroundColor: shade.surface, borderColor: shade.border },
+          ]}
+        >
+          <AppIcon name="search" size={14} color={shade.muted} />
+          <TextInput
+            value={query}
+            onChangeText={setQuery}
+            placeholder="Search note, category, or account..."
+            placeholderTextColor={shade.muted}
+            accessibilityLabel="Search transaction history"
+            style={[styles.searchInput, { color: shade.text }]}
+          />
+          {query.length > 0 && (
             <ScalePressable
               onPress={() => {
                 triggerLightHaptic();
-                onClose();
+                setQuery('');
               }}
-              accessibilityLabel="Close activity history"
+              accessibilityRole="button"
+              accessibilityLabel="Clear search"
               hitSlop={8}
-              style={[styles.closeBtn, { backgroundColor: shade.surface }]}
             >
-              <AppIcon name="x" size={16} color={shade.muted} />
+              <AppIcon name="x" size={14} color={shade.muted} />
             </ScalePressable>
-          </View>
+          )}
+        </View>
 
-          <View
-            style={[
-              styles.searchBox,
-              { backgroundColor: shade.surface, borderColor: shade.border },
-            ]}
-          >
-            <AppIcon name="search" size={14} color={shade.muted} />
-            <TextInput
-              value={query}
-              onChangeText={setQuery}
-              placeholder="Search note, category, or account..."
-              placeholderTextColor={shade.muted}
-              style={[styles.searchInput, { color: shade.text }]}
-            />
-            {query.length > 0 && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.chipsRow}
+          style={styles.chipsScroll}
+        >
+          {HISTORY_FILTERS.map((f) => {
+            const active = filterKey === f.key;
+            return (
               <ScalePressable
+                key={f.key}
                 onPress={() => {
-                  setQuery('');
+                  triggerLightHaptic();
+                  setFilterKey(f.key);
                 }}
-                accessibilityLabel="Clear search"
-                hitSlop={6}
+                accessibilityRole="tab"
+                accessibilityLabel={`Filter by ${f.label}`}
+                accessibilityState={{ selected: active }}
+                hitSlop={4}
+                style={[
+                  styles.chipPill,
+                  {
+                    backgroundColor: active ? shade.accent : shade.surface,
+                    borderColor: active ? shade.accent : shade.border,
+                  },
+                ]}
               >
-                <AppIcon name="x" size={14} color={shade.muted} />
+                <Text
+                  style={[
+                    styles.chipText,
+                    { color: active ? shade.accentText : shade.text },
+                  ]}
+                >
+                  {f.label}
+                </Text>
               </ScalePressable>
-            )}
-          </View>
+            );
+          })}
+        </ScrollView>
 
+        {monthOptions.length > 1 && (
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.chipsRow}
             style={styles.chipsScroll}
           >
-            {HISTORY_FILTERS.map((f) => {
-              const active = filterKey === f.key;
+            <ScalePressable
+              onPress={() => {
+                triggerLightHaptic();
+                setMonthFilter(null);
+              }}
+              accessibilityRole="tab"
+              accessibilityLabel="Show all months"
+              accessibilityState={{ selected: monthFilter === null }}
+              hitSlop={4}
+              style={[
+                styles.monthPill,
+                {
+                  backgroundColor:
+                    monthFilter === null ? shade.dopamineSoft : shade.surface,
+                  borderColor:
+                    monthFilter === null ? shade.dopamine : shade.border,
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.monthText,
+                  {
+                    color: monthFilter === null ? shade.dopamine : shade.muted,
+                  },
+                ]}
+              >
+                All Months
+              </Text>
+            </ScalePressable>
+
+            {monthOptions.map((mk) => {
+              const active = monthFilter === mk;
               return (
                 <ScalePressable
-                  key={f.key}
+                  key={mk}
                   onPress={() => {
                     triggerLightHaptic();
-                    setFilterKey(f.key);
+                    setMonthFilter(mk);
                   }}
+                  accessibilityRole="tab"
+                  accessibilityLabel={`Filter to ${formatMonthKeyLabel(mk)}`}
+                  accessibilityState={{ selected: active }}
+                  hitSlop={4}
                   style={[
-                    styles.chipPill,
+                    styles.monthPill,
                     {
-                      backgroundColor: active ? shade.accent : shade.surface,
-                      borderColor: active ? shade.accent : shade.border,
+                      backgroundColor: active
+                        ? shade.dopamineSoft
+                        : shade.surface,
+                      borderColor: active ? shade.dopamine : shade.border,
                     },
                   ]}
                 >
                   <Text
                     style={[
-                      styles.chipText,
-                      { color: active ? shade.accentText : shade.text },
+                      styles.monthText,
+                      { color: active ? shade.dopamine : shade.muted },
                     ]}
                   >
-                    {f.label}
+                    {formatMonthKeyLabel(mk)}
                   </Text>
                 </ScalePressable>
               );
             })}
           </ScrollView>
+        )}
 
-          {monthOptions.length > 1 && (
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.chipsRow}
-              style={styles.chipsScroll}
+        <Text style={[styles.countMeta, { color: shade.muted }]}>
+          Showing {filteredEntries.length} matching{' '}
+          {filteredEntries.length === 1 ? 'log' : 'logs'}
+        </Text>
+
+        <FlatList<TransactionEntry>
+          data={filteredEntries}
+          keyExtractor={(item) => item.id}
+          renderItem={renderHistoryItem}
+          ItemSeparatorComponent={HistoryRowSeparator}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={styles.listBody}
+          style={styles.listScroll}
+          initialNumToRender={20}
+          maxToRenderPerBatch={20}
+          windowSize={7}
+          ListEmptyComponent={
+            <View
+              style={[
+                styles.emptyBox,
+                { backgroundColor: shade.surface, borderColor: shade.border },
+              ]}
             >
-              <ScalePressable
-                onPress={() => {
-                  triggerLightHaptic();
-                  setMonthFilter(null);
-                }}
-                style={[
-                  styles.monthPill,
-                  {
-                    backgroundColor:
-                      monthFilter === null ? shade.dopamineSoft : shade.surface,
-                    borderColor:
-                      monthFilter === null ? shade.dopamine : shade.border,
-                  },
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.monthText,
-                    {
-                      color:
-                        monthFilter === null ? shade.dopamine : shade.muted,
-                    },
-                  ]}
-                >
-                  All Months
-                </Text>
-              </ScalePressable>
-
-              {monthOptions.map((mk) => {
-                const active = monthFilter === mk;
-                return (
-                  <ScalePressable
-                    key={mk}
-                    onPress={() => {
-                      triggerLightHaptic();
-                      setMonthFilter(mk);
-                    }}
-                    style={[
-                      styles.monthPill,
-                      {
-                        backgroundColor: active
-                          ? shade.dopamineSoft
-                          : shade.surface,
-                        borderColor: active ? shade.dopamine : shade.border,
-                      },
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.monthText,
-                        { color: active ? shade.dopamine : shade.muted },
-                      ]}
-                    >
-                      {formatMonthKeyLabel(mk)}
-                    </Text>
-                  </ScalePressable>
-                );
-              })}
-            </ScrollView>
-          )}
-
-          <Text style={[styles.countMeta, { color: shade.muted }]}>
-            Showing {filteredEntries.length} matching{' '}
-            {filteredEntries.length === 1 ? 'log' : 'logs'}
-          </Text>
-
-          <FlatList<TransactionEntry>
-            data={filteredEntries}
-            keyExtractor={(item) => item.id}
-            renderItem={renderHistoryItem}
-            ItemSeparatorComponent={HistoryRowSeparator}
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-            contentContainerStyle={styles.listBody}
-            style={styles.listScroll}
-            initialNumToRender={20}
-            maxToRenderPerBatch={20}
-            windowSize={7}
-            ListEmptyComponent={
-              <View
-                style={[
-                  styles.emptyBox,
-                  { backgroundColor: shade.surface, borderColor: shade.border },
-                ]}
-              >
-                <Text style={[styles.emptyText, { color: shade.muted }]}>
-                  No logs match your current search or filters.
-                </Text>
-              </View>
-            }
-          />
+              <Text style={[styles.emptyText, { color: shade.muted }]}>
+                No logs match your current search or filters.
+              </Text>
+            </View>
+          }
+        />
       </BaseModal>
 
       <EditTransactionModal
@@ -497,14 +352,20 @@ const ActivityHistoryModalContent: React.FC<ActivityHistoryModalProps> = ({
 };
 
 /**
- * Full searchable & filterable transaction history modal with virtualized
- * rendering and 1-tap Undo for every entry.
+ * Searchable & filterable transaction history modal with virtualized rendering and gated Undo.
  */
-export const ActivityHistoryModal: React.FC<ActivityHistoryModalProps> = (
-  props
-) => {
-  if (!props.visible) return null;
-  return <ActivityHistoryModalContent {...props} />;
+export const ActivityHistoryModal: React.FC<ActivityHistoryModalProps> = ({
+  visible,
+  initialMonthKey = null,
+  onClose,
+}) => {
+  if (!visible) return null;
+  return (
+    <ActivityHistoryModalContent
+      initialMonthKey={initialMonthKey}
+      onClose={onClose}
+    />
+  );
 };
 
 const styles = StyleSheet.create({
@@ -523,6 +384,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
     flex: 1,
+    minWidth: 0,
   },
   title: {
     fontSize: 16,
@@ -604,56 +466,5 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 12,
     textAlign: 'center',
-  },
-  rowCard: {
-    borderRadius: 13,
-    borderWidth: 1,
-    paddingHorizontal: 11,
-    paddingVertical: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  rowContent: {
-    flex: 1,
-    minWidth: 0,
-    gap: 3,
-  },
-  rowTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-  rowBottom: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
-  rowLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    flex: 1,
-    minWidth: 0,
-  },
-  rowSub: {
-    fontSize: 10,
-    flexShrink: 1,
-  },
-  rowDelta: {
-    fontSize: 12,
-    fontWeight: '800',
-    flexShrink: 0,
-  },
-  undoBtn: {
-    paddingHorizontal: 7,
-    paddingVertical: 4,
-    borderRadius: 7,
-  },
-  undoText: {
-    fontSize: 10,
-    fontWeight: '700',
   },
 });

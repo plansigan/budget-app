@@ -1,5 +1,12 @@
-import React, { useCallback, useMemo, useState } from 'react';
-import { FlatList, ListRenderItemInfo, StyleSheet, Text, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  FlatList,
+  ListRenderItemInfo,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import {
   AnimatedProgressBar,
   FadeSlideIn,
@@ -11,9 +18,11 @@ import { EditTransactionModal } from '../../components/EditTransactionModal';
 import {
   useBudgetActions,
   useDailyBudget,
+  useGoals,
   useThemePrefs,
   useWallet,
 } from '../../context/BudgetContext';
+import { getUndoEligibility } from '../../state/budgetReducer';
 import { TransactionEntry, getDaysUntilDayOfMonth } from '../../types/budget';
 import { triggerLightHaptic } from '../../utils/haptics';
 import { formatOrdinal, formatPeso } from '../../utils/numberFormat';
@@ -28,6 +37,8 @@ export interface WalletConfirmRequest {
   title: string;
   message: string;
   confirmLabel: string;
+  destructive?: boolean;
+  icon?: string;
   onConfirm: () => void;
 }
 
@@ -47,7 +58,8 @@ export const AccountDetailView: React.FC<AccountDetailViewProps> = ({
   onRequestConfirm,
 }) => {
   const { shade, privacyMode, formatVisiblePeso } = useThemePrefs();
-  const { cashOnHand, banks, creditCards } = useWallet();
+  const { cashOnHand, banks, creditCards, debts } = useWallet();
+  const { treats } = useGoals();
   const { entries } = useDailyBudget();
   const { removeBank, removeCreditCard, undoEntry } = useBudgetActions();
 
@@ -56,6 +68,11 @@ export const AccountDetailView: React.FC<AccountDetailViewProps> = ({
     null
   );
   const [showEditModal, setShowEditModal] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  useEffect(() => {
+    setSearchQuery('');
+  }, [selectedAccountId]);
 
   const isCash = selectedAccountId === 'cash';
   const selectedBank = banks.find((b) => b.id === selectedAccountId);
@@ -71,6 +88,24 @@ export const AccountDetailView: React.FC<AccountDetailViewProps> = ({
       ),
     [entries, selectedAccountId]
   );
+
+  const filteredEntries = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return accountEntries;
+    return accountEntries.filter((e) => {
+      const haystack = [
+        e.label,
+        e.paymentSourceLabel,
+        e.toPaymentSourceLabel,
+        e.dateKey,
+        e.category,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      return haystack.includes(q);
+    });
+  }, [accountEntries, searchQuery]);
 
   const { totalOut, totalIn } = useMemo(() => {
     const out = accountEntries
@@ -130,6 +165,8 @@ export const AccountDetailView: React.FC<AccountDetailViewProps> = ({
         title: 'Delete & Undo Entry?',
         message: `Remove "${entry.label}" (${deltaString}) and reverse its balance changes?`,
         confirmLabel: 'Yes, Delete',
+        destructive: true,
+        icon: 'rotate-ccw',
         onConfirm: () => undoEntry(entry.id),
       });
     },
@@ -165,13 +202,22 @@ export const AccountDetailView: React.FC<AccountDetailViewProps> = ({
         entry={entry}
         selectedAccountId={selectedAccountId}
         isCreditCard={Boolean(selectedCard)}
+        undoable={getUndoEligibility(entry, treats, debts).ok}
         shade={shade}
         privacyMode={privacyMode}
         onEdit={setEditingEntry}
         onRequestUndo={handleRequestUndo}
       />
     ),
-    [selectedAccountId, selectedCard, shade, privacyMode, handleRequestUndo]
+    [
+      selectedAccountId,
+      selectedCard,
+      treats,
+      debts,
+      shade,
+      privacyMode,
+      handleRequestUndo,
+    ]
   );
 
   const listHeader = useMemo(() => {
@@ -492,8 +538,43 @@ export const AccountDetailView: React.FC<AccountDetailViewProps> = ({
           </View>
         )}
 
+        {accountEntries.length > 0 && (
+          <View
+            style={[
+              styles.searchRow,
+              { backgroundColor: shade.card, borderColor: shade.border },
+            ]}
+          >
+            <AppIcon name="search" size={14} color={shade.muted} />
+            <TextInput
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholder="Search logs by label, source, or date..."
+              placeholderTextColor={shade.muted}
+              accessibilityLabel="Search account logs"
+              style={[styles.searchInput, { color: shade.text }]}
+            />
+            {searchQuery.length > 0 && (
+              <ScalePressable
+                onPress={() => {
+                  triggerLightHaptic();
+                  setSearchQuery('');
+                }}
+                accessibilityLabel="Clear log search"
+                hitSlop={6}
+              >
+                <AppIcon name="x" size={14} color={shade.muted} />
+              </ScalePressable>
+            )}
+          </View>
+        )}
+
         <Text style={[styles.sectionTitle, { color: shade.muted }]}>
-          ACCOUNT LOGS ({accountEntries.length})
+          ACCOUNT LOGS (
+          {searchQuery.trim()
+            ? `${filteredEntries.length} of ${accountEntries.length}`
+            : accountEntries.length}
+          )
         </Text>
       </View>
     );
@@ -524,6 +605,8 @@ export const AccountDetailView: React.FC<AccountDetailViewProps> = ({
     onOpenTransfer,
     selectedAccountId,
     accountEntries.length,
+    searchQuery,
+    filteredEntries.length,
   ]);
 
   if (!hasAccount) {
@@ -539,7 +622,7 @@ export const AccountDetailView: React.FC<AccountDetailViewProps> = ({
         style={{ flex: 1 }}
       >
         <FlatList<TransactionEntry>
-          data={accountEntries}
+          data={filteredEntries}
           keyExtractor={(item) => item.id}
           renderItem={renderAccountEntry}
           ItemSeparatorComponent={AccountLogSeparator}
@@ -558,7 +641,11 @@ export const AccountDetailView: React.FC<AccountDetailViewProps> = ({
                   textAlign: 'center',
                 }}
               >
-                No logs yet. Use Deposit, Spend Here, or Set Balance above.
+                {searchQuery.trim()
+                  ? 'No logs match your search.'
+                  : selectedCard
+                  ? 'No logs yet. Use Pay Card, Spend Here, or Set Used above.'
+                  : 'No logs yet. Use Deposit, Spend Here, or Set Balance above.'}
               </Text>
             </View>
           }
@@ -575,6 +662,7 @@ export const AccountDetailView: React.FC<AccountDetailViewProps> = ({
         selectedAccountId={selectedAccountId}
         accountTitle={accountTitle}
         isCreditCard={Boolean(selectedCard)}
+        currentBalance={currentBalance}
         onClose={() => setActionMode(null)}
       />
 
@@ -737,6 +825,21 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '800',
     letterSpacing: 0.8,
+  },
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 11,
+    paddingVertical: 8,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '600',
+    paddingVertical: 0,
   },
   emptyBox: {
     borderRadius: 16,

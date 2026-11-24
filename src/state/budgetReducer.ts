@@ -1,22 +1,28 @@
 import { PersistedBudgetState } from './defaults';
 import { handleBillsAndEnvelopesAction } from './reducers/billsAndEnvelopes';
-import { handleDailyAndEntriesAction } from './reducers/dailyAndEntries';
+import { handleDailyActions } from './reducers/dailyActions';
+import { handleEditEntryAction } from './reducers/editEntry';
 import { handleGoalsAndTreatsAction } from './reducers/goalsAndTreats';
 import { handleInstallmentsAndDebtsAction } from './reducers/installmentsAndDebts';
 import { handleLifecycleAndPrefsAction } from './reducers/lifecycleAndPrefs';
-import { BudgetAction, SliceReducer } from './reducers/types';
+import { SliceReducer } from './reducers/types';
+import { handleUndoEntryAction } from './reducers/undoEntry';
 import { handleWalletAndAccountsAction } from './reducers/walletAndAccounts';
 
 export type { BudgetAction } from './reducers/types';
 export {
+  canEditEntry,
   canUndoEntry,
+  getUndoEligibility,
   isEditableEntry,
   isEditableEntryType,
 } from './reducers/helpers';
 
 const SLICE_REDUCERS: SliceReducer[] = [
   handleLifecycleAndPrefsAction,
-  handleDailyAndEntriesAction,
+  handleDailyActions,
+  handleUndoEntryAction,
+  handleEditEntryAction,
   handleWalletAndAccountsAction,
   handleBillsAndEnvelopesAction,
   handleGoalsAndTreatsAction,
@@ -25,7 +31,7 @@ const SLICE_REDUCERS: SliceReducer[] = [
 
 export function budgetReducer(
   state: PersistedBudgetState,
-  action: BudgetAction
+  action: import('./reducers/types').BudgetAction
 ): PersistedBudgetState {
   for (const slice of SLICE_REDUCERS) {
     const next = slice(state, action);

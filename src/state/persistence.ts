@@ -10,6 +10,7 @@ import {
   SinkingFundItem,
   SpendingEnvelopeItem,
   TransactionEntry,
+  TransactionType,
   TreatVaultItem,
 } from '../types/budget';
 import {
@@ -24,7 +25,45 @@ import {
 } from './defaults';
 
 export const STORAGE_KEY = '@velvet_budget_state_v6';
-export const LEGACY_STORAGE_KEY_V5 = '@velvet_budget_state_v5';
+const LEGACY_STORAGE_KEY_V5 = '@velvet_budget_state_v5';
+
+const VALID_TRANSACTION_TYPES = new Set<TransactionType>([
+  'spend',
+  'treat_direct',
+  'impulse_skipped',
+  'midnight_split',
+  'save_direct',
+  'sinking_fund',
+  'installment_paid',
+  'bill_paid',
+  'envelope_spend',
+  'envelope_refill',
+  'wallet_deposit',
+  'wallet_adjust',
+  'wallet_transfer',
+  'debt_outflow',
+  'debt_inflow',
+]);
+
+const VALID_GRADES = new Set<MonthlyArchiveSnapshot['grade']>([
+  'A+',
+  'A',
+  'B+',
+  'B',
+  'C',
+]);
+
+function optNonNegCurrency(val: unknown): number | undefined {
+  return typeof val === 'number' && Number.isFinite(val)
+    ? roundCurrency(Math.max(0, val))
+    : undefined;
+}
+
+function optFiniteCurrency(val: unknown): number | undefined {
+  return typeof val === 'number' && Number.isFinite(val)
+    ? roundCurrency(val)
+    : undefined;
+}
 
 export function normalizePersistedState(
   raw: Partial<PersistedBudgetState>
@@ -186,27 +225,90 @@ export function normalizePersistedState(
               e &&
                 typeof e === 'object' &&
                 typeof e.id === 'string' &&
-                typeof e.type === 'string'
+                e.id.trim().length > 0 &&
+                typeof e.type === 'string' &&
+                VALID_TRANSACTION_TYPES.has(e.type as TransactionType)
             )
         )
-        .map((e) => ({
-          ...e,
-          amount: roundCurrency(safeNum(e.amount, 0, 0)),
-          label: typeof e.label === 'string' ? e.label : 'Entry',
-          icon: typeof e.icon === 'string' && e.icon ? e.icon : 'tag',
-          timestamp:
-            typeof e.timestamp === 'string' && e.timestamp
-              ? e.timestamp
-              : new Date().toISOString(),
-        }))
+        .map((e) => {
+          const validDateKey =
+            typeof e.dateKey === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(e.dateKey)
+              ? e.dateKey
+              : undefined;
+          const signedDelta = optFiniteCurrency(e.signedDelta);
+          const appliedWalletDelta = optNonNegCurrency(e.appliedWalletDelta);
+          const appliedToWalletDelta = optNonNegCurrency(e.appliedToWalletDelta);
+          const appliedEnvelopeDelta = optNonNegCurrency(e.appliedEnvelopeDelta);
+          const previousEnvelopeBalance = optNonNegCurrency(
+            e.previousEnvelopeBalance
+          );
+          const rolloverDelta = optNonNegCurrency(e.rolloverDelta);
+          const savingsDelta = optNonNegCurrency(e.savingsDelta);
+
+          return {
+            ...e,
+            amount: roundCurrency(safeNum(e.amount, 0, 0)),
+            label: typeof e.label === 'string' ? e.label : 'Entry',
+            icon: typeof e.icon === 'string' && e.icon ? e.icon : 'tag',
+            timestamp:
+              typeof e.timestamp === 'string' &&
+              !Number.isNaN(Date.parse(e.timestamp))
+                ? e.timestamp
+                : new Date().toISOString(),
+            dateKey: validDateKey,
+            signedDelta,
+            appliedWalletDelta,
+            appliedToWalletDelta,
+            appliedEnvelopeDelta,
+            previousEnvelopeBalance,
+            rolloverDelta,
+            savingsDelta,
+          };
+        })
     : [];
 
   const normalizedArchives: MonthlyArchiveSnapshot[] = Array.isArray(
     raw.monthlyArchives
   )
-    ? raw.monthlyArchives.filter((a): a is MonthlyArchiveSnapshot =>
-        Boolean(a && typeof a === 'object' && typeof a.monthKey === 'string')
-      )
+    ? raw.monthlyArchives
+        .filter(
+          (a): a is MonthlyArchiveSnapshot =>
+            Boolean(
+              a &&
+                typeof a === 'object' &&
+                typeof a.monthKey === 'string' &&
+                /^\d{4}-\d{2}$/.test(a.monthKey)
+            )
+        )
+        .map((a) => ({
+          monthKey: a.monthKey,
+          monthTitle:
+            typeof a.monthTitle === 'string' && a.monthTitle.trim()
+              ? a.monthTitle.trim()
+              : `${a.monthKey} WRAP-UP`,
+          totalSpent: roundCurrency(safeNum(a.totalSpent, 0, 0)),
+          totalSaved: roundCurrency(safeNum(a.totalSaved, 0, 0)),
+          savingsRatePct: Math.round(safeNum(a.savingsRatePct, 0, 0, 1000)),
+          monthlyIncome: roundCurrency(safeNum(a.monthlyIncome, 0, 0)),
+          monthlySavingsGoal: roundCurrency(safeNum(a.monthlySavingsGoal, 0, 0)),
+          streakDays: Math.round(safeNum(a.streakDays, 0, 0)),
+          disciplineScore: Math.round(safeNum(a.disciplineScore, 800, 700, 999)),
+          topCategoryLabel:
+            typeof a.topCategoryLabel === 'string' && a.topCategoryLabel
+              ? a.topCategoryLabel
+              : 'No spends yet',
+          topCategoryAmount: roundCurrency(safeNum(a.topCategoryAmount, 0, 0)),
+          topSourceLabel:
+            typeof a.topSourceLabel === 'string' && a.topSourceLabel
+              ? a.topSourceLabel
+              : 'None logged yet',
+          txCount: Math.round(safeNum(a.txCount, 0, 0)),
+          grade: VALID_GRADES.has(a.grade) ? a.grade : 'C',
+          headline:
+            typeof a.headline === 'string' && a.headline
+              ? a.headline
+              : 'Monthly summary archived.',
+        }))
     : [];
 
   const normalizedEnvelopes: SpendingEnvelopeItem[] = Array.isArray(raw.envelopes)
@@ -219,7 +321,7 @@ export function normalizePersistedState(
           name:
             typeof env.name === 'string' && env.name.trim()
               ? env.name.trim()
-              : 'Spending Envelope',
+              : 'Spending Allowance',
           icon: typeof env.icon === 'string' && env.icon ? env.icon : 'heart',
           amountPerCycle: roundCurrency(safeNum(env.amountPerCycle, 0, 0)),
           cadence: env.cadence === 'monthly' ? 'monthly' : 'per_payday',
@@ -274,6 +376,25 @@ export function normalizePersistedState(
         })
     : [];
 
+  const validActiveTreatId =
+    typeof raw.activeTreatId === 'string' &&
+    normalizedTreats.some((t) => t.id === raw.activeTreatId)
+      ? raw.activeTreatId
+      : '';
+
+  const rawLastSrc =
+    typeof raw.lastPaymentSourceId === 'string' &&
+    raw.lastPaymentSourceId.trim().length > 0
+      ? raw.lastPaymentSourceId.trim()
+      : undefined;
+  const validLastSourceId =
+    rawLastSrc &&
+    (rawLastSrc === 'cash' ||
+      normalizedBanks.some((b) => b.id === rawLastSrc) ||
+      normalizedCards.some((c) => c.id === rawLastSrc))
+      ? rawLastSrc
+      : undefined;
+
   return {
     ...base,
     hasCompletedOnboarding: Boolean(raw.hasCompletedOnboarding),
@@ -310,8 +431,7 @@ export function normalizePersistedState(
     streakDays: Math.round(safeNum(raw.streakDays, 0, 0)),
     bufferShields: Math.round(safeNum(raw.bufferShields, 0, 0)),
     disciplineScore: Math.round(safeNum(raw.disciplineScore, 800, 700, 999)),
-    activeTreatId:
-      typeof raw.activeTreatId === 'string' ? raw.activeTreatId : '',
+    activeTreatId: validActiveTreatId,
     treats: normalizedTreats,
     entries: normalizedEntries,
     monthlyArchives: normalizedArchives,
@@ -323,11 +443,7 @@ export function normalizePersistedState(
       !Number.isNaN(Date.parse(raw.lastBackupAt))
         ? raw.lastBackupAt
         : undefined,
-    lastPaymentSourceId:
-      typeof raw.lastPaymentSourceId === 'string' &&
-      raw.lastPaymentSourceId.trim().length > 0
-        ? raw.lastPaymentSourceId
-        : undefined,
+    lastPaymentSourceId: validLastSourceId,
   };
 }
 
@@ -380,9 +496,11 @@ export async function loadPersistedStateWithStatus(): Promise<{
   corrupted: boolean;
 }> {
   try {
-    const raw =
-      (await AsyncStorage.getItem(STORAGE_KEY)) ||
-      (await AsyncStorage.getItem(LEGACY_STORAGE_KEY_V5));
+    const rawV6 = await AsyncStorage.getItem(STORAGE_KEY);
+    const rawV5 = !rawV6
+      ? await AsyncStorage.getItem(LEGACY_STORAGE_KEY_V5)
+      : null;
+    const raw = rawV6 || rawV5;
     if (!raw) {
       const recovered = await tryRecoverFromIdb();
       return { state: recovered, corrupted: false };
@@ -393,8 +511,19 @@ export async function loadPersistedStateWithStatus(): Promise<{
       if (recovered) return { state: recovered, corrupted: false };
       return { state: null, corrupted: true };
     }
+    const normalized = normalizePersistedState(
+      parsed as Partial<PersistedBudgetState>
+    );
+    if (!rawV6 && rawV5) {
+      try {
+        await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(normalized));
+        await AsyncStorage.removeItem(LEGACY_STORAGE_KEY_V5);
+      } catch {
+        // Ignore cleanup errors
+      }
+    }
     return {
-      state: normalizePersistedState(parsed as Partial<PersistedBudgetState>),
+      state: normalized,
       corrupted: false,
     };
   } catch {
@@ -402,11 +531,6 @@ export async function loadPersistedStateWithStatus(): Promise<{
     if (recovered) return { state: recovered, corrupted: false };
     return { state: null, corrupted: true };
   }
-}
-
-export async function loadPersistedState(): Promise<PersistedBudgetState | null> {
-  const result = await loadPersistedStateWithStatus();
-  return result.state;
 }
 
 export async function savePersistedState(

@@ -1,14 +1,11 @@
 import { useCallback, useMemo } from 'react';
-import {
-  computeBaseDailyAllowance,
-  computeDayMetricsFromEntries,
-  getBudgetedInstallmentsTotal,
-  getTodayKey,
-  getTotalMonthlyEnvelopes,
-  roundCurrency,
-} from '../../state/budgetMath';
+import { getTodayKey, roundCurrency } from '../../state/budgetMath';
 import { canUndoEntry, isEditableEntry } from '../../state/budgetReducer';
-import { applyMidnightRollover } from '../../state/rollover';
+import {
+  allocateToTreatWithSpill,
+  findActiveUnclaimedTreat,
+  resolvePaymentSource,
+} from '../../state/reducers/helpers';
 import { SpendCategoryKey } from '../../types/budget';
 import {
   triggerCelebrationHaptic,
@@ -16,12 +13,14 @@ import {
   triggerSuccessHaptic,
 } from '../../utils/haptics';
 import { formatPeso } from '../../utils/numberFormat';
+import { formatEntryDateLocal } from '../../utils/transactionDisplay';
 import { ActionHookDeps } from './types';
 
 export function useDailyActions({
   dispatch,
   stateRef,
   selectedDateKeyRef,
+  getDaySummaryRef,
   showToast,
 }: ActionHookDeps) {
   const logSpend = useCallback(
@@ -32,19 +31,12 @@ export function useDailyActions({
       paymentSourceId: string = 'cash',
       category?: SpendCategoryKey
     ) => {
+      if (!Number.isFinite(amount) || amount <= 0) return;
       const cleanAmount = roundCurrency(Math.max(0.01, amount));
       const targetDateKey = selectedDateKeyRef.current;
       const current = stateRef.current;
-
-      let sourceLabel = 'Cash';
-      if (paymentSourceId !== 'cash') {
-        const matchedBank = current.banks.find((b) => b.id === paymentSourceId);
-        const matchedCard = current.creditCards.find(
-          (c) => c.id === paymentSourceId
-        );
-        if (matchedBank) sourceLabel = matchedBank.name;
-        else if (matchedCard) sourceLabel = matchedCard.name;
-      }
+      const resolved = resolvePaymentSource(current, paymentSourceId);
+      const sourceLabel = resolved.label || 'Track Only';
 
       triggerLightHaptic();
       dispatch({
@@ -69,26 +61,10 @@ export function useDailyActions({
 
   const saveToJar = useCallback(
     (amount: number) => {
+      if (!Number.isFinite(amount) || amount <= 0) return;
       const cleanAmount = roundCurrency(Math.max(0.01, amount));
       const targetDateKey = selectedDateKeyRef.current;
-      const current = stateRef.current;
-      const today = getTodayKey();
-      const baseDaily = computeBaseDailyAllowance(
-        current.settings,
-        getBudgetedInstallmentsTotal(current.installments) +
-          getTotalMonthlyEnvelopes(
-            current.envelopes || [],
-            current.settings.salaryFrequency
-          )
-      );
-      const daySummary = computeDayMetricsFromEntries(
-        current.entries,
-        targetDateKey,
-        baseDaily,
-        current.rolloverBalance,
-        today,
-        current.lastActiveDate
-      );
+      const daySummary = getDaySummaryRef.current(targetDateKey);
       const take = roundCurrency(
         Math.min(cleanAmount, Math.max(0, daySummary.safeRemaining))
       );
@@ -107,36 +83,20 @@ export function useDailyActions({
         type: 'SAVE_TO_JAR',
         amount: cleanAmount,
         dateKey: targetDateKey,
-        todayKey: today,
+        todayKey: getTodayKey(),
       });
       showToast(
         `Saved ${formatPeso(take)} into your Savings Jar!`,
         true
       );
     },
-    [dispatch, stateRef, selectedDateKeyRef, showToast]
+    [dispatch, selectedDateKeyRef, getDaySummaryRef, showToast]
   );
 
   const bankTodaySurplus = useCallback(() => {
     const current = stateRef.current;
     const targetDateKey = selectedDateKeyRef.current;
-    const today = getTodayKey();
-    const baseDaily = computeBaseDailyAllowance(
-      current.settings,
-      getBudgetedInstallmentsTotal(current.installments) +
-        getTotalMonthlyEnvelopes(
-          current.envelopes || [],
-          current.settings.salaryFrequency
-        )
-    );
-    const daySummary = computeDayMetricsFromEntries(
-      current.entries,
-      targetDateKey,
-      baseDaily,
-      current.rolloverBalance,
-      today,
-      current.lastActiveDate
-    );
+    const daySummary = getDaySummaryRef.current(targetDateKey);
     const remaining = Math.max(0, roundCurrency(daySummary.safeRemaining));
 
     if (remaining <= 0) {
@@ -145,26 +105,33 @@ export function useDailyActions({
       return;
     }
 
-    const activeUnclaimed =
-      current.treats.find(
-        (t) => t.id === current.activeTreatId && !t.claimed
-      ) || current.treats.find((t) => !t.claimed);
-
-    const toSavings = activeUnclaimed
+    const activeUnclaimed = findActiveUnclaimedTreat(
+      current.treats,
+      current.activeTreatId
+    );
+    const rawToSavings = activeUnclaimed
       ? roundCurrency(remaining * 0.5)
       : remaining;
-    const toTreat = activeUnclaimed
-      ? roundCurrency(remaining - toSavings)
+    const rawToTreat = activeUnclaimed
+      ? roundCurrency(remaining - rawToSavings)
       : 0;
+    const allocation = allocateToTreatWithSpill(
+      current.treats,
+      current.activeTreatId,
+      rawToTreat,
+      'fromRollovers'
+    );
+    const toTreat = allocation.treatAdded;
+    const toSavings = roundCurrency(rawToSavings + allocation.spillToSavings);
 
     triggerCelebrationHaptic();
     dispatch({
       type: 'BANK_TODAY_SURPLUS',
       dateKey: targetDateKey,
-      todayKey: today,
+      todayKey: getTodayKey(),
     });
 
-    if (activeUnclaimed) {
+    if (toTreat > 0) {
       showToast(
         `Day ended! +${formatPeso(toSavings)} Savings & +${formatPeso(toTreat)} Treat`,
         true
@@ -175,14 +142,16 @@ export function useDailyActions({
         true
       );
     }
-  }, [dispatch, stateRef, selectedDateKeyRef, showToast]);
+  }, [dispatch, stateRef, selectedDateKeyRef, getDaySummaryRef, showToast]);
 
   const simulateMidnightSplit = useCallback(() => {
     const current = stateRef.current;
     const today = getTodayKey();
     const alreadyRolledToday = current.entries.some(
       (e) =>
-        e.type === 'midnight_split' && e.isAutoRollover && e.dateKey === today
+        e.type === 'midnight_split' &&
+        e.isAutoRollover &&
+        formatEntryDateLocal(e, current.lastActiveDate) === today
     );
     if (alreadyRolledToday) {
       triggerLightHaptic();
@@ -193,47 +162,33 @@ export function useDailyActions({
       return;
     }
 
-    const baseDaily = computeBaseDailyAllowance(
-      current.settings,
-      getBudgetedInstallmentsTotal(current.installments) +
-        getTotalMonthlyEnvelopes(
-          current.envelopes || [],
-          current.settings.salaryFrequency
-        )
-    );
-    const todaySummary = computeDayMetricsFromEntries(
-      current.entries,
-      today,
-      baseDaily,
-      current.rolloverBalance,
-      today,
-      current.lastActiveDate
-    );
-    if (todaySummary.safeRemaining <= 0) {
+    const todaySummary = getDaySummaryRef.current(today);
+    const currentSafe = Math.max(0, todaySummary.safeRemaining);
+    if (currentSafe <= 0) {
       triggerLightHaptic();
       showToast('No Safe-to-Spend left today to split.', false);
       return;
     }
 
+    const vaultAdded = roundCurrency(currentSafe * 0.5);
+    const rolloverNext = roundCurrency(currentSafe - vaultAdded);
+
     triggerSuccessHaptic();
-    const result = applyMidnightRollover(current, today, 0);
     dispatch({ type: 'APPLY_ROLLOVER', newDateKey: today });
 
     showToast(
-      `🌙 50/50 Split: +${formatPeso(result.vaultAdded)} & +${formatPeso(result.rolloverNext)} rollover!`,
+      `🌙 50/50 Split: +${formatPeso(vaultAdded)} & +${formatPeso(rolloverNext)} rollover!`,
       true
     );
-  }, [dispatch, stateRef, showToast]);
+  }, [dispatch, stateRef, getDaySummaryRef, showToast]);
 
   const undoEntry = useCallback(
     (entryId: string) => {
       const current = stateRef.current;
       const check = canUndoEntry(current, entryId);
       if (!check.ok) {
-        if (check.reason.includes('claimed')) {
-          triggerLightHaptic();
-          showToast(check.reason, false);
-        }
+        triggerLightHaptic();
+        showToast(check.reason, false);
         return;
       }
       triggerLightHaptic();
@@ -253,6 +208,7 @@ export function useDailyActions({
         icon?: string;
       }
     ) => {
+      if (!Number.isFinite(updates.amount) || updates.amount <= 0) return;
       const current = stateRef.current;
       if (!isEditableEntry(current, entryId)) {
         triggerLightHaptic();
@@ -266,7 +222,7 @@ export function useDailyActions({
         type: 'EDIT_ENTRY',
         entryId,
         amount: cleanAmount,
-        label: trimmedLabel || 'Entry',
+        label: trimmedLabel,
         category: updates.category,
         icon: updates.icon,
       });

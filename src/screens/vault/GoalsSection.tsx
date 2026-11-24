@@ -19,11 +19,14 @@ export interface VaultConfirmRequest {
   title: string;
   message: string;
   confirmLabel: string;
+  destructive?: boolean;
+  icon?: string;
   onConfirm: () => void;
 }
 
 interface GoalsSectionProps {
   onOpenAddTreat: () => void;
+  onFundTreat: (treatId: string) => void;
   onOpenAddFund: () => void;
   onOpenDepositFund: (fund: SinkingFundItem) => void;
   onRequestConfirm: (req: VaultConfirmRequest) => void;
@@ -35,6 +38,7 @@ interface GoalsSectionProps {
  */
 export const GoalsSection: React.FC<GoalsSectionProps> = ({
   onOpenAddTreat,
+  onFundTreat,
   onOpenAddFund,
   onOpenDepositFund,
   onRequestConfirm,
@@ -178,6 +182,8 @@ export const GoalsSection: React.FC<GoalsSectionProps> = ({
                             ? `Delete "${item.name}"? Its ${formatVisiblePeso(item.funded)} funded progress will be refunded to your Savings Jar.`
                             : `Remove "${item.name}" from your Treat Wishlist?`,
                         confirmLabel: 'Delete Treat',
+                        destructive: true,
+                        icon: 'trash-2',
                         onConfirm: () => deleteTreat(item.id),
                       });
                     }}
@@ -196,31 +202,63 @@ export const GoalsSection: React.FC<GoalsSectionProps> = ({
                   height={7}
                 />
 
-                {isActive && (
-                  <View style={[styles.rowBetween, { flexWrap: 'wrap', gap: 6 }]}>
-                    <Text
-                      style={[
-                        styles.goalFootnote,
-                        { color: shade.muted, fontVariant: ['tabular-nums'] },
-                      ]}
-                    >
-                      Direct: {formatVisiblePeso(item.fromImpulses)}
-                    </Text>
-                    <Text
-                      style={[
-                        styles.goalFootnote,
-                        { color: shade.muted, fontVariant: ['tabular-nums'] },
-                      ]}
-                    >
-                      End Day Split: {formatVisiblePeso(item.fromRollovers)}
-                    </Text>
+                {(isActive || (!item.claimed && !isReady)) && (
+                  <View style={styles.fundFooter}>
+                    <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+                      {isActive ? (
+                        <Text style={[styles.goalFootnote, { color: shade.muted }]}>
+                          Direct {formatVisiblePeso(item.fromImpulses)} • Split{' '}
+                          {formatVisiblePeso(item.fromRollovers)}
+                        </Text>
+                      ) : (
+                        <Text style={[styles.goalFootnote, { color: shade.muted }]}>
+                          {formatVisiblePeso(
+                            Math.max(0, item.target - item.funded)
+                          )}{' '}
+                          to go
+                        </Text>
+                      )}
+                    </View>
+                    {!item.claimed && !isReady && (
+                      <ScalePressable
+                        onPress={() => {
+                          triggerLightHaptic();
+                          onFundTreat(item.id);
+                        }}
+                        accessibilityLabel={`Fund ${item.name}`}
+                        style={[
+                          styles.fundAddBtn,
+                          { backgroundColor: shade.dopamineSoft },
+                        ]}
+                      >
+                        <AppIcon name="plus" size={13} color={shade.dopamine} />
+                        <Text
+                          style={[styles.fundAddText, { color: shade.dopamine }]}
+                        >
+                          Fund
+                        </Text>
+                      </ScalePressable>
+                    )}
                   </View>
                 )}
 
                 {isReady && (
                   <ScalePressable
-                    onPress={() => claimTreat(item.id)}
-                    style={[styles.claimBtn, { backgroundColor: shade.dopamine }]}
+                    onPress={() => {
+                      triggerLightHaptic();
+                      onRequestConfirm({
+                        title: 'Claim Treat Goal?',
+                        message: `Mark "${item.name}" (${formatVisiblePeso(item.target)}) as claimed and enjoy it guilt-free?`,
+                        confirmLabel: 'Claim Treat',
+                        destructive: false,
+                        icon: 'gift',
+                        onConfirm: () => claimTreat(item.id),
+                      });
+                    }}
+                    style={[
+                      styles.claimBtn,
+                      { backgroundColor: shade.dopamineBtnBg },
+                    ]}
                   >
                     <Text style={[styles.claimBtnText, { color: '#FFFFFF' }]}>
                       Claim & Enjoy Guilt-Free
@@ -307,6 +345,8 @@ export const GoalsSection: React.FC<GoalsSectionProps> = ({
                             ? `Delete "${fund.name}"? Its ${formatVisiblePeso(fund.saved)} saved balance will be moved to your Savings Jar.`
                             : `Remove "${fund.name}" from your savings buckets?`,
                         confirmLabel: 'Delete Bucket',
+                        destructive: true,
+                        icon: 'trash-2',
                         onConfirm: () => deleteSinkingFund(fund.id),
                       });
                     }}

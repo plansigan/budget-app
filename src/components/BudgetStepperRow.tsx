@@ -1,68 +1,37 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { Animated, StyleSheet, Text, TextInput, View } from 'react-native';
+import React, { useRef } from 'react';
+import { Animated, StyleSheet, Text, View } from 'react-native';
 import { ThemeShade } from '../theme/palette';
-import {
-  formatPesoInput,
-  formatPesoNumber,
-  parsePesoInput,
-} from '../utils/numberFormat';
+import { InlinePesoInput } from './form/InlinePesoInput';
 
 interface BudgetStepperRowProps {
   label: string;
   hint: string;
   value: number;
   shade: ThemeShade;
+  privacyMode?: boolean;
   onChange: (next: number) => void;
 }
 
 /**
- * Clean minimalist Philippine Peso (₱) numeric input card (direct typing, no +/- buttons).
+ * Minimalist Philippine Peso (₱) numeric input card with optional Privacy Mode masking.
  */
 export const BudgetStepperRow: React.FC<BudgetStepperRowProps> = ({
   label,
   hint,
   value,
   shade,
+  privacyMode = false,
   onChange,
 }) => {
   const focusScale = useRef(new Animated.Value(1)).current;
-  const [isFocused, setIsFocused] = useState(false);
-  const [draftText, setDraftText] = useState(() => formatPesoNumber(value));
 
-  useEffect(() => {
-    if (!isFocused) {
-      setDraftText(formatPesoNumber(value));
-    }
-  }, [value, isFocused]);
-
-  const handleFocus = () => {
-    setIsFocused(true);
-    setDraftText(formatPesoNumber(value));
+  const handleFocusChange = (focused: boolean) => {
     Animated.spring(focusScale, {
-      toValue: 1.015,
-      speed: 32,
+      toValue: focused ? 1.015 : 1,
+      speed: focused ? 32 : 28,
       bounciness: 6,
       useNativeDriver: true,
     }).start();
-  };
-
-  const handleBlur = () => {
-    setIsFocused(false);
-    const parsed = Math.max(0, parsePesoInput(draftText));
-    onChange(parsed);
-    setDraftText(formatPesoNumber(parsed));
-    Animated.spring(focusScale, {
-      toValue: 1,
-      speed: 28,
-      bounciness: 6,
-      useNativeDriver: true,
-    }).start();
-  };
-
-  const handleTextChange = (text: string) => {
-    const formatted = formatPesoInput(text);
-    setDraftText(formatted);
-    onChange(Math.max(0, parsePesoInput(formatted)));
   };
 
   return (
@@ -81,26 +50,20 @@ export const BudgetStepperRow: React.FC<BudgetStepperRowProps> = ({
         <Text style={[styles.hint, { color: shade.muted }]}>{hint}</Text>
       </View>
 
-      <View
-        style={[
-          styles.inputWrap,
-          { backgroundColor: shade.surface, borderColor: shade.border },
-        ]}
-      >
-        <Text style={[styles.pesoPrefix, { color: shade.accent }]}>₱</Text>
-        <TextInput
-          value={isFocused ? draftText : formatPesoNumber(value)}
-          onChangeText={handleTextChange}
-          onFocus={handleFocus}
-          onBlur={handleBlur}
-          keyboardType="decimal-pad"
-          inputMode="decimal"
-          placeholder="0"
-          placeholderTextColor={shade.muted}
-          selectTextOnFocus
-          style={[styles.inputField, { color: shade.text }]}
-        />
-      </View>
+      <InlinePesoInput
+        value={value}
+        onCommit={onChange}
+        onLiveChange={onChange}
+        onFocusChange={handleFocusChange}
+        shade={shade}
+        privacyMode={privacyMode}
+        accessibilityLabel={label}
+        prefixColor={shade.accent}
+        backgroundColor={shade.surface}
+        borderColor={shade.border}
+        containerStyle={styles.inputWrap}
+        inputStyle={styles.inputField}
+      />
     </Animated.View>
   );
 };
@@ -123,23 +86,11 @@ const styles = StyleSheet.create({
     fontSize: 11,
   },
   inputWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
     borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 10,
   },
-  pesoPrefix: {
-    fontSize: 17,
-    fontWeight: '800',
-    marginRight: 6,
-  },
   inputField: {
-    flex: 1,
-    minWidth: 0,
     fontSize: 19,
-    fontWeight: '800',
-    paddingVertical: 0,
   },
 });
