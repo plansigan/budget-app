@@ -1,6 +1,7 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Animated,
+  Easing,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -12,7 +13,9 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useThemePrefs } from '../context/BudgetContext';
+import { getWebGlassStyle } from '../theme/tokens';
 import { useWebKeyboardInset } from '../utils/useWebKeyboardInset';
+import { useReducedMotion } from './AnimatedPrimitives';
 
 const openModalStack: symbol[] = [];
 
@@ -32,8 +35,9 @@ interface BaseModalProps {
 }
 
 /**
- * Shared cross-platform centered modal shell handling fade/spring entry,
- * backdrop press dismissal, iOS/Android/Web keyboard lifting, safe areas, and stacked Web Escape key close.
+ * Shared cross-platform centered modal shell handling frosted backdrop,
+ * spring entry & graceful exit, iOS/Android/Web keyboard lifting, safe areas,
+ * and stacked Web Escape key close.
  */
 export const BaseModal: React.FC<BaseModalProps> = ({
   visible,
@@ -43,15 +47,21 @@ export const BaseModal: React.FC<BaseModalProps> = ({
   backdropStyle,
   avoidKeyboard = true,
   androidAvoidHeight = true,
-  initialScale = 0.94,
-  springSpeed = 28,
-  springBounciness = 7,
+  initialScale = 0.95,
   minKeyboardCardHeight = 240,
   children,
 }) => {
   const { shade } = useThemePrefs();
   const insets = useSafeAreaInsets();
-  const cardScale = useRef(new Animated.Value(initialScale)).current;
+  const reducedMotion = useReducedMotion();
+
+  const [rendered, setRendered] = useState(visible);
+  const backdropOpacity = useRef(new Animated.Value(visible ? 1 : 0)).current;
+  const cardOpacity = useRef(new Animated.Value(visible ? 1 : 0)).current;
+  const cardScale = useRef(
+    new Animated.Value(visible ? 1 : initialScale)
+  ).current;
+  const cardTranslateY = useRef(new Animated.Value(visible ? 0 : 18)).current;
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
 
@@ -60,15 +70,98 @@ export const BaseModal: React.FC<BaseModalProps> = ({
   );
 
   useEffect(() => {
-    if (!visible) return;
-    cardScale.setValue(initialScale);
-    Animated.spring(cardScale, {
-      toValue: 1,
-      speed: springSpeed,
-      bounciness: springBounciness,
-      useNativeDriver: true,
-    }).start();
-  }, [visible, cardScale, initialScale, springSpeed, springBounciness]);
+    if (visible) {
+      setRendered(true);
+      if (reducedMotion) {
+        backdropOpacity.setValue(1);
+        cardOpacity.setValue(1);
+        cardScale.setValue(1);
+        cardTranslateY.setValue(0);
+        return;
+      }
+      backdropOpacity.setValue(0);
+      cardOpacity.setValue(0);
+      cardScale.setValue(initialScale);
+      cardTranslateY.setValue(18);
+
+      Animated.parallel([
+        Animated.timing(backdropOpacity, {
+          toValue: 1,
+          duration: 190,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+        Animated.timing(cardOpacity, {
+          toValue: 1,
+          duration: 180,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+        Animated.spring(cardScale, {
+          toValue: 1,
+          tension: 240,
+          friction: 22,
+          useNativeDriver: true,
+        }),
+        Animated.spring(cardTranslateY, {
+          toValue: 0,
+          tension: 240,
+          friction: 22,
+          useNativeDriver: true,
+        }),
+      ]).start();
+      return;
+    }
+
+    if (!rendered) return;
+    if (reducedMotion) {
+      setRendered(false);
+      return;
+    }
+
+    const exitAnim = Animated.parallel([
+      Animated.timing(backdropOpacity, {
+        toValue: 0,
+        duration: 140,
+        easing: Easing.in(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(cardOpacity, {
+        toValue: 0,
+        duration: 130,
+        easing: Easing.in(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(cardScale, {
+        toValue: initialScale,
+        duration: 140,
+        easing: Easing.in(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(cardTranslateY, {
+        toValue: 10,
+        duration: 140,
+        easing: Easing.in(Easing.cubic),
+        useNativeDriver: true,
+      }),
+    ]);
+
+    exitAnim.start(({ finished }) => {
+      if (finished) {
+        setRendered(false);
+      }
+    });
+    return () => exitAnim.stop();
+  }, [
+    visible,
+    rendered,
+    reducedMotion,
+    initialScale,
+    backdropOpacity,
+    cardOpacity,
+    cardScale,
+    cardTranslateY,
+  ]);
 
   useEffect(() => {
     if (!visible) return;
@@ -103,14 +196,14 @@ export const BaseModal: React.FC<BaseModalProps> = ({
     };
   }, [visible]);
 
-  if (!visible) {
+  if (!rendered) {
     return null;
   }
 
   const backdropScrim = {
     backgroundColor: shade.dark
-      ? 'rgba(4, 6, 12, 0.72)'
-      : 'rgba(17, 24, 39, 0.45)',
+      ? 'rgba(5, 6, 10, 0.72)'
+      : 'rgba(22, 24, 29, 0.36)',
     paddingTop: Math.max(12, insets.top + 8),
     paddingBottom: Math.max(12, insets.bottom + 8),
     paddingLeft: Math.max(18, insets.left + 12),
@@ -120,20 +213,29 @@ export const BaseModal: React.FC<BaseModalProps> = ({
   const webKeyboardBackdrop =
     avoidKeyboard && Platform.OS === 'web' && keyboardInset > 0
       ? {
-          paddingBottom: keyboardInset + 8,
-          paddingTop: Math.max(12, offsetTop + 8),
-        }
+        paddingBottom: keyboardInset + 8,
+        paddingTop: Math.max(12, offsetTop + 8),
+      }
       : undefined;
   const webKeyboardCard =
     avoidKeyboard &&
-    Platform.OS === 'web' &&
-    keyboardInset > 0 &&
-    viewportHeight > 0
+      Platform.OS === 'web' &&
+      keyboardInset > 0 &&
+      viewportHeight > 0
       ? { maxHeight: Math.max(minKeyboardCardHeight, viewportHeight - 24) }
       : undefined;
 
   const content = (
     <>
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          StyleSheet.absoluteFill,
+          backdropScrim,
+          getWebGlassStyle(10),
+          { opacity: backdropOpacity },
+        ]}
+      />
       <Pressable
         style={StyleSheet.absoluteFill}
         onPress={onClose}
@@ -144,8 +246,15 @@ export const BaseModal: React.FC<BaseModalProps> = ({
         accessibilityViewIsModal
         style={[
           styles.card,
+          {
+            shadowColor: shade.shadowColor,
+            shadowOpacity: shade.dark ? 0.48 : 0.16,
+          },
           cardStyle,
-          { transform: [{ scale: cardScale }] },
+          {
+            opacity: cardOpacity,
+            transform: [{ translateY: cardTranslateY }, { scale: cardScale }],
+          },
           webKeyboardCard,
         ]}
       >
@@ -156,9 +265,9 @@ export const BaseModal: React.FC<BaseModalProps> = ({
 
   return (
     <Modal
-      visible={visible}
+      visible={rendered}
       transparent
-      animationType="fade"
+      animationType="none"
       onRequestClose={onClose}
     >
       {avoidKeyboard ? (
@@ -167,12 +276,17 @@ export const BaseModal: React.FC<BaseModalProps> = ({
             Platform.OS === 'ios'
               ? 'padding'
               : androidAvoidHeight && Platform.OS === 'android'
-              ? 'height'
-              : undefined
+                ? 'height'
+                : undefined
           }
           style={[
             styles.backdrop,
-            backdropScrim,
+            {
+              paddingTop: backdropScrim.paddingTop,
+              paddingBottom: backdropScrim.paddingBottom,
+              paddingLeft: backdropScrim.paddingLeft,
+              paddingRight: backdropScrim.paddingRight,
+            },
             backdropStyle,
             webKeyboardBackdrop,
           ]}
@@ -180,7 +294,18 @@ export const BaseModal: React.FC<BaseModalProps> = ({
           {content}
         </KeyboardAvoidingView>
       ) : (
-        <View style={[styles.backdrop, backdropScrim, backdropStyle]}>
+        <View
+          style={[
+            styles.backdrop,
+            {
+              paddingTop: backdropScrim.paddingTop,
+              paddingBottom: backdropScrim.paddingBottom,
+              paddingLeft: backdropScrim.paddingLeft,
+              paddingRight: backdropScrim.paddingRight,
+            },
+            backdropStyle,
+          ]}
+        >
           {content}
         </View>
       )}
@@ -196,17 +321,17 @@ const styles = StyleSheet.create({
   },
   card: {
     width: '100%',
-    maxWidth: 390,
+    maxWidth: 400,
     minWidth: 0,
     overflow: 'hidden',
-    borderRadius: 24,
+    borderRadius: 26,
     borderWidth: 1,
-    padding: 18,
+    padding: 20,
     maxHeight: '86%',
-    shadowColor: '#111318',
-    shadowOpacity: 0.14,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 10,
+    shadowColor: '#16181D',
+    shadowOpacity: 0.16,
+    shadowRadius: 28,
+    shadowOffset: { width: 0, height: 14 },
+    elevation: 12,
   },
 });

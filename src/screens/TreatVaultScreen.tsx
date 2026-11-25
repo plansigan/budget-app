@@ -1,6 +1,7 @@
 import React, { Suspense, lazy, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet } from 'react-native';
 import { ActionAmountModal } from '../components/ActionAmountModal';
+import { FadeSlideIn } from '../components/AnimatedPrimitives';
 import { ConfirmModal } from '../components/ConfirmModal';
 import {
   AddWantToBuyModal,
@@ -74,8 +75,8 @@ export const TreatVaultScreen: React.FC = () => {
     readyCount > 0
       ? `Buy Later (${readyCount}!)`
       : waitingCount > 0
-      ? `Buy Later (${waitingCount})`
-      : 'Buy Later';
+        ? `Buy Later (${waitingCount})`
+        : 'Buy Later';
 
   return (
     <ScrollView
@@ -95,35 +96,37 @@ export const TreatVaultScreen: React.FC = () => {
         ]}
       />
 
-      {subTab === 'goals' && (
-        <GoalsSection
-          onOpenAddTreat={() => setShowAddTreat(true)}
-          onFundTreat={(treatId) => {
-            setActiveTreat(treatId);
-            setShowFundTreatModal(true);
-          }}
-          onOpenAddFund={() => setShowAddFund(true)}
-          onOpenDepositFund={setDepositTargetFund}
-          onRequestConfirm={setPendingConfirm}
-        />
-      )}
+      <FadeSlideIn triggerKey={subTab} direction="up" distance={8} withScale>
+        {subTab === 'goals' && (
+          <GoalsSection
+            onOpenAddTreat={() => setShowAddTreat(true)}
+            onFundTreat={(treatId) => {
+              setActiveTreat(treatId);
+              setShowFundTreatModal(true);
+            }}
+            onOpenAddFund={() => setShowAddFund(true)}
+            onOpenDepositFund={setDepositTargetFund}
+            onRequestConfirm={setPendingConfirm}
+          />
+        )}
 
-      {subTab === 'buy_later' && (
-        <WantToBuySection
-          onOpenAdd={() => setShowAddWantToBuy(true)}
-          onOpenDecide={setDecideWantToBuyItem}
-          onRequestConfirm={setPendingConfirm}
-        />
-      )}
+        {subTab === 'buy_later' && (
+          <WantToBuySection
+            onOpenAdd={() => setShowAddWantToBuy(true)}
+            onOpenDecide={setDecideWantToBuyItem}
+            onRequestConfirm={setPendingConfirm}
+          />
+        )}
 
-      {subTab === 'insights' && (
-        <InsightsSection
-          onOpenWrap={(archive) => {
-            setSelectedWrapArchive(archive ?? null);
-            setWrapVisible(true);
-          }}
-        />
-      )}
+        {subTab === 'insights' && (
+          <InsightsSection
+            onOpenWrap={(archive) => {
+              setSelectedWrapArchive(archive ?? null);
+              setWrapVisible(true);
+            }}
+          />
+        )}
+      </FadeSlideIn>
 
       <VaultModals
         showAddTreat={showAddTreat}
@@ -183,7 +186,7 @@ export const TreatVaultScreen: React.FC = () => {
 
 const styles = StyleSheet.create({
   scrollContent: {
-    paddingBottom: 40,
-    gap: 14,
+    paddingBottom: 104,
+    gap: 16,
   },
 });

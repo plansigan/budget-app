@@ -8,6 +8,7 @@ import {
 } from '../../components/AnimatedPrimitives';
 import { IconBadge } from '../../components/AppIcon';
 import { useThemePrefs } from '../../context/BudgetContext';
+import { getCardShadow } from '../../theme/tokens';
 import { SpendingEnvelopeItem, TreatVaultItem } from '../../types/budget';
 import { triggerLightHaptic } from '../../utils/haptics';
 
@@ -57,7 +58,7 @@ export const TodayQuickAllowances: React.FC<TodayQuickAllowancesProps> =
       return (
         <>
           {envelopes.length > 0 && (
-            <FadeSlideIn delay={75} distance={12}>
+            <FadeSlideIn delay={75} distance={10}>
               <View style={styles.sectionBlock}>
                 <View style={styles.rowBetween}>
                   <Text style={[styles.sectionKicker, { color: shade.muted }]}>
@@ -75,7 +76,7 @@ export const TodayQuickAllowances: React.FC<TodayQuickAllowancesProps> =
                     <Text
                       style={[
                         styles.sectionSubHint,
-                        { color: shade.dopamine, fontWeight: '800' },
+                        { color: shade.dopamine, fontWeight: '700' },
                       ]}
                     >
                       Manage ›
@@ -92,12 +93,12 @@ export const TodayQuickAllowances: React.FC<TodayQuickAllowancesProps> =
                     const pct =
                       env.amountPerCycle > 0
                         ? Math.min(
-                            100,
-                            Math.max(
-                              0,
-                              Math.round((env.balance / env.amountPerCycle) * 100)
-                            )
+                          100,
+                          Math.max(
+                            0,
+                            Math.round((env.balance / env.amountPerCycle) * 100)
                           )
+                        )
                         : 0;
                     return (
                       <ScalePressable
@@ -109,6 +110,7 @@ export const TodayQuickAllowances: React.FC<TodayQuickAllowancesProps> =
                         )} left`}
                         style={[
                           styles.envPillCard,
+                          getCardShadow(shade),
                           {
                             backgroundColor: shade.card,
                             borderColor: shade.border,
@@ -121,7 +123,7 @@ export const TodayQuickAllowances: React.FC<TodayQuickAllowancesProps> =
                             size={15}
                             color={shade.dopamine}
                             bg={shade.dopamineSoft}
-                            boxSize={32}
+                            boxSize={34}
                           />
                           <View style={{ flex: 1, minWidth: 0 }}>
                             <Text
@@ -155,7 +157,7 @@ export const TodayQuickAllowances: React.FC<TodayQuickAllowancesProps> =
             </FadeSlideIn>
           )}
 
-          <FadeSlideIn delay={90} distance={14}>
+          <FadeSlideIn delay={95} distance={10}>
             <View style={styles.dualRow}>
               <ScalePressable
                 onPress={() => onOpenModal('save')}
@@ -163,6 +165,7 @@ export const TodayQuickAllowances: React.FC<TodayQuickAllowancesProps> =
                 accessibilityLabel="Save to Monthly Jar"
                 style={[
                   styles.bucketCard,
+                  getCardShadow(shade),
                   { backgroundColor: shade.card, borderColor: shade.border },
                 ]}
               >
@@ -193,7 +196,7 @@ export const TodayQuickAllowances: React.FC<TodayQuickAllowancesProps> =
                     style={{
                       fontSize: 11,
                       color: shade.muted,
-                      fontWeight: '600',
+                      fontWeight: '500',
                       fontVariant: ['tabular-nums'],
                     }}
                   >
@@ -204,7 +207,7 @@ export const TodayQuickAllowances: React.FC<TodayQuickAllowancesProps> =
                   percentage={savPct}
                   trackColor={shade.surface}
                   fillColor={shade.positive}
-                  height={7}
+                  height={6}
                 />
                 <Text style={[styles.bucketTapHint, { color: shade.positive }]}>
                   + Save to Jar
@@ -214,6 +217,7 @@ export const TodayQuickAllowances: React.FC<TodayQuickAllowancesProps> =
               <View
                 style={[
                   styles.bucketCard,
+                  getCardShadow(shade),
                   { backgroundColor: shade.card, borderColor: shade.border },
                 ]}
               >
@@ -246,8 +250,8 @@ export const TodayQuickAllowances: React.FC<TodayQuickAllowancesProps> =
                       ? activeTreat.claimed
                         ? `${activeTreat.name} claimed, open Goals`
                         : treatReady
-                        ? `Claim ${activeTreat.name}`
-                        : `Fund ${activeTreat.name}`
+                          ? `Claim ${activeTreat.name}`
+                          : `Fund ${activeTreat.name}`
                       : 'Add Treat Goal'
                   }
                   style={styles.treatBodyPress}
@@ -271,7 +275,7 @@ export const TodayQuickAllowances: React.FC<TodayQuickAllowancesProps> =
                           style={{
                             fontSize: 11,
                             color: shade.muted,
-                            fontWeight: '600',
+                            fontWeight: '500',
                             fontVariant: ['tabular-nums'],
                           }}
                         >
@@ -284,7 +288,7 @@ export const TodayQuickAllowances: React.FC<TodayQuickAllowancesProps> =
                         fillColor={
                           activeTreat.claimed ? shade.positive : shade.dopamine
                         }
-                        height={7}
+                        height={6}
                       />
                       <Text
                         numberOfLines={1}
@@ -300,8 +304,8 @@ export const TodayQuickAllowances: React.FC<TodayQuickAllowancesProps> =
                         {activeTreat.claimed
                           ? 'Claimed ✓ • Open Goals'
                           : treatReady
-                          ? `Claim ${activeTreat.name}`
-                          : `+ Fund ${activeTreat.name}`}
+                            ? `Claim ${activeTreat.name}`
+                            : `+ Fund ${activeTreat.name}`}
                       </Text>
                     </>
                   ) : (
@@ -332,7 +336,7 @@ export const TodayQuickAllowances: React.FC<TodayQuickAllowancesProps> =
 
 const styles = StyleSheet.create({
   sectionBlock: {
-    gap: 8,
+    gap: 10,
   },
   rowBetween: {
     flexDirection: 'row',
@@ -342,7 +346,7 @@ const styles = StyleSheet.create({
   },
   sectionKicker: {
     fontSize: 11,
-    fontWeight: '800',
+    fontWeight: '700',
     letterSpacing: 0.8,
   },
   sectionSubHint: {
@@ -354,25 +358,25 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
   },
   envPillCard: {
-    minWidth: 174,
-    borderRadius: 18,
+    minWidth: 176,
+    borderRadius: 20,
     borderWidth: 1,
     paddingHorizontal: 14,
-    paddingVertical: 12,
-    gap: 8,
+    paddingVertical: 13,
+    gap: 10,
   },
   envCardTop: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 9,
+    gap: 10,
   },
   envCardName: {
     fontSize: 13,
-    fontWeight: '800',
+    fontWeight: '700',
   },
   envCardBal: {
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: '600',
     fontVariant: ['tabular-nums'],
   },
   dualRow: {
@@ -382,41 +386,36 @@ const styles = StyleSheet.create({
   bucketCard: {
     flex: 1,
     minWidth: 0,
-    borderRadius: 20,
+    borderRadius: 22,
     borderWidth: 1,
-    padding: 16,
-    gap: 10,
+    padding: 18,
+    gap: 12,
     justifyContent: 'space-between',
-    shadowColor: '#111318',
-    shadowOpacity: 0.04,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 2,
   },
   treatBodyPress: {
     flex: 1,
     justifyContent: 'space-between',
-    gap: 10,
+    gap: 12,
   },
   bucketKicker: {
     fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 0.5,
+    fontWeight: '700',
+    letterSpacing: 0.6,
   },
   bucketPct: {
     fontSize: 12,
-    fontWeight: '800',
+    fontWeight: '700',
   },
   bucketValue: {
-    fontSize: 15,
+    fontSize: 17,
     fontWeight: '800',
   },
   bucketTapHint: {
     fontSize: 12,
-    fontWeight: '800',
+    fontWeight: '700',
   },
   emptyTreatVal: {
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: '500',
   },
 });

@@ -1,5 +1,6 @@
 import React, { type ComponentRef, useCallback, useEffect, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
+import { FadeSlideIn } from '../components/AnimatedPrimitives';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { PayBillModal } from '../components/PayBillModal';
 import { SegmentedTabBar } from '../components/form/SegmentedTabBar';
@@ -102,22 +103,24 @@ export const SetupAndStyleScreen: React.FC<SetupAndStyleScreenProps> = ({
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {subTab === 'plan' ? (
-          <BudgetPlanSection
-            focusAllowancesKey={focusAllowancesKey}
-            onRequestPayBill={setBillToPay}
-            onAllowancesLayout={handleAllowancesLayout}
-          />
-        ) : (
-          <SettingsAndBackupSection
-            onOpenFaq={onOpenFaq}
-            onOpenSnapshots={handleOpenSnapshots}
-            onOpenRestore={handleOpenRestore}
-            backupStatus={backupStatus}
-            onSetBackupStatus={setBackupStatus}
-            onRequestConfirm={setPendingConfirm}
-          />
-        )}
+        <FadeSlideIn triggerKey={subTab} direction="up" distance={8} withScale>
+          {subTab === 'plan' ? (
+            <BudgetPlanSection
+              focusAllowancesKey={focusAllowancesKey}
+              onRequestPayBill={setBillToPay}
+              onAllowancesLayout={handleAllowancesLayout}
+            />
+          ) : (
+            <SettingsAndBackupSection
+              onOpenFaq={onOpenFaq}
+              onOpenSnapshots={handleOpenSnapshots}
+              onOpenRestore={handleOpenRestore}
+              backupStatus={backupStatus}
+              onSetBackupStatus={setBackupStatus}
+              onRequestConfirm={setPendingConfirm}
+            />
+          )}
+        </FadeSlideIn>
       </ScrollView>
 
       <AutoSnapshotsModal
@@ -157,7 +160,7 @@ const styles = StyleSheet.create({
     gap: 14,
   },
   scrollContent: {
-    paddingBottom: 40,
+    paddingBottom: 104,
     gap: 16,
   },
 });

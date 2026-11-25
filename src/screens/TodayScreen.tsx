@@ -384,9 +384,9 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({
 
 const styles = StyleSheet.create({
   scrollContent: {
-    paddingBottom: 40,
+    paddingBottom: 104,
   },
   stack: {
-    gap: 15,
+    gap: 16,
   },
 });

@@ -1,10 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
+  AccessibilityInfo,
   AccessibilityRole,
   AccessibilityState,
   Animated,
   Easing,
   Insets,
+  Platform,
   Pressable,
   StyleProp,
   StyleSheet,
@@ -16,10 +18,57 @@ import {
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
+/**
+ * Tracks OS / browser reduced-motion preference so animations can gracefully simplify.
+ */
+export function useReducedMotion(): boolean {
+  const [reduced, setReduced] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    if (
+      Platform.OS === 'web' &&
+      typeof window !== 'undefined' &&
+      typeof window.matchMedia === 'function'
+    ) {
+      const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+      setReduced(mq.matches);
+      const onChange = (e: MediaQueryListEvent) => {
+        if (mounted) setReduced(e.matches);
+      };
+      mq.addEventListener?.('change', onChange);
+      return () => {
+        mounted = false;
+        mq.removeEventListener?.('change', onChange);
+      };
+    }
+
+    AccessibilityInfo?.isReduceMotionEnabled?.()
+      .then((val) => {
+        if (mounted) setReduced(Boolean(val));
+      })
+      .catch(() => {});
+
+    const sub = AccessibilityInfo?.addEventListener?.(
+      'reduceMotionChanged',
+      (val) => {
+        if (mounted) setReduced(Boolean(val));
+      }
+    );
+    return () => {
+      mounted = false;
+      sub?.remove?.();
+    };
+  }, []);
+
+  return reduced;
+}
+
 interface ScalePressableProps {
   onPress?: () => void;
   style?: StyleProp<ViewStyle>;
   scaleTo?: number;
+  hoverScale?: number;
   disabled?: boolean;
   accessibilityRole?: AccessibilityRole;
   accessibilityLabel?: string;
@@ -30,12 +79,13 @@ interface ScalePressableProps {
 }
 
 /**
- * Snappy spring-animated pressable button for tactile mobile feedback.
+ * Refined spring-animated pressable with subtle web hover lift and tactile press feedback.
  */
 export const ScalePressable: React.FC<ScalePressableProps> = ({
   onPress,
   style,
-  scaleTo = 0.94,
+  scaleTo = 0.96,
+  hoverScale = 1.01,
   disabled = false,
   accessibilityRole = 'button',
   accessibilityLabel,
@@ -45,37 +95,61 @@ export const ScalePressable: React.FC<ScalePressableProps> = ({
   children,
 }) => {
   const scale = useRef(new Animated.Value(1)).current;
+  const reducedMotion = useReducedMotion();
+  const isHoveredRef = useRef(false);
 
-  const handlePressIn = () => {
+  const animateTo = (target: number, tension = 280, friction = 22) => {
+    if (reducedMotion) {
+      scale.setValue(1);
+      return;
+    }
     Animated.spring(scale, {
-      toValue: scaleTo,
-      speed: 36,
-      bounciness: 10,
+      toValue: target,
+      tension,
+      friction,
       useNativeDriver: true,
     }).start();
+  };
+
+  const handlePressIn = () => {
+    animateTo(scaleTo, 320, 22);
   };
 
   const handlePressOut = () => {
-    Animated.spring(scale, {
-      toValue: 1,
-      speed: 28,
-      bounciness: 10,
-      useNativeDriver: true,
-    }).start();
+    animateTo(isHoveredRef.current && !disabled ? hoverScale : 1, 260, 20);
   };
+
+  const handleHoverIn = () => {
+    if (disabled || Platform.OS !== 'web') return;
+    isHoveredRef.current = true;
+    animateTo(hoverScale, 240, 24);
+  };
+
+  const handleHoverOut = () => {
+    if (Platform.OS !== 'web') return;
+    isHoveredRef.current = false;
+    animateTo(1, 240, 24);
+  };
+
+  const webCursor =
+    Platform.OS === 'web' && !disabled
+      ? ({ cursor: 'pointer' } as ViewStyle)
+      : undefined;
 
   return (
     <AnimatedPressable
       onPress={onPress}
       onPressIn={handlePressIn}
       onPressOut={handlePressOut}
+      onHoverIn={handleHoverIn}
+      onHoverOut={handleHoverOut}
       disabled={disabled}
       accessibilityRole={accessibilityRole}
       accessibilityLabel={accessibilityLabel}
       accessibilityHint={accessibilityHint}
       accessibilityState={{ disabled, ...accessibilityState }}
       hitSlop={hitSlop}
-      style={[style, { transform: [{ scale }] }]}
+      style={[webCursor, style, { transform: [{ scale }] }]}
     >
       {children}
     </AnimatedPressable>
@@ -87,43 +161,74 @@ interface FadeSlideInProps {
   distance?: number;
   direction?: 'up' | 'right' | 'left';
   triggerKey?: string | number;
+  withScale?: boolean;
   style?: StyleProp<ViewStyle>;
   children: React.ReactNode;
 }
 
 /**
- * Fast fade + spring slide entrance wrapper, re-triggered whenever triggerKey changes.
+ * Silky fade + spring slide entrance wrapper, re-triggered whenever triggerKey changes.
  */
 export const FadeSlideIn: React.FC<FadeSlideInProps> = ({
   delay = 0,
-  distance = 14,
+  distance = 12,
   direction = 'up',
   triggerKey = 'static',
+  withScale = false,
   style,
   children,
 }) => {
-  const opacity = useRef(new Animated.Value(0)).current;
-  const translate = useRef(new Animated.Value(distance)).current;
+  const reducedMotion = useReducedMotion();
+  const opacity = useRef(new Animated.Value(reducedMotion ? 1 : 0)).current;
+  const translate = useRef(
+    new Animated.Value(reducedMotion ? 0 : distance)
+  ).current;
+  const scale = useRef(
+    new Animated.Value(reducedMotion || !withScale ? 1 : 0.985)
+  ).current;
 
   useEffect(() => {
+    if (reducedMotion) {
+      opacity.setValue(1);
+      translate.setValue(0);
+      scale.setValue(1);
+      return;
+    }
+
     const startOffset = direction === 'left' ? -distance : distance;
     opacity.setValue(0);
     translate.setValue(startOffset);
+    if (withScale) {
+      scale.setValue(0.985);
+    }
 
-    const parallelAnim = Animated.parallel([
+    const animations: Animated.CompositeAnimation[] = [
       Animated.timing(opacity, {
         toValue: 1,
-        duration: 180,
+        duration: 210,
+        easing: Easing.out(Easing.cubic),
         useNativeDriver: true,
       }),
       Animated.spring(translate, {
         toValue: 0,
-        speed: 24,
-        bounciness: 7,
+        tension: 210,
+        friction: 24,
         useNativeDriver: true,
       }),
-    ]);
+    ];
 
+    if (withScale) {
+      animations.push(
+        Animated.spring(scale, {
+          toValue: 1,
+          tension: 210,
+          friction: 24,
+          useNativeDriver: true,
+        })
+      );
+    }
+
+    const parallelAnim = Animated.parallel(animations);
     const anim =
       delay > 0
         ? Animated.sequence([Animated.delay(delay), parallelAnim])
@@ -131,17 +236,84 @@ export const FadeSlideIn: React.FC<FadeSlideInProps> = ({
 
     anim.start();
     return () => anim.stop();
-  }, [triggerKey, delay, distance, direction, opacity, translate]);
+  }, [triggerKey, delay, distance, direction, withScale, reducedMotion, opacity, translate, scale]);
 
-  const transformStyle =
+  const transforms =
     direction === 'up'
-      ? { transform: [{ translateY: translate }] }
-      : { transform: [{ translateX: translate }] };
+      ? [{ translateY: translate }, ...(withScale ? [{ scale }] : [])]
+      : [{ translateX: translate }, ...(withScale ? [{ scale }] : [])];
 
   return (
-    <Animated.View style={[style, { opacity }, transformStyle]}>
+    <Animated.View style={[style, { opacity, transform: transforms }]}>
       {children}
     </Animated.View>
+  );
+};
+
+export interface PillLayout {
+  x: number;
+  width: number;
+}
+
+interface SlidingIndicatorProps {
+  activeLayout: PillLayout | undefined;
+  style?: StyleProp<ViewStyle>;
+}
+
+/**
+ * Spring-animated sliding pill indicator used by floating docks, segmented bars, and day belts.
+ */
+export const SlidingIndicator: React.FC<SlidingIndicatorProps> = ({
+  activeLayout,
+  style,
+}) => {
+  const reducedMotion = useReducedMotion();
+  const translateX = useRef(new Animated.Value(0)).current;
+  const widthAnim = useRef(new Animated.Value(0)).current;
+  const opacityAnim = useRef(new Animated.Value(0)).current;
+  const hasInitializedRef = useRef(false);
+
+  useEffect(() => {
+    if (!activeLayout || activeLayout.width <= 0) return;
+
+    if (!hasInitializedRef.current || reducedMotion) {
+      hasInitializedRef.current = true;
+      translateX.setValue(activeLayout.x);
+      widthAnim.setValue(activeLayout.width);
+      opacityAnim.setValue(1);
+      return;
+    }
+
+    Animated.parallel([
+      Animated.spring(translateX, {
+        toValue: activeLayout.x,
+        tension: 260,
+        friction: 25,
+        useNativeDriver: false,
+      }),
+      Animated.spring(widthAnim, {
+        toValue: activeLayout.width,
+        tension: 260,
+        friction: 25,
+        useNativeDriver: false,
+      }),
+    ]).start();
+  }, [activeLayout, reducedMotion, translateX, widthAnim, opacityAnim]);
+
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={[
+        style,
+        {
+          position: 'absolute',
+          left: 0,
+          opacity: opacityAnim,
+          width: widthAnim,
+          transform: [{ translateX }],
+        },
+      ]}
+    />
   );
 };
 
@@ -152,7 +324,7 @@ interface PopValueTextProps {
 }
 
 /**
- * Pulses its scale briefly whenever valueTrigger updates so numbers feel alive.
+ * Pulses its scale gently whenever valueTrigger updates so numbers feel alive.
  */
 export const PopValueText: React.FC<PopValueTextProps> = ({
   valueTrigger,
@@ -161,30 +333,32 @@ export const PopValueText: React.FC<PopValueTextProps> = ({
 }) => {
   const scale = useRef(new Animated.Value(1)).current;
   const isInitial = useRef(true);
+  const reducedMotion = useReducedMotion();
 
   useEffect(() => {
     if (isInitial.current) {
       isInitial.current = false;
       return;
     }
+    if (reducedMotion) return;
     scale.setValue(1);
     const anim = Animated.sequence([
       Animated.spring(scale, {
-        toValue: 1.09,
-        speed: 45,
-        bounciness: 12,
+        toValue: 1.06,
+        tension: 320,
+        friction: 18,
         useNativeDriver: true,
       }),
       Animated.spring(scale, {
         toValue: 1,
-        speed: 30,
-        bounciness: 8,
+        tension: 240,
+        friction: 20,
         useNativeDriver: true,
       }),
     ]);
     anim.start();
     return () => anim.stop();
-  }, [valueTrigger, scale]);
+  }, [valueTrigger, reducedMotion, scale]);
 
   return (
     <Animated.View style={[style, { transform: [{ scale }] }]}>
@@ -212,17 +386,22 @@ export const AnimatedProgressBar: React.FC<AnimatedProgressBarProps> = ({
   const safePct = Number.isFinite(percentage) ? percentage : 0;
   const clamped = Math.max(0, Math.min(100, safePct));
   const widthAnim = useRef(new Animated.Value(clamped)).current;
+  const reducedMotion = useReducedMotion();
 
   useEffect(() => {
+    if (reducedMotion) {
+      widthAnim.setValue(clamped);
+      return;
+    }
     const anim = Animated.spring(widthAnim, {
       toValue: clamped,
-      tension: 80,
-      friction: 10,
+      tension: 95,
+      friction: 14,
       useNativeDriver: false,
     });
     anim.start();
     return () => anim.stop();
-  }, [clamped, widthAnim]);
+  }, [clamped, reducedMotion, widthAnim]);
 
   const fillWidth = widthAnim.interpolate({
     inputRange: [0, 100],
@@ -271,6 +450,8 @@ export const AnimatedCounter: React.FC<AnimatedCounterProps> = ({
   const safeTarget = Number.isFinite(value) ? value : 0;
   const animVal = useRef(new Animated.Value(safeTarget)).current;
   const [displayValue, setDisplayValue] = useState(safeTarget);
+  const reducedMotion = useReducedMotion();
+
   const formatVal = React.useCallback(
     (v: number) => {
       const factor = 10 ** decimals;
@@ -287,13 +468,13 @@ export const AnimatedCounter: React.FC<AnimatedCounterProps> = ({
   const lastTickRef = useRef<number>(0);
 
   useEffect(() => {
-    if (masked) return;
+    if (masked || reducedMotion) return;
     const listenerId = animVal.addListener(({ value: v }) => {
       const now = Date.now();
       const formatted = formatVal(v);
       if (
         formatted !== lastFormattedRef.current &&
-        now - lastTickRef.current >= 40
+        now - lastTickRef.current >= 36
       ) {
         lastFormattedRef.current = formatted;
         lastTickRef.current = now;
@@ -303,11 +484,11 @@ export const AnimatedCounter: React.FC<AnimatedCounterProps> = ({
     return () => {
       animVal.removeListener(listenerId);
     };
-  }, [animVal, formatVal, masked]);
+  }, [animVal, formatVal, masked, reducedMotion]);
 
   useEffect(() => {
     animVal.stopAnimation();
-    if (masked) {
+    if (masked || reducedMotion) {
       animVal.setValue(safeTarget);
       lastFormattedRef.current = formatVal(safeTarget);
       setDisplayValue(safeTarget);
@@ -315,7 +496,7 @@ export const AnimatedCounter: React.FC<AnimatedCounterProps> = ({
     }
     const anim = Animated.timing(animVal, {
       toValue: safeTarget,
-      duration: 360,
+      duration: 380,
       easing: Easing.out(Easing.cubic),
       useNativeDriver: false,
     });
@@ -326,7 +507,7 @@ export const AnimatedCounter: React.FC<AnimatedCounterProps> = ({
       }
     });
     return () => anim.stop();
-  }, [safeTarget, animVal, formatVal, masked]);
+  }, [safeTarget, animVal, formatVal, masked, reducedMotion]);
 
   const factor = 10 ** decimals;
 
