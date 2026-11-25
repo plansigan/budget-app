@@ -54,6 +54,7 @@ import { SetupAndStyleScreen } from './src/screens/SetupAndStyleScreen';
 import { TodayScreen } from './src/screens/TodayScreen';
 import { TreatVaultScreen } from './src/screens/TreatVaultScreen';
 import { WalletScreen } from './src/screens/WalletScreen';
+import { FONT_FAMILY } from './src/theme/tokens';
 import { triggerLightHaptic } from './src/utils/haptics';
 import { usePwaUpdate } from './src/utils/usePwaUpdate';
 import {
@@ -142,23 +143,35 @@ const AppShell: React.FC = () => {
 
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+    if (!document.getElementById('velvet-web-font')) {
+      const link = document.createElement('link');
+      link.id = 'velvet-web-font';
+      link.rel = 'stylesheet';
+      link.href =
+        'https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap';
+      document.head.appendChild(link);
+    }
     if (!document.getElementById('velvet-web-polish')) {
       const style = document.createElement('style');
       style.id = 'velvet-web-polish';
       style.textContent = [
         'input:focus:not(:focus-visible), textarea:focus:not(:focus-visible) { outline: none !important; box-shadow: none !important; }',
         '@supports (-webkit-touch-callout: none) { input, textarea, select { font-size: 16px !important; } }',
-        'html, body { height: 100%; margin: 0; padding: 0; }',
-        'body { padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); box-sizing: border-box; }',
+        'html, body { height: 100%; margin: 0; padding: 0; font-family: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; -webkit-font-smoothing: antialiased; }',
+        'body { padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); box-sizing: border-box; transition: background-color 220ms ease; }',
+        '::-webkit-scrollbar { width: 6px; height: 6px; }',
+        '::-webkit-scrollbar-track { background: transparent; }',
+        '::-webkit-scrollbar-thumb { background: rgba(128,128,128,0.22); border-radius: 999px; }',
+        '::-webkit-scrollbar-thumb:hover { background: rgba(128,128,128,0.36); }',
       ].join('\n');
       document.head.appendChild(style);
     }
-    document.body.style.backgroundColor = shade.dark ? '#06070A' : shade.bg;
-  }, [shade.bg, shade.dark]);
+    document.body.style.backgroundColor = shade.bg;
+  }, [shade.bg]);
 
-  const isDesktopWeb = Platform.OS === 'web' && width > 500;
-  const headerTopPad = isDesktopWeb ? 12 : Math.max(insets.top, 12);
-  const tabBottomPad = isDesktopWeb ? 10 : Math.max(insets.bottom, 10);
+  const isDesktopWeb = Platform.OS === 'web' && width > 560;
+  const headerTopPad = isDesktopWeb ? 18 : Math.max(insets.top, 12);
+  const tabBottomPad = isDesktopWeb ? 18 : Math.max(insets.bottom, 12);
 
   const syncWebHash = useCallback(
     (tab: TabKey, accountId: string | null) => {
@@ -270,7 +283,7 @@ const AppShell: React.FC = () => {
             styles.updateBanner,
             {
               backgroundColor: shade.card,
-              borderBottomColor: shade.border,
+              borderColor: shade.border,
             },
           ]}
         >
@@ -313,13 +326,17 @@ const AppShell: React.FC = () => {
       )}
 
       <View style={styles.contentWrap}>
-        <ToastOverlay />
+        <ToastOverlay bottomOffset={tabBottomPad + 72} />
 
         <FadeSlideIn
           triggerKey={activeTab}
           direction="up"
-          distance={10}
-          style={styles.body}
+          distance={8}
+          withScale
+          style={[
+            styles.body,
+            isDesktopWeb && styles.bodyDesktop,
+          ]}
         >
           {mountedTabs.today && (
             <View
@@ -388,7 +405,7 @@ const AppShell: React.FC = () => {
 
       <BottomTabBar
         activeTab={activeTab}
-        paddingBottom={tabBottomPad}
+        bottomOffset={tabBottomPad}
         onSelectTab={switchTab}
       />
 
@@ -413,22 +430,10 @@ const AppShell: React.FC = () => {
     </View>
   );
 
-  if (isDesktopWeb) {
+  if (Platform.OS === 'web') {
     return (
-      <View
-        style={[
-          styles.webBackdrop,
-          { backgroundColor: shade.dark ? '#06070A' : '#EDEFF2' },
-        ]}
-      >
-        <View
-          style={[
-            styles.webPhoneShell,
-            { backgroundColor: shade.bg, borderColor: shade.border },
-          ]}
-        >
-          {innerContent}
-        </View>
+      <View style={[styles.webCanvas, { backgroundColor: shade.bg }]}>
+        <View style={styles.webColumn}>{innerContent}</View>
       </View>
     );
   }
@@ -451,20 +456,16 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
-  webBackdrop: {
+  webCanvas: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 16,
-  },
-  webPhoneShell: {
     width: '100%',
-    maxWidth: 420,
-    height: '100%',
-    maxHeight: 840,
-    borderRadius: 36,
-    borderWidth: 2,
-    overflow: 'hidden',
+    alignItems: 'center',
+  },
+  webColumn: {
+    flex: 1,
+    width: '100%',
+    maxWidth: 560,
+    position: 'relative',
   },
   safeArea: {
     flex: 1,
@@ -475,17 +476,21 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   loadingBrand: {
-    fontSize: 24,
+    fontSize: 26,
     fontWeight: '800',
-    letterSpacing: -0.5,
+    letterSpacing: -0.6,
+    fontFamily: FONT_FAMILY,
   },
   updateBanner: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 9,
-    borderBottomWidth: 1,
+    marginHorizontal: 16,
+    marginTop: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 16,
+    borderWidth: 1,
     gap: 10,
   },
   updateLeft: {
@@ -497,7 +502,7 @@ const styles = StyleSheet.create({
   },
   updateText: {
     fontSize: 12,
-    fontWeight: '800',
+    fontWeight: '700',
   },
   updateActions: {
     flexDirection: 'row',
@@ -507,17 +512,17 @@ const styles = StyleSheet.create({
   updateRefreshBtn: {
     paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: 9,
+    borderRadius: 999,
   },
   updateRefreshText: {
     fontSize: 11,
-    fontWeight: '800',
+    fontWeight: '700',
     color: '#FFFFFF',
   },
   updateDismissBtn: {
     width: 28,
     height: 28,
-    borderRadius: 9,
+    borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -528,6 +533,10 @@ const styles = StyleSheet.create({
   body: {
     flex: 1,
     paddingHorizontal: 16,
+    paddingTop: 10,
+  },
+  bodyDesktop: {
+    paddingHorizontal: 20,
     paddingTop: 12,
   },
   tabPane: {

@@ -41,7 +41,10 @@ const pwaHeadTags = [
   '<meta name="apple-mobile-web-app-title" content="Velvet Budget" />',
   `<link rel="apple-touch-icon" sizes="180x180" href="${appleTouchIconHref}" />`,
   `<link rel="manifest" href="${manifestHref}" />`,
-  '<style id="velvet-web-base">input:focus:not(:focus-visible),textarea:focus:not(:focus-visible){outline:none !important;box-shadow:none !important;}@supports (-webkit-touch-callout: none){input,textarea,select{font-size:16px !important;}}</style>',
+  '<link rel="preconnect" href="https://fonts.googleapis.com" />',
+  '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />',
+  '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" />',
+  '<style id="velvet-web-base">body{font-family:"Plus Jakarta Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;transition:background-color 240ms ease;}input:focus:not(:focus-visible),textarea:focus:not(:focus-visible){outline:none !important;box-shadow:none !important;}@supports (-webkit-touch-callout: none){input,textarea,select{font-size:16px !important;}}@media (prefers-reduced-motion:reduce){*{transition-duration:0.01ms !important;animation-duration:0.01ms !important;}}</style>',
 ].join('\n    ');
 
 if (!html.includes('id="velvet-web-base"')) {

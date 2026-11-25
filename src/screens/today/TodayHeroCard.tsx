@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Platform, StyleSheet, Text, View, ViewStyle } from 'react-native';
 import {
   AnimatedCounter,
   FadeSlideIn,
@@ -8,6 +8,7 @@ import {
 } from '../../components/AnimatedPrimitives';
 import { AppIcon, IconBadge } from '../../components/AppIcon';
 import { useThemePrefs } from '../../context/BudgetContext';
+import { FONT_FAMILY, getHeroShadow } from '../../theme/tokens';
 import { triggerLightHaptic } from '../../utils/haptics';
 
 interface TodayHeroCardProps {
@@ -51,17 +52,27 @@ export const TodayHeroCard: React.FC<TodayHeroCardProps> = React.memo(
     const endDayLabel = hasEndedDay
       ? '✓ Day Ended'
       : isOverspent
-      ? 'Over Budget'
-      : safeToSpendOnSelectedDay <= 0
-      ? '₱0 Left'
-      : 'End Day & Save';
+        ? 'Over Budget'
+        : safeToSpendOnSelectedDay <= 0
+          ? '₱0 Left'
+          : 'End Day & Save';
+
+    const webHeroGradient =
+      Platform.OS === 'web'
+        ? ({
+            backgroundImage:
+              'radial-gradient(120% 100% at 90% 0%, rgba(91, 91, 214, 0.20) 0%, rgba(22, 24, 31, 0) 62%)',
+          } as ViewStyle)
+        : undefined;
 
     return (
       <>
-        <FadeSlideIn delay={40} distance={14}>
+        <FadeSlideIn delay={40} distance={10} withScale>
           <View
             style={[
               styles.metalCard,
+              getHeroShadow(shade),
+              webHeroGradient,
               {
                 backgroundColor: shade.heroBg,
                 borderColor: shade.heroBorder,
@@ -116,8 +127,8 @@ export const TodayHeroCard: React.FC<TodayHeroCardProps> = React.memo(
                 {isOverspent
                   ? ' • Over budget'
                   : hasEndedDay
-                  ? ' • Day ended'
-                  : ''}
+                    ? ' • Day ended'
+                    : ''}
               </Text>
             </View>
 
@@ -127,6 +138,7 @@ export const TodayHeroCard: React.FC<TodayHeroCardProps> = React.memo(
                 accessibilityRole="button"
                 accessibilityLabel="Log a spend"
                 scaleTo={0.96}
+                hoverScale={1.015}
                 style={[styles.spendPrimaryBtn, { backgroundColor: '#FFFFFF' }]}
               >
                 <Text style={[styles.spendPrimaryText, { color: '#141519' }]}>
@@ -142,12 +154,13 @@ export const TodayHeroCard: React.FC<TodayHeroCardProps> = React.memo(
                   hasEndedDay
                     ? 'Day already ended'
                     : isOverspent
-                    ? 'Over budget today'
-                    : safeToSpendOnSelectedDay <= 0
-                    ? 'Zero balance left today'
-                    : 'End day and save remaining balance'
+                      ? 'Over budget today'
+                      : safeToSpendOnSelectedDay <= 0
+                        ? 'Zero balance left today'
+                        : 'End day and save remaining balance'
                 }
                 scaleTo={0.96}
+                hoverScale={1.015}
                 style={[
                   styles.bankBtn,
                   {
@@ -165,10 +178,10 @@ export const TodayHeroCard: React.FC<TodayHeroCardProps> = React.memo(
                       color: canEndDay
                         ? '#FFFFFF'
                         : hasEndedDay
-                        ? shade.heroPositive
-                        : isOverspent
-                        ? shade.heroWarning
-                        : shade.heroMuted,
+                          ? shade.heroPositive
+                          : isOverspent
+                            ? shade.heroWarning
+                            : shade.heroMuted,
                     },
                   ]}
                 >
@@ -252,15 +265,10 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   metalCard: {
-    borderRadius: 24,
+    borderRadius: 28,
     borderWidth: 1,
-    padding: 20,
-    gap: 15,
-    shadowColor: '#111318',
-    shadowOpacity: 0.14,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 6,
+    padding: 22,
+    gap: 18,
   },
   paydayPill: {
     flexDirection: 'row',
@@ -272,23 +280,24 @@ const styles = StyleSheet.create({
   },
   paydayText: {
     fontSize: 11,
-    fontWeight: '800',
+    fontWeight: '700',
   },
   balanceBlock: {
-    gap: 4,
+    gap: 6,
   },
   balanceLabel: {
     fontSize: 13,
-    fontWeight: '700',
+    fontWeight: '600',
   },
   bigBalance: {
-    fontSize: 38,
+    fontSize: 42,
     fontWeight: '800',
-    letterSpacing: -0.9,
+    letterSpacing: -1.1,
+    fontFamily: FONT_FAMILY,
   },
   subBalance: {
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: '500',
   },
   primaryActionsRow: {
     flexDirection: 'row',
@@ -297,29 +306,29 @@ const styles = StyleSheet.create({
   },
   spendPrimaryBtn: {
     flex: 1.25,
-    paddingVertical: 14,
-    borderRadius: 15,
+    paddingVertical: 15,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
   },
   spendPrimaryText: {
     fontSize: 15,
-    fontWeight: '900',
-    letterSpacing: 0.2,
+    fontWeight: '800',
+    letterSpacing: 0.1,
   },
   bankBtn: {
     flex: 1,
-    paddingVertical: 14,
-    borderRadius: 15,
+    paddingVertical: 15,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
   },
   bankBtnText: {
     fontSize: 13,
-    fontWeight: '800',
+    fontWeight: '700',
   },
   paydayBanner: {
-    borderRadius: 20,
+    borderRadius: 22,
     borderWidth: 1.2,
     paddingHorizontal: 16,
     paddingVertical: 14,
@@ -337,11 +346,11 @@ const styles = StyleSheet.create({
   },
   paydayBannerTitle: {
     fontSize: 14,
-    fontWeight: '800',
+    fontWeight: '700',
   },
   paydayBannerSub: {
     fontSize: 12,
-    marginTop: 1,
+    marginTop: 2,
   },
   paydayBannerActions: {
     flexDirection: 'row',
@@ -349,19 +358,19 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   paydayCheckInBtn: {
-    paddingHorizontal: 13,
+    paddingHorizontal: 14,
     paddingVertical: 9,
-    borderRadius: 11,
+    borderRadius: 999,
   },
   paydayCheckInText: {
     fontSize: 12,
-    fontWeight: '800',
+    fontWeight: '700',
     color: '#FFFFFF',
   },
   paydayDismissBtn: {
     width: 32,
     height: 32,
-    borderRadius: 10,
+    borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
   },

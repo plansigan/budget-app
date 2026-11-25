@@ -2,12 +2,19 @@ import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useThemePrefs } from '../../context/BudgetContext';
 import { useToast } from '../../context/ToastContext';
+import { getDockShadow, getWebGlassStyle } from '../../theme/tokens';
 import { FadeSlideIn, ScalePressable } from '../AnimatedPrimitives';
 
+interface ToastOverlayProps {
+  bottomOffset?: number;
+}
+
 /**
- * Floating non-layout-shifting toast banner anchored above the bottom tab bar.
+ * Floating non-layout-shifting toast capsule anchored cleanly above the floating dock.
  */
-export const ToastOverlay: React.FC = () => {
+export const ToastOverlay: React.FC<ToastOverlayProps> = ({
+  bottomOffset = 88,
+}) => {
   const { shade } = useThemePrefs();
   const { toast, dismissToast } = useToast();
 
@@ -17,9 +24,9 @@ export const ToastOverlay: React.FC = () => {
     <View
       pointerEvents="box-none"
       accessibilityLiveRegion="polite"
-      style={styles.wrap}
+      style={[styles.wrap, { bottom: bottomOffset }]}
     >
-      <FadeSlideIn triggerKey={toast.id} direction="up" distance={14}>
+      <FadeSlideIn triggerKey={toast.id} direction="up" distance={12} withScale>
         <ScalePressable
           onPress={dismissToast}
           scaleTo={0.97}
@@ -27,9 +34,13 @@ export const ToastOverlay: React.FC = () => {
           accessibilityLabel={toast.text}
           style={[
             styles.banner,
+            getDockShadow(shade),
+            getWebGlassStyle(18),
             {
-              backgroundColor: toast.isDopamine ? shade.heroBg : shade.card,
-              borderColor: toast.isDopamine ? shade.heroBorder : shade.border,
+              backgroundColor: toast.isDopamine ? shade.heroBg : shade.glassBg,
+              borderColor: toast.isDopamine
+                ? shade.heroBorder
+                : shade.glassBorder,
             },
           ]}
         >
@@ -50,26 +61,21 @@ export const ToastOverlay: React.FC = () => {
 const styles = StyleSheet.create({
   wrap: {
     position: 'absolute',
-    bottom: 12,
-    left: 16,
-    right: 16,
+    left: 20,
+    right: 20,
+    alignItems: 'center',
     zIndex: 40,
   },
   banner: {
-    paddingHorizontal: 14,
+    paddingHorizontal: 18,
     paddingVertical: 11,
-    borderRadius: 14,
+    borderRadius: 999,
     borderWidth: 1,
     alignItems: 'center',
-    shadowColor: '#111318',
-    shadowOpacity: 0.12,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 6,
   },
   text: {
     fontSize: 12,
-    fontWeight: '800',
+    fontWeight: '700',
     textAlign: 'center',
   },
 });

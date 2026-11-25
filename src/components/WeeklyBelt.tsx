@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { LayoutChangeEvent, StyleSheet, Text, View } from 'react-native';
 import {
   getTodayKey,
   useBudgetActions,
@@ -7,8 +7,14 @@ import {
   useThemePrefs,
 } from '../context/BudgetContext';
 import { parseDateKeyLocal } from '../state/budgetMath';
+import { getCardShadow } from '../theme/tokens';
 import { triggerLightHaptic } from '../utils/haptics';
-import { FadeSlideIn, ScalePressable } from './AnimatedPrimitives';
+import {
+  FadeSlideIn,
+  PillLayout,
+  ScalePressable,
+  SlidingIndicator,
+} from './AnimatedPrimitives';
 import { AppIcon } from './AppIcon';
 
 const SHORT_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -50,7 +56,7 @@ function buildWeekWindow(
 ): { days: WeekDayItem[]; rangeLabel: string } {
   const todayMidnight = parseDateKeyLocal(anchorDateKey);
   const todayKey = getTodayKey(todayMidnight);
-  const dayOfWeek = todayMidnight.getDay(); // 0=Sun, 1=Mon
+  const dayOfWeek = todayMidnight.getDay();
   const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
 
   const monday = new Date(todayMidnight);
@@ -86,8 +92,7 @@ function buildWeekWindow(
 }
 
 /**
- * Top Mon-Sun weekly belt showing today's day and letting the user step backward
- * across recent weeks to inspect past performance or log forgotten expenses.
+ * Airy Mon-Sun weekly belt with a spring-sliding active day pill and week paging.
  */
 export const WeeklyBelt: React.FC = React.memo(() => {
   const { shade, formatVisiblePeso } = useThemePrefs();
@@ -95,6 +100,8 @@ export const WeeklyBelt: React.FC = React.memo(() => {
   const { setSelectedDateKey } = useBudgetActions();
 
   const [weekOffset, setWeekOffset] = useState(0);
+  const [weekDirection, setWeekDirection] = useState<'left' | 'right'>('right');
+  const [dayLayouts, setDayLayouts] = useState<Record<string, PillLayout>>({});
 
   useEffect(() => {
     setWeekOffset(0);
@@ -117,14 +124,37 @@ export const WeeklyBelt: React.FC = React.memo(() => {
     weekOffset === 0
       ? `This Week • ${rangeLabel}`
       : weekOffset === -1
-      ? `Last Week • ${rangeLabel}`
-      : rangeLabel;
+        ? `Last Week • ${rangeLabel}`
+        : rangeLabel;
+
+  const handleDayLayout = useCallback(
+    (dateKey: string) => (e: LayoutChangeEvent) => {
+      const { x, width } = e.nativeEvent.layout;
+      setDayLayouts((prev) => {
+        const existing = prev[dateKey];
+        if (
+          existing &&
+          Math.abs(existing.x - x) < 0.5 &&
+          Math.abs(existing.width - width) < 0.5
+        ) {
+          return prev;
+        }
+        return { ...prev, [dateKey]: { x, width } };
+      });
+    },
+    []
+  );
+
+  const selectedInCurrentWeek = weekDays.some(
+    (d) => d.dateKey === selectedDateKey
+  );
 
   return (
     <View style={styles.container}>
       <View
         style={[
           styles.beltCard,
+          getCardShadow(shade),
           { backgroundColor: shade.card, borderColor: shade.border },
         ]}
       >
@@ -133,6 +163,7 @@ export const WeeklyBelt: React.FC = React.memo(() => {
             disabled={weekOffset <= MIN_WEEK_OFFSET}
             onPress={() => {
               triggerLightHaptic();
+              setWeekDirection('left');
               setWeekOffset((prev) => Math.max(MIN_WEEK_OFFSET, prev - 1));
             }}
             accessibilityLabel="Previous week"
@@ -156,6 +187,7 @@ export const WeeklyBelt: React.FC = React.memo(() => {
             disabled={weekOffset >= 0}
             onPress={() => {
               triggerLightHaptic();
+              setWeekDirection('right');
               setWeekOffset((prev) => Math.min(0, prev + 1));
             }}
             accessibilityLabel="Next week"
@@ -172,92 +204,114 @@ export const WeeklyBelt: React.FC = React.memo(() => {
           </ScalePressable>
         </View>
 
-        <View style={styles.daysRow}>
-          {weekDays.map((item) => {
-            const isSelected = item.dateKey === selectedDateKey;
-            const summary = getDaySummary(item.dateKey);
-
-            let dotColor = shade.border;
-            let selectedDotColor = shade.accentText;
-            if (summary.safeRemaining < 0) {
-              dotColor = shade.warning;
-              selectedDotColor = shade.dark ? shade.warning : shade.heroWarning;
-            } else if (summary.savedOrSkipped > 0) {
-              dotColor = shade.dopamine;
-              selectedDotColor = shade.dark ? shade.dopamine : shade.heroDopamine;
-            } else if (summary.entriesCount > 0) {
-              dotColor = shade.positive;
-              selectedDotColor = shade.dark ? shade.positive : shade.heroPositive;
-            }
-
-            return (
-              <ScalePressable
-                key={item.dateKey}
-                disabled={item.isFuture}
-                onPress={() => setSelectedDateKey(item.dateKey)}
-                accessibilityRole="button"
-                accessibilityLabel={item.fullLabel}
-                accessibilityState={{
-                  selected: isSelected,
-                  disabled: item.isFuture,
-                }}
-                hitSlop={{ top: 8, bottom: 8 }}
-                scaleTo={0.92}
+        <FadeSlideIn
+          triggerKey={weekOffset}
+          direction={weekDirection}
+          distance={14}
+        >
+          <View style={styles.daysRow}>
+            {selectedInCurrentWeek && (
+              <SlidingIndicator
+                activeLayout={dayLayouts[selectedDateKey]}
                 style={[
-                  styles.dayPill,
-                  {
-                    backgroundColor: isSelected
-                      ? shade.accent
-                      : item.isToday
-                      ? shade.surface
-                      : 'transparent',
-                    borderColor:
-                      item.isToday && !isSelected
-                        ? shade.accent
-                        : 'transparent',
-                    borderWidth: item.isToday && !isSelected ? 1 : 0,
-                    opacity: item.isFuture ? 0.4 : 1,
-                  },
+                  styles.activeDayPill,
+                  { backgroundColor: shade.accent },
                 ]}
-              >
-                <Text
-                  numberOfLines={1}
-                  style={[
-                    styles.dayShort,
-                    { color: isSelected ? shade.accentText : shade.muted },
-                  ]}
-                >
-                  {item.shortDay}
-                </Text>
-                <Text
-                  numberOfLines={1}
-                  style={[
-                    styles.dayNum,
-                    { color: isSelected ? shade.accentText : shade.text },
-                  ]}
-                >
-                  {item.dayNum}
-                </Text>
+              />
+            )}
+            {weekDays.map((item) => {
+              const isSelected = item.dateKey === selectedDateKey;
+              const summary = getDaySummary(item.dateKey);
+
+              let dotColor = shade.border;
+              let selectedDotColor = shade.accentText;
+              if (summary.safeRemaining < 0) {
+                dotColor = shade.warning;
+                selectedDotColor = shade.dark
+                  ? shade.warning
+                  : shade.heroWarning;
+              } else if (summary.savedOrSkipped > 0) {
+                dotColor = shade.dopamine;
+                selectedDotColor = shade.dark
+                  ? shade.dopamine
+                  : shade.heroDopamine;
+              } else if (summary.entriesCount > 0) {
+                dotColor = shade.positive;
+                selectedDotColor = shade.dark
+                  ? shade.positive
+                  : shade.heroPositive;
+              }
+
+              return (
                 <View
-                  style={[
-                    styles.statusDot,
-                    {
-                      backgroundColor: isSelected ? selectedDotColor : dotColor,
-                    },
-                  ]}
-                />
-              </ScalePressable>
-            );
-          })}
-        </View>
+                  key={item.dateKey}
+                  onLayout={handleDayLayout(item.dateKey)}
+                  style={styles.daySlot}
+                >
+                  <ScalePressable
+                    disabled={item.isFuture}
+                    onPress={() => setSelectedDateKey(item.dateKey)}
+                    accessibilityRole="button"
+                    accessibilityLabel={item.fullLabel}
+                    accessibilityState={{
+                      selected: isSelected,
+                      disabled: item.isFuture,
+                    }}
+                    hitSlop={{ top: 8, bottom: 8 }}
+                    scaleTo={0.92}
+                    style={[
+                      styles.dayPill,
+                      {
+                        backgroundColor:
+                          item.isToday && !isSelected
+                            ? shade.surface
+                            : 'transparent',
+                        opacity: item.isFuture ? 0.38 : 1,
+                      },
+                    ]}
+                  >
+                    <Text
+                      numberOfLines={1}
+                      style={[
+                        styles.dayShort,
+                        { color: isSelected ? shade.accentText : shade.muted },
+                      ]}
+                    >
+                      {item.shortDay}
+                    </Text>
+                    <Text
+                      numberOfLines={1}
+                      style={[
+                        styles.dayNum,
+                        { color: isSelected ? shade.accentText : shade.text },
+                      ]}
+                    >
+                      {item.dayNum}
+                    </Text>
+                    <View
+                      style={[
+                        styles.statusDot,
+                        {
+                          backgroundColor: isSelected
+                            ? selectedDotColor
+                            : dotColor,
+                        },
+                      ]}
+                    />
+                  </ScalePressable>
+                </View>
+              );
+            })}
+          </View>
+        </FadeSlideIn>
       </View>
 
       {selectedDateKey !== todayKey && (
-        <FadeSlideIn triggerKey={selectedDateKey} distance={8}>
+        <FadeSlideIn triggerKey={selectedDateKey} distance={8} withScale>
           <View
             style={[
               styles.pastBanner,
-              { backgroundColor: shade.surface, borderColor: shade.accent },
+              { backgroundColor: shade.surface, borderColor: shade.border },
             ]}
           >
             <View style={{ flex: 1, minWidth: 0 }}>
@@ -300,12 +354,12 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   beltCard: {
-    borderRadius: 18,
+    borderRadius: 22,
     borderWidth: 1,
-    paddingHorizontal: 8,
-    paddingTop: 8,
-    paddingBottom: 6,
-    gap: 6,
+    paddingHorizontal: 10,
+    paddingTop: 10,
+    paddingBottom: 8,
+    gap: 8,
   },
   weekNavRow: {
     flexDirection: 'row',
@@ -316,33 +370,41 @@ const styles = StyleSheet.create({
   weekArrowBtn: {
     width: 28,
     height: 28,
-    borderRadius: 9,
+    borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
   },
   weekHeaderTitle: {
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 0.2,
+    fontSize: 12,
+    fontWeight: '600',
+    letterSpacing: 0.1,
   },
   daysRow: {
     flexDirection: 'row',
     gap: 4,
+    position: 'relative',
+  },
+  activeDayPill: {
+    top: 0,
+    bottom: 0,
+    borderRadius: 14,
+  },
+  daySlot: {
+    flex: 1,
   },
   dayPill: {
-    flex: 1,
-    paddingVertical: 7,
-    borderRadius: 12,
+    paddingVertical: 8,
+    borderRadius: 14,
     alignItems: 'center',
     gap: 2,
   },
   dayShort: {
     fontSize: 10,
-    fontWeight: '700',
+    fontWeight: '600',
   },
   dayNum: {
     fontSize: 13,
-    fontWeight: '800',
+    fontWeight: '700',
   },
   statusDot: {
     width: 5,
@@ -351,10 +413,10 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
   pastBanner: {
-    borderRadius: 14,
+    borderRadius: 16,
     borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -363,25 +425,25 @@ const styles = StyleSheet.create({
   pastTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
+    gap: 6,
   },
   pastTitle: {
     fontSize: 12,
-    fontWeight: '800',
+    fontWeight: '700',
   },
   pastStats: {
     fontSize: 11,
-    fontWeight: '600',
+    fontWeight: '500',
     lineHeight: 16,
     fontVariant: ['tabular-nums'],
   },
   backTodayPill: {
-    paddingHorizontal: 11,
+    paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: 10,
+    borderRadius: 999,
   },
   backTodayText: {
     fontSize: 11,
-    fontWeight: '800',
+    fontWeight: '700',
   },
 });

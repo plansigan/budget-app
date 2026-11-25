@@ -244,7 +244,7 @@ export const WalletOverview: React.FC<WalletOverviewProps> = ({
                         styles.groupedRow,
                         !isLast && {
                           borderBottomWidth: 1,
-                          borderBottomColor: shade.border,
+                          borderBottomColor: shade.borderSubtle,
                         },
                       ]}
                     >
@@ -473,7 +473,7 @@ export const WalletOverview: React.FC<WalletOverviewProps> = ({
 
 const styles = StyleSheet.create({
   scrollContent: {
-    paddingBottom: 40,
+    paddingBottom: 104,
     gap: 16,
   },
   tabContentGap: {
@@ -485,15 +485,15 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   summaryCard: {
-    borderRadius: 24,
+    borderRadius: 28,
     borderWidth: 1,
-    padding: 20,
-    gap: 10,
-    shadowColor: '#111318',
-    shadowOpacity: 0.12,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 5,
+    padding: 22,
+    gap: 12,
+    shadowColor: '#16181D',
+    shadowOpacity: 0.16,
+    shadowRadius: 22,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 6,
   },
   kicker: {
     fontSize: 11,
@@ -538,7 +538,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   groupedCard: {
-    borderRadius: 20,
+    borderRadius: 22,
     borderWidth: 1,
     overflow: 'hidden',
   },
